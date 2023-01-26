@@ -131,6 +131,9 @@ contains
 #ifdef COSM_RAYS
                                               if (cr_active > 0.0) cg%w(wna%fi)%arr(iarr_crn(cr_table(icr_H1)),i,j,k) = cg%w(wna%fi)%arr(iarr_crn(cr_table(icr_H1)),i,j,k) + (aint(pset%pdata%mass/mass_SN) - stage) * 0.1 * n_SN * 10.0**51 * erg / cg%dvol  ! adding CR
 #endif /* COSM_RAYS */
+#ifdef TRACER
+                                              cg%u(flind%trc%beg, i,j,k) = 1.0
+#endif /* TRACER */
                                            endif
                                            pset%pdata%tform = t
                                            !print *, 'particle filled', pset%pdata%pid, aint(pset%pdata%mass/mass_SN) - stage
@@ -156,7 +159,7 @@ contains
                             acc(:)=0.0
                             ener = 0.0
                             tdyn = sqrt(3*pi/(32*newtong*(cg%w(wna%fi)%arr(pfl%idn,i,j,k))+cgl%cg%q(ig)%arr(i,j,k)))
-                            call is_part_in_cg(cg, pos, .true., in, phy, out)
+                            call is_part_in_cg(cg, pos, in, phy, out)
                             dmass_stars = dmass_stars + mass
                             cg%q(qna%ind("SFR_n"))%arr(i,j,k)  = cg%q(qna%ind("SFR_n"))%arr(i,j,k) + sf_dens* cg%dvol * 2*dt
                             cg%u(pfl%ien, i, j, k)          = (1-frac) * cg%u(pfl%ien, i, j, k) !- frac * ekin(cg%u(pfl%imx,i,j,k), cg%u(pfl%imy,i,j,k), cg%u(pfl%imz,i,j,k), cg%u(pfl%idn, i, j, k))
@@ -224,6 +227,9 @@ contains
 #ifdef COSM_RAYS
                                            if (cr_active > 0.0) cg%w(wna%fi)%arr(iarr_crn(cr_table(icr_H1)),i,j,k) = cg%w(wna%fi)%arr(iarr_crn(cr_table(icr_H1)),i,j,k) + aint(pset%pdata%mass/mass_SN) * 0.1 * n_SN * 10.0**51 * erg / cg%dvol  ! adding CR
 #endif /* COSM_RAYS */
+#ifdef TRACER
+                                           cg%u(flind%trc%beg, i,j,k) = 1.0
+#endif /* TRACER */
                                         endif
                                      endif
                                   endif

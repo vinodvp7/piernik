@@ -131,6 +131,9 @@ contains
 #ifdef COSM_RAYS
                                               if (cr_active > 0.0) cg%w(wna%fi)%arr(iarr_crn(cr_table(icr_H1)),i,j,k) = cg%w(wna%fi)%arr(iarr_crn(cr_table(icr_H1)),i,j,k) + (aint(pset%pdata%mass/mass_SN) - stage) * 0.1 * n_SN * 10.0**51 * erg / cg%dvol  ! adding CR
 #endif /* COSM_RAYS */
+#ifdef TRACER
+                                              cg%u(flind%trc%beg,i-1:i+1,j-1+j+1,k-1:k+1) = cg%w(wna%fi)%arr(pfl%idn,i-1:i+1,j-1+j+1,k-1:k+1)
+#endif /* TRACER */
                                            endif
                                            pset%pdata%tform = t
                                            !print *, 'particle filled', pset%pdata%pid, aint(pset%pdata%mass/mass_SN) - stage
@@ -172,7 +175,7 @@ contains
                                   if (cr_active > 0.0) cg%w(wna%fi)%arr(iarr_crn(cr_table(icr_H1)),i,j,k) = cg%w(wna%fi)%arr(iarr_crn(cr_table(icr_H1)),i,j,k) + aint(mass/mass_SN) * 0.1 * n_SN * 10.0**51 * erg / cg%dvol  ! adding CR
 #endif /* COSM_RAYS */
 #ifdef TRACER
-                                  cg%u(flind%trc%beg, i,j,k) = 1.0
+                                  cg%u(flind%trc%beg, i,j,k) = cg%w(wna%fi)%arr(pfl%idn,i,j,k)
 #endif /* TRACER */
                                endif
                                tbirth = t
@@ -228,7 +231,7 @@ contains
                                            if (cr_active > 0.0) cg%w(wna%fi)%arr(iarr_crn(cr_table(icr_H1)),i,j,k) = cg%w(wna%fi)%arr(iarr_crn(cr_table(icr_H1)),i,j,k) + aint(pset%pdata%mass/mass_SN) * 0.1 * n_SN * 10.0**51 * erg / cg%dvol  ! adding CR
 #endif /* COSM_RAYS */
 #ifdef TRACER
-                                           cg%u(flind%trc%beg, i,j,k) = 1.0
+                                           cg%u(flind%trc%beg, i,j,k) = cg%u(pfl%idn,i,j,k)
 #endif /* TRACER */
                                         endif
                                      endif

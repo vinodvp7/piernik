@@ -68,6 +68,11 @@ contains
 #if defined(THERM) || defined(COSM_RAYS)
     use units,                 only: erg
 #endif /* defined(THERM) || defined(COSM_RAYS) */
+#ifdef CRESP
+      use cresp_crspectrum, only: cresp_get_scaled_init_spectrum
+      use initcosmicrays,   only: iarr_cre_n, iarr_cre_e
+      use initcrspectrum,   only: cresp, cre_eff, e_small, use_cresp
+#endif /* CRESP */
 
     implicit none
 
@@ -83,7 +88,6 @@ contains
     real, dimension(ndims)                             :: pos, vel, acc
     real                                               :: mass, ener, tdyn, tbirth, padd, t1, fact, stage
     logical                                            :: in, phy, out
-
     if (.not. forward) return
     dens_thr = 0.035
     kick = .true.
@@ -135,6 +139,17 @@ contains
 #ifdef TRACER
                                               cg%u(flind%trc%beg,i-1:i+1,j-1+j+1,k-1:k+1) = cg%w(wna%fi)%arr(pfl%idn,i-1:i+1,j-1+j+1,k-1:k+1)
 #endif /* TRACER */
+#ifdef CRESP
+                                              if (use_cresp) then
+                                                 e_tot_sn = sn_ener_add * cr_eff *cre_eff
+                                                 cresp%n = 0.0;  cresp%e = 0.0
+                                                 if (e_tot_sn .gt. e_small) then     !< fill cells only when total passed energy is greater than e_small
+                                                    call cresp_get_scaled_init_spectrum(cresp%n, cresp%e, e_tot_sn) !< injecting source spectrum scaled with e_tot_sn
+                                                    cg%u(iarr_cre_n,i,j,k) = cg%u(iarr_cre_n,i,j,k) + cresp%n
+                                                    cg%u(iarr_cre_e,i,j,k) = cg%u(iarr_cre_e,i,j,k) + cresp%e
+                                                 endif
+                                              endif
+#endif /* CRESP */
                                            endif
                                            pset%pdata%tform = t
                                            !print *, 'particle filled', pset%pdata%pid, aint(pset%pdata%mass/mass_SN) - stage
@@ -179,6 +194,17 @@ contains
 #ifdef TRACER
                                   cg%u(flind%trc%beg, i-1:i+1,j-1+j+1,k-1:k+1) = cg%w(wna%fi)%arr(pfl%idn,i-1:i+1,j-1+j+1,k-1:k+1)
 #endif /* TRACER */
+#ifdef CRESP
+                                  if (use_cresp) then
+                                     e_tot_sn = sn_ener_add * cr_eff *cre_eff
+                                     cresp%n = 0.0;  cresp%e = 0.0
+                                     if (e_tot_sn .gt. e_small) then     !< fill cells only when total passed energy is greater than e_small
+                                        call cresp_get_scaled_init_spectrum(cresp%n, cresp%e, e_tot_sn) !< injecting source spectrum scaled with e_tot_sn
+                                        cg%u(iarr_cre_n,i,j,k) = cg%u(iarr_cre_n,i,j,k) + cresp%n
+                                        cg%u(iarr_cre_e,i,j,k) = cg%u(iarr_cre_e,i,j,k) + cresp%e
+                                     endif
+                                  endif
+#endif /* CRESP */
                                endif
                                tbirth = t
                             endif
@@ -234,8 +260,19 @@ contains
                                               if (cr_active > 0.0) cg%u(iarr_crn(cr_index(icr_H1 )),i,j,k) = cg%u(iarr_crn(cr_index(icr_H1 )),i,j,k) + cr_eff * sn_ener_add
 #endif /* COSM_RAYS */
 #ifdef TRACER
-                                              cg%u(flind%trc%beg, i-1:i+1,j-1+j+1,k-1:k+1) = cg%w(wna%fi)%arr(pfl%idn,i-1:i+1,j-1+j+1,k-1:k+1)
+                                              cg%u(flind%trc%beg, i-1:i+1,j-1+j+1,k-1:k+1) = cg%u(pfl%idn,i-1:i+1,j-1+j+1,k-1:k+1)
 #endif /* TRACER */
+#ifdef CRESP
+                                              if (use_cresp) then
+                                                 e_tot_sn = sn_ener_add * cr_eff *cre_eff
+                                                 cresp%n = 0.0;  cresp%e = 0.0
+                                                 if (e_tot_sn .gt. e_small) then     !< fill cells only when total passed energy is greater than e_small
+                                                    call cresp_get_scaled_init_spectrum(cresp%n, cresp%e, e_tot_sn) !< injecting source spectrum scaled with e_tot_sn
+                                                    cg%u(iarr_cre_n,i,j,k) = cg%u(iarr_cre_n,i,j,k) + cresp%n
+                                                    cg%u(iarr_cre_e,i,j,k) = cg%u(iarr_cre_e,i,j,k) + cresp%e
+                                                 endif
+                                              endif
+#endif /* CRESP */
                                         endif
                                      endif
                                   endif

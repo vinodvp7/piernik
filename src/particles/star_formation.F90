@@ -113,9 +113,9 @@ contains
                          sf_dens = eps_sf / c_tau_ff * cg%u(pfl%idn,i,j,k)**(3./2.)
                          pset => cg%pset%first
                          do while (associated(pset))
-                            if (cg%coord(LO,xdim)%r(i) .lt. pset%pdata%pos(1)+cg%dx .and. cg%coord(HI,xdim)%r(i) .gt. pset%pdata%pos(1)-cg%dx) then
-                               if (cg%coord(LO,ydim)%r(j) .lt. pset%pdata%pos(2)+cg%dy .and. cg%coord(HI,ydim)%r(j) .gt. pset%pdata%pos(2)-cg%dy) then
-                                  if (cg%coord(LO,zdim)%r(k) .lt. pset%pdata%pos(3)+cg%dz .and. cg%coord(HI,zdim)%r(k) .gt. pset%pdata%pos(3)-cg%dz) then
+                            if (cg%coord(LO,xdim)%r(i) .lt. pset%pdata%pos(1) .and. cg%coord(HI,xdim)%r(i) .gt. pset%pdata%pos(1)) then
+                               if (cg%coord(LO,ydim)%r(j) .lt. pset%pdata%pos(2) .and. cg%coord(HI,ydim)%r(j) .gt. pset%pdata%pos(2)) then
+                                  if (cg%coord(LO,zdim)%r(k) .lt. pset%pdata%pos(3) .and. cg%coord(HI,zdim)%r(k) .gt. pset%pdata%pos(3)) then
 
                                      if ((pset%pdata%tform .ge. -10.0) .and. (pset%pdata%mass .lt. mass_SN)) then
                                         stage = aint(pset%pdata%mass/mass_SN)
@@ -129,15 +129,15 @@ contains
                                         cg%u(pfl%imx:pfl%imz, i, j, k)  = (1 - frac) * cg%u(pfl%imx:pfl%imz, i, j, k)
                                         if (aint(pset%pdata%mass/mass_SN) .gt. stage) then
                                            if (.not. kick) then
-                                              sn_ener_add = aint(pset%pdata%mass/mass_SN) * n_SN * 10.0**51 * erg / cg%dvol
+                                              sn_ener_add = (aint(pset%pdata%mass/mass_SN) - stage) * n_SN * 10.0**51 * erg / cg%dvol
 #ifdef THERM
-                                              cg%u(pfl%ien,i,j,k) = cg%u(pfl%ien,i,j,k)  + sn_ener_add ! adding SN energy
+                                              cg%u(pfl%ien,i,j,k) = cg%u(pfl%ien,i,j,k)  + sn_ener_add * (1-cr_eff*cr_active) ! adding SN energy
 #endif /* THERM */
 #ifdef COSM_RAYS
                                               if (cr_active > 0.0) cg%u(iarr_crn(cr_index(icr_H1 )),i,j,k) = cg%u(iarr_crn(cr_index(icr_H1 )),i,j,k) + cr_eff * sn_ener_add
 #endif /* COSM_RAYS */
 #ifdef TRACER
-                                              cg%u(flind%trc%beg,i-1:i+1,j-1+j+1,k-1:k+1) = cg%w(wna%fi)%arr(pfl%idn,i-1:i+1,j-1+j+1,k-1:k+1)
+                                              cg%u(flind%trc%beg,i,j,k) = cg%w(wna%fi)%arr(pfl%idn,i,j,k)
 #endif /* TRACER */
 #ifdef CRESP
                                               if (use_cresp) then
@@ -186,13 +186,13 @@ contains
                                if (.not. kick) then
                                   sn_ener_add = aint(mass/mass_SN) * n_SN * 10.0**51 * erg / cg%dvol
 #ifdef THERM
-                                  cg%u(pfl%ien,i,j,k) = cg%u(pfl%ien,i,j,k)  + sn_ener_add ! adding SN energy
+                                  cg%u(pfl%ien,i,j,k) = cg%u(pfl%ien,i,j,k)  + sn_ener_add * (1.0 - cr_eff*cr_active) ! adding SN energy
 #endif /* THERM */
 #ifdef COSM_RAYS
                                   if (cr_active > 0.0) cg%u(iarr_crn(cr_index(icr_H1 )),i,j,k) = cg%u(iarr_crn(cr_index(icr_H1 )),i,j,k) + cr_eff * sn_ener_add
 #endif /* COSM_RAYS */
 #ifdef TRACER
-                                  cg%u(flind%trc%beg, i-1:i+1,j-1+j+1,k-1:k+1) = cg%w(wna%fi)%arr(pfl%idn,i-1:i+1,j-1+j+1,k-1:k+1)
+                                  cg%u(flind%trc%beg, i,j,k) = cg%w(wna%fi)%arr(pfl%idn,i,j,k)
 #endif /* TRACER */
 #ifdef CRESP
                                   if (use_cresp) then
@@ -250,18 +250,18 @@ contains
                                         cg%u(pfl%imz,i,j,k) = cg%u(pfl%imz,i,j,k) + fact * k1 * padd
                                         cg%u(pfl%ien,i,j,k) = cg%u(pfl%ien,i,j,k) + 0.5*(cg%u(pfl%imx,i,j,k)**2 +cg%u(pfl%imy,i,j,k)**2 + cg%u(pfl%imz,i,j,k)**2)/cg%u(pfl%idn,i,j,k)  ! add new ekin
                                      endif
-                                     if (abs(i1) + abs(j1) + abs(k1) == 0) then
-                                        if ((t1-dt < 6.5) .and. ((t1+dt) .gt. 6.5)) then    ! Instantaneous injection Agertz
+                                     if ((t1-dt < 6.5) .and. ((t1+dt) .gt. 6.5)) then    ! Instantaneous injection Agertz
+#ifdef TRACER
+                                        cg%u(flind%trc%beg, i,j,k) = cg%u(pfl%idn,i,j,k)
+#endif /* TRACER */
+                                        if (abs(i1) + abs(j1) + abs(k1) == 0) then
                                               sn_ener_add = aint(pset%pdata%mass/mass_SN) * n_SN * 10.0**51 * erg / cg%dvol
 #ifdef THERM
-                                              cg%u(pfl%ien,i,j,k) = cg%u(pfl%ien,i,j,k)  + sn_ener_add ! adding SN energy
+                                              cg%u(pfl%ien,i,j,k) = cg%u(pfl%ien,i,j,k)  + sn_ener_add * (1.0 - cr_eff*cr_active) ! adding SN energy
 #endif /* THERM */
 #ifdef COSM_RAYS
                                               if (cr_active > 0.0) cg%u(iarr_crn(cr_index(icr_H1 )),i,j,k) = cg%u(iarr_crn(cr_index(icr_H1 )),i,j,k) + cr_eff * sn_ener_add
 #endif /* COSM_RAYS */
-#ifdef TRACER
-                                              cg%u(flind%trc%beg, i-1:i+1,j-1+j+1,k-1:k+1) = cg%u(pfl%idn,i-1:i+1,j-1+j+1,k-1:k+1)
-#endif /* TRACER */
 #ifdef CRESP
                                               if (use_cresp) then
                                                  e_tot_sn = sn_ener_add * cr_eff *cre_eff

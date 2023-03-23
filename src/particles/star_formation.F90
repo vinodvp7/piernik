@@ -36,14 +36,93 @@ module star_formation
   implicit none
 
   private
-  public :: SF, initialize_id, attribute_id, pid_gen, dmass_stars
+  public :: init_SF, SF, initialize_id, attribute_id, pid_gen, dmass_stars
 
   integer(kind=4)       :: pid_gen, maxpid, dpid
+  real                  :: dens_thr, temp_thr, eps_sf, mass_SN, max_part_mass
+  integer(kind=4)       :: n_SN
+  logical               :: kick
   real                  :: dmass_stars
 
   integer(kind=4), parameter :: giga = 1000000000
 
+  namelist /STAR_FORMATION_CONTROL/ kick, dens_thr, temp_thr, eps_sf, mass_SN, n_SN
+
 contains
+
+
+!-----------------------------------------------------------------------------
+
+   subroutine init_SF
+
+      use dataio_pub,   only: nh, printinfo
+      use mpisetup,     only: ibuff, lbuff, rbuff, master, slave, piernik_MPI_Bcast
+
+      implicit none
+
+#ifdef VERBOSE
+      if (master) call printinfo("[star_formation:init_SF] Commencing star_formation module initialization")
+#endif /* VERBOSE */
+
+      kick             = .true.        ! Momentum injection before energy injection
+      dens_thr         = 0.035         ! Density threshold for star formation
+      temp_thr         = 1.0e4         ! Maximum Temperature for star formation
+      eps_sf           = 0.1           ! Star formation efficiency
+      mass_SN          = 100.0         ! Mass of star forming gas triggering one SNe
+      n_SN             = 1000          ! Threshold of number of SN needed to inject the corresponding energy
+      max_part_mass    = mass_SN * n_SN
+
+      if (master) then
+
+         if (.not.nh%initialized) call nh%init()
+         open(newunit=nh%lun, file=nh%tmp1, status="unknown")
+         write(nh%lun,nml=STAR_FORMATION_CONTROL)
+         close(nh%lun)
+         open(newunit=nh%lun, file=nh%par_file)
+         nh%errstr=''
+         read(unit=nh%lun, nml=STAR_FORMATION_CONTROL, iostat=nh%ierrh, iomsg=nh%errstr)
+         close(nh%lun)
+         call nh%namelist_errh(nh%ierrh, "STAR_FORMATION_CONTROL")
+         read(nh%cmdl_nml,nml=STAR_FORMATION_CONTROL, iostat=nh%ierrh)
+         call nh%namelist_errh(nh%ierrh, "STAR_FORMATION_CONTROL", .true.)
+         open(newunit=nh%lun, file=nh%tmp2, status="unknown")
+         write(nh%lun,nml=STAR_FORMATION_CONTROL)
+         close(nh%lun)
+         call nh%compare_namelist()
+
+         lbuff(1) = kick
+
+         rbuff(1) = dens_thr
+         rbuff(2) = temp_thr
+         rbuff(3) = eps_sf
+         rbuff(4) = mass_SN
+         rbuff(5) = max_part_mass
+
+         ibuff(1) = n_SN
+
+      endif
+
+      call piernik_MPI_Bcast(lbuff)
+      call piernik_MPI_Bcast(ibuff)
+      call piernik_MPI_Bcast(rbuff)
+
+      if (slave) then
+
+         dens_thr = rbuff(1)
+         temp_thr = rbuff(2)
+         eps_sf  = rbuff(3)
+         mass_SN = rbuff(4)
+         max_part_mass = rbuff(5)
+
+         n_SN = ibuff(1)
+
+      endif
+
+   end subroutine init_SF
+
+!-----------------------------------------------------------------------------
+
+
 
   subroutine SF(forward)
 
@@ -82,20 +161,18 @@ contains
     type(particle), pointer                            :: pset
     class(component_fluid), pointer                    :: pfl
     integer                                            :: ifl, i, j, k, i1, j1, k1
-    real                                               :: dens_thr, sf_dens, c_tau_ff, eps_sf, frac, mass_SN, sn_ener_add, e_tot_sn
-    logical                                            :: fed, kick
-    integer(kind=4)                                    :: pid, ig, n_SN
+    real                                               :: sf_dens, c_tau_ff, frac, mass_SN_tot, sn_ener_add, e_tot_sn
+    logical                                            :: fed
+    integer(kind=4)                                    :: pid, ig
     real, dimension(ndims)                             :: pos, vel, acc
     real                                               :: mass, ener, tdyn, tbirth, padd, t1, fact, stage
     logical                                            :: in, phy, out
     if (.not. forward) return
-    dens_thr = 0.035
-    kick = .true.
-    eps_sf = 0.1
-    n_SN = 1000
-    mass_SN = 100.0 * n_SN
+
+    mass_SN_tot = mass_SN * n_SN
     dmass_stars = 0.0
     ig = qna%ind(nbdn_n)
+
     cgl => leaves%first
     do while (associated(cgl))
        cg => cgl%cg
@@ -106,7 +183,7 @@ contains
                 do k = cg%ijkse(zdim,LO), cg%ijkse(zdim,HI)
                    if (cg%u(pfl%idn,i,j,k) .gt. dens_thr) then
 #ifdef THERM
-                      if (cg%q(itemp)%arr(i,j,k) .lt. 10**4) then
+                      if (cg%q(itemp)%arr(i,j,k) .lt. temp_thr) then
 #endif /* THERM */
                          fed = .false.
                          c_tau_ff = sqrt(3.*pi/(32.*newtong))
@@ -117,8 +194,8 @@ contains
                                if (cg%coord(LO,ydim)%r(j) .lt. pset%pdata%pos(2) .and. cg%coord(HI,ydim)%r(j) .gt. pset%pdata%pos(2)) then
                                   if (cg%coord(LO,zdim)%r(k) .lt. pset%pdata%pos(3) .and. cg%coord(HI,zdim)%r(k) .gt. pset%pdata%pos(3)) then
 
-                                     if ((pset%pdata%tform .ge. -10.0) .and. (pset%pdata%mass .lt. mass_SN)) then
-                                        stage = aint(pset%pdata%mass/mass_SN)
+                                     if ((pset%pdata%tform .ge. -10.0) .and. (pset%pdata%mass .lt. max_part_mass)) then
+                                        stage = aint(pset%pdata%mass/mass_SN_tot)
                                         frac = sf_dens * 2*dt / cg%u(pfl%idn, i, j, k)
                                         pset%pdata%vel(1:3) = (pset%pdata%mass *pset%pdata%vel(1:3) + frac * cg%u(pfl%imx:pfl%imz,i,j,k) * cg%dvol) / (pset%pdata%mass + sf_dens * cg%dvol * 2*dt)
                                         pset%pdata%mass     =  pset%pdata%mass + sf_dens * cg%dvol * 2*dt
@@ -127,9 +204,9 @@ contains
                                         cg%u(pfl%ien, i, j, k)          = (1-frac) * cg%u(pfl%ien, i, j, k) !- frac * ekin(cg%u(pfl%imx,i,j,k), cg%u(pfl%imy,i,j,k), cg%u(pfl%imz,i,j,k), cg%u(pfl%idn, i, j, k))
                                         cg%w(wna%fi)%arr(pfl%idn,i,j,k) = (1 - frac) * cg%w(wna%fi)%arr(pfl%idn,i,j,k)
                                         cg%u(pfl%imx:pfl%imz, i, j, k)  = (1 - frac) * cg%u(pfl%imx:pfl%imz, i, j, k)
-                                        if (aint(pset%pdata%mass/mass_SN) .gt. stage) then
+                                        if (aint(pset%pdata%mass/mass_SN_tot) .gt. stage) then
                                            if (.not. kick) then
-                                              sn_ener_add = (aint(pset%pdata%mass/mass_SN) - stage) * n_SN * 10.0**51 * erg / cg%dvol
+                                              sn_ener_add = (aint(pset%pdata%mass/mass_SN_tot) - stage) * n_SN * 10.0**51 * erg / cg%dvol
 #ifdef THERM
                                               cg%u(pfl%ien,i,j,k) = cg%u(pfl%ien,i,j,k)  + sn_ener_add * (1-cr_eff*cr_active) ! adding SN energy
 #endif /* THERM */
@@ -152,7 +229,6 @@ contains
 #endif /* CRESP */
                                            endif
                                            pset%pdata%tform = t
-                                           !print *, 'particle filled', pset%pdata%pid, aint(pset%pdata%mass/mass_SN) - stage
                                         endif
                                         fed = .true.
                                         exit
@@ -182,9 +258,9 @@ contains
                             cg%w(wna%fi)%arr(pfl%idn,i,j,k) = (1 - frac) * cg%w(wna%fi)%arr(pfl%idn,i,j,k)
                             cg%u(pfl%imx:pfl%imz, i, j, k)  = (1 - frac) * cg%u(pfl%imx:pfl%imz, i, j, k)
                             tbirth = -10
-                            if (mass .gt. mass_SN) then
+                            if (mass .gt. mass_SN_tot) then
                                if (.not. kick) then
-                                  sn_ener_add = aint(mass/mass_SN) * n_SN * 10.0**51 * erg / cg%dvol
+                                  sn_ener_add = aint(mass/mass_SN_tot) * n_SN * 10.0**51 * erg / cg%dvol
 #ifdef THERM
                                   cg%u(pfl%ien,i,j,k) = cg%u(pfl%ien,i,j,k)  + sn_ener_add * (1.0 - cr_eff*cr_active) ! adding SN energy
 #endif /* THERM */
@@ -255,7 +331,7 @@ contains
                                         cg%u(flind%trc%beg, i,j,k) = cg%u(pfl%idn,i,j,k)
 #endif /* TRACER */
                                         if (abs(i1) + abs(j1) + abs(k1) == 0) then
-                                              sn_ener_add = aint(pset%pdata%mass/mass_SN) * n_SN * 10.0**51 * erg / cg%dvol
+                                              sn_ener_add = aint(pset%pdata%mass/mass_SN_tot) * n_SN * 10.0**51 * erg / cg%dvol
 #ifdef THERM
                                               cg%u(pfl%ien,i,j,k) = cg%u(pfl%ien,i,j,k)  + sn_ener_add * (1.0 - cr_eff*cr_active) ! adding SN energy
 #endif /* THERM */
@@ -301,8 +377,6 @@ contains
 
     dpid = int(giga/nproc, kind=4)
     pid_gen =  proc * dpid
-    !maxpid = (proc+1) * dpid
-    !print *, proc, pid_gen, maxpid, dpid
 
   end subroutine initialize_id
 

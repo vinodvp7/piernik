@@ -108,6 +108,8 @@ contains
 
       if (slave) then
 
+         kick = lbuff(1)
+
          dens_thr = rbuff(1)
          temp_thr = rbuff(2)
          eps_sf  = rbuff(3)

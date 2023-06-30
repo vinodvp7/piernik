@@ -208,7 +208,9 @@ contains
                                         cg%u(pfl%imx:pfl%imz, i, j, k)  = (1 - frac) * cg%u(pfl%imx:pfl%imz, i, j, k)
                                         if (aint(pset%pdata%mass/mass_SN_tot) .gt. stage) then
                                            if (.not. kick) then
+#if defined(THERM) || defined(COSM_RAYS)
                                               sn_ener_add = (aint(pset%pdata%mass/mass_SN_tot) - stage) * n_SN * 10.0**51 * erg / cg%dvol
+#endif /* defined(THERM) || defined(COSM_RAYS) */
 #ifdef THERM
                                               cg%u(pfl%ien,i,j,k) = cg%u(pfl%ien,i,j,k)  + sn_ener_add * (1-cr_eff*cr_active) ! adding SN energy
 #endif /* THERM */
@@ -262,7 +264,9 @@ contains
                             tbirth = -10
                             if (mass .gt. mass_SN_tot) then
                                if (.not. kick) then
-                                  sn_ener_add = aint(mass/mass_SN_tot) * n_SN * 10.0**51 * erg / cg%dvol
+#if defined(THERM) || defined(COSM_RAYS)
+                                  sn_ener_add = (aint(mass/mass_SN_tot) - stage) * n_SN * 10.0**51 * erg / cg%dvol
+#endif /* defined(THERM) || defined(COSM_RAYS) */
 #ifdef THERM
                                   cg%u(pfl%ien,i,j,k) = cg%u(pfl%ien,i,j,k)  + sn_ener_add * (1.0 - cr_eff*cr_active) ! adding SN energy
 #endif /* THERM */
@@ -333,7 +337,9 @@ contains
                                         cg%u(flind%trc%beg, i,j,k) = cg%u(pfl%idn,i,j,k)
 #endif /* TRACER */
                                         if (abs(i1) + abs(j1) + abs(k1) == 0) then
-                                              sn_ener_add = aint(pset%pdata%mass/mass_SN_tot) * n_SN * 10.0**51 * erg / cg%dvol
+#if defined(THERM) || defined(COSM_RAYS)
+                                           sn_ener_add = (aint(pset%pdata%mass/mass_SN_tot) - stage) * n_SN * 10.0**51 * erg / cg%dvol
+#endif /* defined(THERM) || defined(COSM_RAYS) */
 #ifdef THERM
                                               cg%u(pfl%ien,i,j,k) = cg%u(pfl%ien,i,j,k)  + sn_ener_add * (1.0 - cr_eff*cr_active) ! adding SN energy
 #endif /* THERM */

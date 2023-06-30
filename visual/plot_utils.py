@@ -256,6 +256,70 @@ def labellog(sctype, symmin, cmpr0):
     return logname + compare
 
 
+def properlabel(var, varlabel, dolog):
+    left, right = '', ''
+    if dolog != '':
+        left = r'( '
+        right = r' )'
+    if recognize_opt(varlabel, ('0', 'var')):
+        return dolog + var
+    elif recognize_opt(varlabel, ('1', 'describe')):
+        return dolog + left + findvardescription(var) + right
+    elif recognize_opt(varlabel, ('2', 'symbol')):
+        return dolog + left + findvarsymbol(var) + right
+    return dolog + varlabel
+
+
+def findvardescription(var):
+    if var == 'mag_field_x':
+        return 'magnetic field X component'
+    elif var == 'mag_field_y':
+        return 'magnetic field Y component'
+    elif var == 'mag_field_z':
+        return 'magnetic field Z component'
+    if var == 'magnetic_field_divergence_c':
+        return 'magnetic field divergence'
+    elif var == 'magnetic_field_divergence_n':
+        return 'normalized magnetic field divergence'
+    elif var == 'velocity_x':
+        return 'velocity X component'
+    elif var == 'velocity_y':
+        return 'velocity Y component'
+    elif var == 'velocity_z':
+        return 'velocity Z component'
+    return var.replace('_', ' ')
+
+
+def findvarsymbol(var):
+    if var == 'density':
+        return r'$\rho$'
+    elif var == 'energy_density':
+        return r'$\epsilon$'
+    elif var == 'mag_field_x':
+        return r'$B_x$'
+    elif var == 'mag_field_y':
+        return r'$B_y$'
+    elif var == 'mag_field_z':
+        return r'$B_z$'
+    elif var == 'magnetic_field_divergence_c':
+        return r'$\mathit{div}B$'
+    elif var == 'magnetic_field_divergence_n':
+        return r'$\frac{\mathit{div}B}{B} \cdot dx$'
+    elif var == 'magnetic_field_magnitude':
+        return r'$|\vec{B}|$'
+    elif var == 'pressure':
+        return r'$p$'
+    elif var == 'psi':
+        return r'$\Psi$'
+    elif var == 'velocity_x':
+        return r'$v_x$'
+    elif var == 'velocity_y':
+        return r'$v_y$'
+    elif var == 'velocity_z':
+        return r'$v_z$'
+    return var
+
+
 def take_nonempty(lst):
     for it in lst:
         if it != []:
@@ -305,8 +369,8 @@ def check_extrema(curmin, curmax, locmin, locmax, bextr, cextr):
 
 
 def block_cell_center(le, re, ngb, i3):
-    dl = list3_div(list3_subtraction(re, le), [np.float(ngb[0]), np.float(ngb[1]), np.float(ngb[2])])
-    dd = [np.float(i3[0]) + 0.5, np.float(i3[1]) + 0.5, np.float(i3[2]) + 0.5]
+    dl = list3_div(list3_subtraction(re, le), [float(ngb[0]), float(ngb[1]), float(ngb[2])])
+    dd = [float(i3[0]) + 0.5, float(i3[1]) + 0.5, float(i3[2]) + 0.5]
     lp = list3_mult(dl, dd)
     return list3_add(le, lp)
 

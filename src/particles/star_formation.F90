@@ -46,7 +46,7 @@ module star_formation
 
   integer(kind=4), parameter :: giga = 1000000000
 
-  namelist /STAR_FORMATION_CONTROL/ kick, dens_thr, temp_thr, eps_sf, mass_SN, n_SN
+  namelist /STAR_FORMATION_CONTROL/ kick, dens_thr, temp_thr, eps_sf, mass_SN, n_SN, max_part_mass
 
 contains
 

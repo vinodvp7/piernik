@@ -34,7 +34,7 @@ module particle_func
    implicit none
 
    private
-   public :: particle_in_area, check_ord, df_d_p, d2f_d2_p, d2f_dd_p, df_d_o2, d2f_d2_o2, d2f_dd_o2
+   public :: particle_in_area, in_range, pos_in_sect, ijk_of_particle, l_neighb_part, r_neighb_part, check_ord, df_d_p, d2f_d2_p, d2f_dd_p, df_d_o2, d2f_d2_o2, d2f_dd_o2
 
    interface
 
@@ -78,7 +78,7 @@ contains
 
 !> \brief check if the particle locates inside given area
 
-   function particle_in_area(pos, area) result(itis)
+   logical function particle_in_area(pos, area) result(itis)
 
       use constants, only: ndims, LO, HI
 
@@ -86,11 +86,69 @@ contains
 
       real, dimension(ndims),       intent(in) :: pos
       real, dimension(ndims,LO:HI), intent(in) :: area
-      logical                                  :: itis
 
       itis = (all(pos >= area(:,LO)) .and. all(pos < area(:,HI)))
 
    end function particle_in_area
+
+!> \brief check if the particle cg-index locates inside given range
+
+   logical function in_range(ind, ijkse) result(itis)
+
+      use constants, only: ndims, LO, HI
+
+      implicit none
+
+      integer(kind=4), dimension(ndims),       intent(in) :: ind
+      integer(kind=4), dimension(ndims,LO:HI), intent(in) :: ijkse
+
+      itis = all(ind >= ijkse(:,LO)) .and. all(ind <= ijkse(:,HI))
+
+   end function in_range
+
+   elemental logical function pos_in_sect(pos, pl, pr) result(isin)
+
+      implicit none
+
+      real, intent(in) :: pos, pl, pr
+
+      isin = (pos >= pl .and. pos < pr)
+
+   end function pos_in_sect
+
+   elemental integer(kind=4) function ijk_of_particle(pos, edge, idl) result (ijk)
+
+      implicit none
+
+      real, intent(in) :: pos, edge, idl
+
+      ijk = floor((pos - edge) * idl, kind=4)
+
+   end function ijk_of_particle
+
+   elemental integer(kind=4) function l_neighb_part(ind, left_lim) result (lnp)
+
+      use constants, only: I_ONE
+
+      implicit none
+
+      integer(kind=4), intent(in) :: ind, left_lim
+
+      lnp = max(ind - I_ONE, left_lim)
+
+   end function l_neighb_part
+
+   elemental integer(kind=4) function r_neighb_part(ind, right_lim) result (rnp)
+
+      use constants, only: I_ONE
+
+      implicit none
+
+      integer(kind=4), intent(in) :: ind, right_lim
+
+      rnp = min(ind + I_ONE, right_lim)
+
+   end function r_neighb_part
 
    subroutine check_ord(order)
 
@@ -112,41 +170,74 @@ contains
 
    function df_d_o2(cell, cg, ig, dir)
 
-      use constants, only: idm, ndims, half
-      use grid_cont, only: grid_container
+      use constants,  only: ndims, half, xdim, ydim, zdim
+      use dataio_pub, only: die
+      use grid_cont,  only: grid_container
 
       implicit none
 
       integer, dimension(ndims),     intent(in) :: cell
       type(grid_container), pointer, intent(in) :: cg
       integer(kind=4),               intent(in) :: ig, dir
-      real, target                              :: df_d_o2
+      real                                      :: df_d_o2
 
       !o(R^2)
-      df_d_o2 = (cg%q(ig)%point(cell+idm(dir,:)) - cg%q(ig)%point(cell-idm(dir,:)) ) * half *cg%idl(dir)
+      select case (dir)
+         case (xdim)
+            df_d_o2 = ( -cg%q(ig)%arr(cell(xdim)-1, cell(ydim), cell(zdim)) &
+                 &      +cg%q(ig)%arr(cell(xdim)+1, cell(ydim), cell(zdim))) * half * cg%idl(xdim)
+         case (ydim)
+            df_d_o2 = ( -cg%q(ig)%arr(cell(xdim), cell(ydim)-1, cell(zdim)) &
+                 &      +cg%q(ig)%arr(cell(xdim), cell(ydim)+1, cell(zdim))) * half * cg%idl(ydim)
+         case (zdim)
+            df_d_o2 = ( -cg%q(ig)%arr(cell(xdim), cell(ydim), cell(zdim)-1) &
+                 &      +cg%q(ig)%arr(cell(xdim), cell(ydim), cell(zdim)+1)) * half * cg%idl(zdim)
+         case default
+            call die ("[particle_func:df_d_o2] Invalid dir")
+            df_d_o2 = 0.
+      end select
+      ! df_d_o2 = (cg%q(ig)%point(cell+idm(dir,:)) - cg%q(ig)%point(cell-idm(dir,:)) ) * half *cg%idl(dir)
 
    end function df_d_o2
 
    function d2f_d2_o2(cell, cg, ig, dir)
 
-      use constants, only: idm, ndims, two
-      use grid_cont, only: grid_container
+      use constants,  only: ndims, two, xdim, ydim, zdim
+      use dataio_pub, only: die
+      use grid_cont,  only: grid_container
 
       implicit none
 
       integer, dimension(ndims),     intent(in) :: cell
       type(grid_container), pointer, intent(in) :: cg
       integer(kind=4),               intent(in) :: ig, dir
-      real, target                              :: d2f_d2_o2
+      real                                      :: d2f_d2_o2
 
       !o(R^2)
-      d2f_d2_o2 = (cg%q(ig)%point(cell+idm(dir,:)) - two*cg%q(ig)%point(cell) + cg%q(ig)%point(cell-idm(dir,:)) ) * cg%idl(dir)**2
+      select case (dir)
+         case (xdim)
+            d2f_d2_o2 = (        cg%q(ig)%arr(cell(xdim)-1, cell(ydim), cell(zdim)) &
+                 &       - two * cg%q(ig)%arr(cell(xdim)  , cell(ydim), cell(zdim)) &
+                 &             + cg%q(ig)%arr(cell(xdim)+1, cell(ydim), cell(zdim))) * cg%idl(xdim)**2
+         case (ydim)
+            d2f_d2_o2 = (        cg%q(ig)%arr(cell(xdim), cell(ydim)-1, cell(zdim)) &
+                 &       - two * cg%q(ig)%arr(cell(xdim), cell(ydim)  , cell(zdim)) &
+                 &             + cg%q(ig)%arr(cell(xdim), cell(ydim)+1, cell(zdim))) * cg%idl(ydim)**2
+         case (zdim)
+            d2f_d2_o2 = (        cg%q(ig)%arr(cell(xdim), cell(ydim), cell(zdim)-1) &
+                 &       - two * cg%q(ig)%arr(cell(xdim), cell(ydim), cell(zdim)  ) &
+                 &             + cg%q(ig)%arr(cell(xdim), cell(ydim), cell(zdim)+1)) * cg%idl(zdim)**2
+         case default
+            call die ("[particle_func:d2f_d2_o2] Invalid dir")
+            d2f_d2_o2 = 0.
+      end select
+      ! d2f_d2_o2 = (cg%q(ig)%point(cell+idm(dir,:)) - two*cg%q(ig)%point(cell) + cg%q(ig)%point(cell-idm(dir,:)) ) * cg%idl(dir)**2
 
    end function d2f_d2_o2
 
-   function d2f_dd_o2(cell, cg, ig, dir1, dir2)
+   pure function d2f_dd_o2(cell, cg, ig, dir1, dir2)
 
-      use constants, only: idm, ndims, oneq
+      use constants, only: idm, ndims, oneq, xdim, ydim, zdim
       use grid_cont, only: grid_container
 
       implicit none
@@ -157,8 +248,17 @@ contains
       real, target                              :: d2f_dd_o2
 
       !o(R^2)
-      d2f_dd_o2 = (cg%q(ig)%point(cell+idm(dir1,:)+idm(dir2,:)) - cg%q(ig)%point(cell+idm(dir1,:)-idm(dir2,:)) + &
-                   cg%q(ig)%point(cell-idm(dir1,:)-idm(dir2,:)) - cg%q(ig)%point(cell-idm(dir1,:)+idm(dir2,:)) ) * oneq*cg%idl(dir1)*cg%idl(dir2)
+      associate(cppx => cell(xdim)+idm(dir1, xdim)+idm(dir2, xdim), cmmx => cell(xdim)-idm(dir1, xdim)-idm(dir2, xdim), &
+           &    cppy => cell(ydim)+idm(dir1, ydim)+idm(dir2, ydim), cmmy => cell(ydim)-idm(dir1, ydim)-idm(dir2, ydim), &
+           &    cppz => cell(zdim)+idm(dir1, zdim)+idm(dir2, zdim), cmmz => cell(zdim)-idm(dir1, zdim)-idm(dir2, zdim), &
+           &    cpmx => cell(xdim)+idm(dir1, xdim)-idm(dir2, xdim), cmpx => cell(xdim)-idm(dir1, xdim)+idm(dir2, xdim), &
+           &    cpmy => cell(ydim)+idm(dir1, ydim)-idm(dir2, ydim), cmpy => cell(ydim)-idm(dir1, ydim)+idm(dir2, ydim), &
+           &    cpmz => cell(zdim)+idm(dir1, zdim)-idm(dir2, zdim), cmpz => cell(zdim)-idm(dir1, zdim)+idm(dir2, zdim))
+         d2f_dd_o2 = (cg%q(ig)%arr(cppx, cppy, cppz) - cg%q(ig)%arr(cpmx, cpmy, cpmz) + &
+              &       cg%q(ig)%arr(cmmx, cmmy, cmmz) - cg%q(ig)%arr(cmpx, cmpy, cmpz)) * oneq * cg%idl(dir1) * cg%idl(dir2)
+      end associate
+      ! d2f_dd_o2 = (cg%q(ig)%point(cell+idm(dir1,:)+idm(dir2,:)) - cg%q(ig)%point(cell+idm(dir1,:)-idm(dir2,:)) + &
+      !              cg%q(ig)%point(cell-idm(dir1,:)-idm(dir2,:)) - cg%q(ig)%point(cell-idm(dir1,:)+idm(dir2,:)) ) * oneq*cg%idl(dir1)*cg%idl(dir2)
 
    end function d2f_dd_o2
 

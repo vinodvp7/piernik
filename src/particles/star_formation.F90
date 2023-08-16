@@ -42,13 +42,13 @@ module star_formation
 
    integer(kind=4), parameter            :: giga = 1000000000
    integer(kind=4)                       :: pid_gen, maxpid, dpid
-   real                  :: dens_thr, temp_thr, eps_sf, mass_SN, max_part_mass
+   real                  :: dens_thr, temp_thr, eps_sf, mass_SN, max_part_mass, frac_cr
    integer(kind=4)       :: n_SN
    logical               :: kick
    real                  :: dmass_stars
    character(len=dsetnamelen), parameter :: sfr_n   = "SFR_n"
 
-   namelist /STAR_FORMATION_CONTROL/ kick, dens_thr, temp_thr, eps_sf, mass_SN, n_SN, max_part_mass
+   namelist /STAR_FORMATION_CONTROL/ kick, dens_thr, temp_thr, eps_sf, mass_SN, n_SN, max_part_mass, frac_cr
 
 contains
 
@@ -72,6 +72,7 @@ contains
       mass_SN          = 100.0         ! Mass of star forming gas triggering one SNe
       n_SN             = 1000          ! Threshold of number of SN needed to inject the corresponding energy
       max_part_mass    = mass_SN * n_SN
+      frac_cr          = 0.1
 
       if (master) then
 
@@ -98,6 +99,7 @@ contains
          rbuff(3) = eps_sf
          rbuff(4) = mass_SN
          rbuff(5) = max_part_mass
+         rbuff(6) = frac_cr
 
          ibuff(1) = n_SN
 
@@ -116,6 +118,7 @@ contains
          eps_sf  = rbuff(3)
          mass_SN = rbuff(4)
          max_part_mass = rbuff(5)
+         frac_cr = rbuff(6)
 
          n_SN = ibuff(1)
 
@@ -167,9 +170,9 @@ contains
       fpadd    = 1.8e40 * gram * cm /sek * 2.**0.38 * 2 * dt / tinj / 26  ! see Agertz+2013
       mass_SN_tot = mass_SN * n_SN
       en_SN    = n_SN * 10.0**51 * erg
-      en_SN01  = 0.1 * en_SN
+      en_SN01  = frac_cr * en_SN
 #ifdef COSM_RAYS
-      en_SN09  = (1 - 0.1 * cr_active) * en_SN
+      en_SN09  = (1 - frac_cr * cr_active) * en_SN
 #else /* !COSM_RAYS */
       en_SN09  = 0.0
 #endif /* !COSM_RAYS */

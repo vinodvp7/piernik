@@ -46,7 +46,7 @@ module star_formation
    integer(kind=4)       :: n_SN
    logical               :: kick
    real                  :: dmass_stars
-   character(len=dsetnamelen), parameter :: sfr_n   = "SFR_n"
+   character(len=dsetnamelen), parameter :: sfr_n  = "SFR_n", sfrh_n = "SFRh_n"
 
    namelist /STAR_FORMATION_CONTROL/ kick, dens_thr, temp_thr, eps_sf, mass_SN, n_SN, max_part_mass
 
@@ -153,7 +153,7 @@ contains
       type(grid_container),  pointer    :: cg
       type(particle), pointer           :: pset
       class(component_fluid), pointer   :: pfl
-      integer(kind=4)                   :: pid, ig, ir, ifl, i, j, k, aijk1
+      integer(kind=4)                   :: pid, ig, ir, irh, ifl, i, j, k, aijk1
       integer(kind=4), dimension(ndims) :: ijk1, ijkp, ijkl, ijkr
       real, dimension(ndims)            :: pos, vel, acc
       real, dimension(ndims,LO:HI)      :: sector
@@ -180,9 +180,11 @@ contains
       dmass_stars = 0.0
       ig = qna%ind(nbdn_n)
       ir = qna%ind(sfr_n)
+      irh = qna%ind(sfrh_n)
       cgl => leaves%first
       do while (associated(cgl))
          cg => cgl%cg
+         cg%q(ir)%arr = 0.0
          do ifl = 1, flind%fluids
             pfl => flind%all_fluids(ifl)%fl
             do i = cg%ijkse(xdim,LO), cg%ijkse(xdim,HI)
@@ -203,7 +205,7 @@ contains
                               frac = sf_dens2dt / cg%u(pfl%idn,i,j,k)
                               pset%pdata%vel      = (pset%pdata%mass * pset%pdata%vel + frac * cg%u(pfl%imx:pfl%imz,i,j,k) * cg%dvol) / (pset%pdata%mass + mass)
                               pset%pdata%mass     =  pset%pdata%mass + mass
-                              call sf_fed(cg, pfl, i, j, k, ir, mass, 1 - frac)
+                              call sf_fed(cg, pfl, dt, i, j, k, ir, irh, mass, 1 - frac)
                               if (aint(pset%pdata%mass / mass_SN_tot) > stage) then
                                  if (.not. kick) then
                                     mfdv = (aint(pset%pdata%mass / mass_SN_tot) - stage) / cg%dvol
@@ -226,7 +228,7 @@ contains
                         ener = 0.0
                         tdyn = sqrt(3 * pi / (32 * newtong * cg%u(pfl%idn,i,j,k) + cg%q(ig)%arr(i,j,k)))
                         call is_part_in_cg(cg, pos, .true., in, phy, out, fin)
-                        call sf_fed(cg, pfl, i, j, k, ir, mass, 1 - frac)
+                        call sf_fed(cg, pfl, dt, i, j, k, ir, irh, mass, 1 - frac)
                         tbirth = -tini
                         if (mass > mass_SN_tot) then
                            if (.not. kick) then
@@ -285,7 +287,7 @@ contains
 
    end subroutine SF
 
-   subroutine sf_fed(cg, pfl, i, j, k, ir, mass, frac1)
+   subroutine sf_fed(cg, pfl, dt, i, j, k, ir, irh, mass, frac1)
 
       use fluidtypes, only: component_fluid
       use grid_cont,  only: grid_container
@@ -294,11 +296,12 @@ contains
 
       type(grid_container),   pointer :: cg
       class(component_fluid), pointer :: pfl
-      integer(kind=4),     intent(in) :: i, j, k, ir
-      real,                intent(in) :: mass, frac1
+      integer(kind=4),     intent(in) :: i, j, k, ir, irh
+      real,                intent(in) :: mass, frac1, dt
 
       dmass_stars                 = dmass_stars         + mass
-      cg%q(ir)%arr(i,j,k)         = cg%q(ir)%arr(i,j,k) + mass
+      cg%q(ir)%arr(i,j,k)         = mass / cg%dvol / dt
+      cg%q(irh)%arr(i,j,k)        = cg%q(irh)%arr(i,j,k) + mass
       cg%u(pfl%ien,i,j,k)         = frac1 * cg%u(pfl%ien,i,j,k) !- frac * ekin(cg%u(pfl%imx,i,j,k), cg%u(pfl%imy,i,j,k), cg%u(pfl%imz,i,j,k), cg%u(pfl%idn,i,j,k))
       cg%u(pfl%idn,i,j,k)         = frac1 * cg%u(pfl%idn,i,j,k)
       cg%u(pfl%imx:pfl%imz,i,j,k) = frac1 * cg%u(pfl%imx:pfl%imz,i,j,k)

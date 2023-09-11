@@ -176,6 +176,7 @@ contains
 #endif /* !COSM_RAYS */
       c_tau_ff = sqrt(3.*pi/(32.*newtong))
       sfdf     = eps_sf / c_tau_ff * 2 * dt
+      print *, eps_sf, c_tau_ff, dt, sfdf, sfdf/(2*dt)
 
       dmass_stars = 0.0
       ig = qna%ind(nbdn_n)
@@ -205,6 +206,7 @@ contains
                               frac = sf_dens2dt / cg%u(pfl%idn,i,j,k)
                               pset%pdata%vel      = (pset%pdata%mass * pset%pdata%vel + frac * cg%u(pfl%imx:pfl%imz,i,j,k) * cg%dvol) / (pset%pdata%mass + mass)
                               pset%pdata%mass     =  pset%pdata%mass + mass
+                              print *, cg%u(pfl%idn,i,j,k), mass, mass / cg%dvol / (2*dt)
                               call sf_fed(cg, pfl, dt, i, j, k, ir, irh, mass, 1 - frac)
                               if (aint(pset%pdata%mass / mass_SN_tot) > stage) then
                                  if (.not. kick) then
@@ -300,8 +302,8 @@ contains
       real,                intent(in) :: mass, frac1, dt
 
       dmass_stars                 = dmass_stars         + mass
-      cg%q(ir)%arr(i,j,k)         = mass / cg%dvol / dt
-      cg%q(irh)%arr(i,j,k)        = cg%q(irh)%arr(i,j,k) + mass
+      cg%q(ir)%arr(i,j,k)         = mass / cg%dvol / (2*dt)
+      cg%q(irh)%arr(i,j,k)        = cg%q(irh)%arr(i,j,k) + mass / cg%dvol
       cg%u(pfl%ien,i,j,k)         = frac1 * cg%u(pfl%ien,i,j,k) !- frac * ekin(cg%u(pfl%imx,i,j,k), cg%u(pfl%imy,i,j,k), cg%u(pfl%imz,i,j,k), cg%u(pfl%idn,i,j,k))
       cg%u(pfl%idn,i,j,k)         = frac1 * cg%u(pfl%idn,i,j,k)
       cg%u(pfl%imx:pfl%imz,i,j,k) = frac1 * cg%u(pfl%imx:pfl%imz,i,j,k)

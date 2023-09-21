@@ -277,11 +277,17 @@ contains
       integer,                intent(in)    :: nbins
       real, dimension(nbins), intent(inout) :: logT, lambda
       integer                               :: i, j, k, iter
-      real                                  :: a, b, r, rlim
+      real                                  :: a, b, r, rlim, logTeql
       real, dimension(nbins)                :: fit, loglambda
       logical                               :: eq_point, set_nfuncs, fill_array
 
       rlim = 10.0**(-6)
+      if (Teql .gt. 0.0) then
+         logTeql = log10(Teql)
+      else
+         logTeql = -1.0 * huge(1)
+      endif
+
       do i = 1, nbins
          if (lambda(i) .equals. 0.0) then
             loglambda(i) = -big
@@ -298,11 +304,11 @@ contains
          i = 1
          k = 0
          do j = 2, nbins
-            if (logT(j) .equals. log10(Teql)) then                                       ! log(lambda) goes to -inf at T=Teql
+            if (logT(j) .equals. logTeql) then                                       ! log(lambda) goes to -inf at T=Teql
                cycle
-            else if ((logT(j-1) <= log10(Teql)) .and. logT(j) > log10(Teql)) then   ! Look for the point right after Teql
+            else if ((logT(j-1) <= logTeql) .and. logT(j) > logTeql) then   ! Look for the point right after Teql
                if (isochoric == 1) then                                                      ! Linear fit of lambda between the point right before Teql, and 0
-                  a =  - lambda(i)/ (log10(Teql) - logT(i))
+                  a =  - lambda(i)/ (logTeql - logT(i))
                   b = 0.0
                   k = k + 1
                   if (fill_array) then
@@ -321,7 +327,7 @@ contains
                r = sum( abs((loglambda(i:j) - fit(i:j))/fit(i:j)) ) / (j-i+1)
                eq_point = .false.
                if (j < nbins) then
-                  if (logT(j+1) >= log10(Teql) .and. logT(j) < log10(Teql)) eq_point = .true.
+                  if (logT(j+1) >= logTeql .and. logT(j) < logTeql) eq_point = .true.
                endif
                if ((r > rlim) .or. (eq_point)) then
                   k = k + 1
@@ -329,7 +335,7 @@ contains
                   if (fill_array) then
                      Tref(k) = 10**logT(i)
                      if (i > 1) then
-                        if ((isochoric == 2) .and. ((logT(i-1) <= log10(Teql)) .and. logT(i) > log10(Teql))) Tref(k) = Teql
+                        if ((isochoric == 2) .and. ((logT(i-1) <= logTeql) .and. logT(i) > logTeql)) Tref(k) = Teql
                      endif
                      alpha(k) = a
                      lambda0(k) = lambda(j)/abs(lambda(j)) * 10**(b+a*logT(i))

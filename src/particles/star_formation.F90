@@ -210,7 +210,7 @@ contains
                               if (aint(pset%pdata%mass / mass_SN_tot) > stage) then
                                  if (.not. kick) then
                                     mfdv = (aint(pset%pdata%mass / mass_SN_tot) - stage) / cg%dvol
-                                    call sf_inject(cg, pfl%ien, i, j, k, mfdv * en_SN09, mfdv * en_SN01)
+                                    call sf_inject(cg, pfl%ien, pfl%idn, i, j, k, mfdv * en_SN09, mfdv * en_SN01)
                                  endif
                                  pset%pdata%tform = t
                               endif
@@ -234,7 +234,7 @@ contains
                         if (mass > mass_SN_tot) then
                            if (.not. kick) then
                               mfdv = aint(mass/mass_SN_tot) / cg%dvol
-                              call sf_inject(cg, pfl%ien, i, j, k, mfdv * en_SN09, mfdv * en_SN01)
+                              call sf_inject(cg, pfl%ien, pfl%idn, i, j, k, mfdv * en_SN09, mfdv * en_SN01)
                            endif
                            tbirth = t
                         endif
@@ -272,7 +272,7 @@ contains
                                  cg%u(pfl%ien,i,j,k) = cg%u(pfl%ien,i,j,k) + ekin(cg%u(pfl%imx,i,j,k), cg%u(pfl%imy,i,j,k), cg%u(pfl%imz,i,j,k), cg%u(pfl%idn,i,j,k))  ! add new ekin
                               else if (aijk1 == 0 .and. tcond2) then    ! Instantaneous injection Agertz
                                  mfdv = aint(pset%pdata%mass / mass_SN_tot) / cg%dvol
-                                 call sf_inject(cg, pfl%ien, i, j, k, mfdv * en_SN09, mfdv * en_SN01)
+                                 call sf_inject(cg, pfl%ien, pfl%idn, i, j, k, mfdv * en_SN09, mfdv * en_SN01)
                               endif
                            enddo
                         enddo
@@ -311,7 +311,7 @@ contains
 
    end subroutine sf_fed
 
-   subroutine sf_inject(cg, ien, i, j, k, mft, mfcr)
+   subroutine sf_inject(cg, ien, idn, i, j, k, mft, mfcr)
 
       use grid_cont,      only: grid_container
 #ifdef COSM_RAYS
@@ -323,11 +323,15 @@ contains
       use initcosmicrays,   only: iarr_cre_n, iarr_cre_e
       use initcrspectrum,   only: cresp, cre_eff, e_small, use_cresp
 #endif /* CRESP */
+#ifdef TRACER
+      use fluidindex,       only: flind
+      use named_array_list, only: wna
+#endif /* TRACER */
 
       implicit none
 
       type(grid_container), pointer :: cg
-      integer(kind=4),   intent(in) :: ien, i, j, k
+      integer(kind=4),   intent(in) :: ien, idn, i, j, k
       real,              intent(in) :: mft, mfcr
 
 #ifdef THERM
@@ -337,14 +341,13 @@ contains
       if (cr_active > 0.0) cg%u(iarr_crn(cr_table(icr_H1)),i,j,k) = cg%u(iarr_crn(cr_table(icr_H1)),i,j,k) + mfcr  ! adding CR
 #endif /* COSM_RAYS */
 #ifdef TRACER
-      cg%u(flind%trc%beg,i,j,k) = cg%w(wna%fi)%arr(pfl%idn,i,j,k)
+         cg%u(flind%trc%beg,i,j,k) = cg%w(wna%fi)%arr(idn,i,j,k)
 #endif /* TRACER */
 #ifdef CRESP
       if (use_cresp) then
-         e_tot_sn = sn_ener_add * cr_eff *cre_eff
          cresp%n = 0.0;  cresp%e = 0.0
-         if (e_tot_sn .gt. e_small) then     !< fill cells only when total passed energy is greater than e_small
-            call cresp_get_scaled_init_spectrum(cresp%n, cresp%e, e_tot_sn) !< injecting source spectrum scaled with e_tot_sn
+         if (mfcr .gt. e_small) then     !< fill cells only when total passed energy is greater than e_small
+            call cresp_get_scaled_init_spectrum(cresp%n, cresp%e, mfcr) !< injecting source spectrum scaled with e_tot_sn
             cg%u(iarr_cre_n,i,j,k) = cg%u(iarr_cre_n,i,j,k) + cresp%n
             cg%u(iarr_cre_e,i,j,k) = cg%u(iarr_cre_e,i,j,k) + cresp%e
          endif

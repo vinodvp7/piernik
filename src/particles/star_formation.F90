@@ -194,7 +194,9 @@ contains
                   sector(ydim,:) = [cg%coord(LO,ydim)%r(j), cg%coord(HI,ydim)%r(j)]
                   do k = cg%ijkse(zdim,LO), cg%ijkse(zdim,HI)
                      sector(zdim,:) = [cg%coord(LO,zdim)%r(k), cg%coord(HI,zdim)%r(k)]
-                     if (.not.check_threshold(cg, pfl%idn, i, j, k)) cycle
+                     !if (.not.check_threshold(cg, pfl%idn, i, j, k)) cycle
+                     tdyn = sqrt(3 * pi / (32 * newtong * cg%u(pfl%idn,i,j,k) + cg%q(ig)%arr(i,j,k)))
+                     if (.not. SF_crit(pfl, cg, i, j, k, tdyn)) cycle
                      fed = .false.
                      sf_dens2dt = sfdf * cg%u(pfl%idn,i,j,k)**(3./2.)
                      mass       = sf_dens2dt * cg%dvol
@@ -227,7 +229,6 @@ contains
                         frac = sf_dens2dt / cg%u(pfl%idn,i,j,k)
                         acc  = 0.0
                         ener = 0.0
-                        tdyn = sqrt(3 * pi / (32 * newtong * cg%u(pfl%idn,i,j,k) + cg%q(ig)%arr(i,j,k)))
                         call is_part_in_cg(cg, pos, .true., in, phy, out, fin)
                         call sf_fed(cg, pfl, dt, i, j, k, ir, irh, mass, 1 - frac, sfrl_dump, sfrh_dump)
                         tbirth = -tini
@@ -410,6 +411,51 @@ end function check_threshold
       endif
       pid = pid_gen
 
-   end subroutine attribute_id
+    end subroutine attribute_id
+
+
+    logical function SF_crit(pfl, cg, i, j, k, tdyn) result(cond)
+
+    use constants,             only: pi
+    use crhelpers,             only: divv_i
+    use fluidtypes,            only: component_fluid
+    use grid_cont,             only: grid_container
+    use named_array_list,      only: wna
+    use units,                 only: fpiG, kboltz, mH
+    use thermal,               only: calc_tcool, itemp
+
+    real,    intent(in)                       :: tdyn
+    real                                      :: density_thr, G, RJ, tcool, kbgmh, temp
+    integer, intent(in)                       :: i, j, k
+    type(grid_container), pointer, intent(in) :: cg
+    class(component_fluid), pointer           :: pfl
+
+    G = fpiG/(4*pi)
+    cond = .false.
+
+    !if ((abs(cg%z(k)) > 7000) .or. ((cg%x(i)**2+cg%y(j)**2) > 20000**2)) return ! no SF in the stream
+
+    if (cg%w(wna%fi)%arr(pfl%idn,i,j,k) .lt. density_thr) return   ! threshold density
+
+    temp = cg%q(itemp)%arr(i,j,k)
+    if (temp .gt. temp_thr) return
+
+    if (cg%q(divv_i)%arr(i,j,k) .ge. 0) return                     ! convergent flow
+
+    !if (cg%w(wna%fi)%arr(pfl%idn,i,j,k) * cg%dvol .lt. 1.2 * 10**6) return   ! part mass > 3 10^5
+
+    RJ = 2.8 * sqrt(temp/1000) * sqrt(3*pi/(32*G*cg%w(wna%fi)%arr(pfl%idn,i,j,k)))
+
+    !print *, 'Jeans mass', 4*pi/3 * RJ**3 * cg%w(wna%fi)%arr(pfl%idn,i,j,k), pi/6.0 * pfl%cs**3 / G**(3.0/2) / cg%w(wna%fi)%arr(pfl%idn,i,j,k)**0.5, 'mass', cg%w(wna%fi)%arr(pfl%idn,i,j,k) * cg%dvol, 'temp', temp, 'dens', cg%w(wna%fi)%arr(pfl%idn,i,j,k)
+    !print *, 'Jeans mass', 4*pi/3 * RJ**3 * cg%w(wna%fi)%arr(pfl%idn,i,j,k), pfl%cs, 2.8 * sqrt(temp/1000)!, pi/6.0 * pfl%cs**3 / G**(3.0/2) / cg%w(wna%fi)%arr(pfl%idn,i,j,k)**0.5
+    if (cg%w(wna%fi)%arr(pfl%idn,i,j,k) * cg%dvol .lt. 4*pi/3 * RJ**3 * cg%w(wna%fi)%arr(pfl%idn,i,j,k)) return !, pi/6.0 * pfl%cs**3 / G**(3.0/2) / cg%w(wna%fi)%arr(pfl%idn,i,j,k)**0.5)) return  !pi/6.0 * pfl%cs**3 / G**(3.0/2) / cg%w(wna%fi)%arr(pfl%idn,i,j,k)**0.5 ) return    ! Jeans mass
+
+    kbgmh  = kboltz / (pfl%gam_1 * mH)
+    call calc_tcool(temp, cg%w(wna%fi)%arr(pfl%idn,i,j,k), kbgmh, tcool)
+    if (tcool .gt. tdyn) return
+
+    cond = .true.
+
+  end function SF_crit
 
 end module star_formation

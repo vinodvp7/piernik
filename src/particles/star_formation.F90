@@ -46,7 +46,7 @@ module star_formation
    integer(kind=4)       :: n_SN
    logical               :: kick
    real                  :: dmass_stars
-   character(len=dsetnamelen), parameter :: sfr_n  = "SFR_n", sfrh_n = "SFRh_n"
+   character(len=dsetnamelen), parameter :: sfr_n  = "SFR_n", sfrh_n = "SFRh_n", sne_n = "SNe_n", sneh_n = "SNeh_n"
 
    namelist /STAR_FORMATION_CONTROL/ kick, dens_thr, temp_thr, eps_sf, mass_SN, n_SN, max_part_mass
 
@@ -126,7 +126,7 @@ contains
 !-----------------------------------------------------------------------------
 
 
-   subroutine SF(forward, sfrl_dump, sfrh_dump)
+   subroutine SF(forward, sfrl_dump, sfrh_dump, sne_dump)
 
       use cg_leaves,        only: leaves
       use cg_list,          only: cg_list_element
@@ -149,22 +149,23 @@ contains
       implicit none
 
       logical, intent(in)               :: forward
-      logical, intent(in)               :: sfrl_dump, sfrh_dump
+      logical, intent(in)               :: sfrl_dump, sfrh_dump, sne_dump
       type(cg_list_element), pointer    :: cgl
       type(grid_container),  pointer    :: cg
       type(particle), pointer           :: pset
       class(component_fluid), pointer   :: pfl
-      integer(kind=4)                   :: pid, ig, ir, irh, ifl, i, j, k, aijk1
+      integer(kind=4)                   :: pid, ig, ir, irh, is, ish, ifl, i, j, k, aijk1
       integer(kind=4), dimension(ndims) :: ijk1, ijkp, ijkl, ijkr
       real, dimension(ndims)            :: pos, vel, acc
       real, dimension(ndims,LO:HI)      :: sector
-      real                              :: sf_dens2dt, c_tau_ff, sfdf, frac, mass_SN_tot, mass, ener, tdyn, tbirth, padd, t1, tj, stage, en_SN, en_SN01, en_SN09, mfdv, tini, tinj, fpadd
+      real                              :: sf_dens2dt, c_tau_ff, sfdf, frac, mass_SN_tot, mass, ener, tdyn, tbirth, padd, t1, tj, stage, en_SN, en_SN01, en_SN09, mfdv, tini, tinj, fpadd, dmax
       logical                           :: in, phy, out, fin, fed, tcond1, tcond2
 
       if (.not. forward) return
 
       tini     = 10.0
       tinj     = 6.5
+      dmax     = 50.0
       fpadd    = 1.8e40 * gram * cm /sek * 2.**0.38 * 2 * dt / tinj / 26  ! see Agertz+2013
       mass_SN_tot = mass_SN * n_SN
       en_SN    = n_SN * 10.0**51 * erg
@@ -182,10 +183,13 @@ contains
       ig = qna%ind(nbdn_n)
       if (sfrl_dump) ir = qna%ind(sfr_n)
       if (sfrh_dump) irh = qna%ind(sfrh_n)
+      if (sne_dump)  is = qna%ind(sne_n)
+      if (sne_dump)  ish = qna%ind(sneh_n)
       cgl => leaves%first
       do while (associated(cgl))
          cg => cgl%cg
          if (sfrl_dump) cg%q(ir)%arr = 0.0
+         if (sne_dump)  cg%q(is)%arr = 0.0
          do ifl = 1, flind%fluids
             pfl => flind%all_fluids(ifl)%fl
             do i = cg%ijkse(xdim,LO), cg%ijkse(xdim,HI)
@@ -193,6 +197,7 @@ contains
                do j = cg%ijkse(ydim,LO), cg%ijkse(ydim,HI)
                   sector(ydim,:) = [cg%coord(LO,ydim)%r(j), cg%coord(HI,ydim)%r(j)]
                   do k = cg%ijkse(zdim,LO), cg%ijkse(zdim,HI)
+                     if (.not. cg%leafmap(i,j,k)) cycle
                      sector(zdim,:) = [cg%coord(LO,zdim)%r(k), cg%coord(HI,zdim)%r(k)]
                      !if (.not.check_threshold(cg, pfl%idn, i, j, k)) cycle
                      tdyn = sqrt(3 * pi / (32 * newtong * cg%u(pfl%idn,i,j,k) + cg%q(ig)%arr(i,j,k)))
@@ -203,7 +208,8 @@ contains
                      pset => cg%pset%first
                      do while (associated(pset))
                         if ((pset%pdata%tform + tini >= 0.0) .and. (pset%pdata%mass < max_part_mass)) then
-                           if (particle_in_area(pset%pdata%pos, sector)) then
+                           if (add_SFmass(pset, cg%x(i), cg%y(j), cg%z(k), dmax, sector)) then
+                           !if (particle_in_area(pset%pdata%pos, sector)) then
                               stage = aint(pset%pdata%mass / mass_SN_tot)
                               frac = sf_dens2dt / cg%u(pfl%idn,i,j,k)
                               pset%pdata%vel      = (pset%pdata%mass * pset%pdata%vel + frac * cg%u(pfl%imx:pfl%imz,i,j,k) * cg%dvol) / (pset%pdata%mass + mass)
@@ -212,7 +218,7 @@ contains
                               if (aint(pset%pdata%mass / mass_SN_tot) > stage) then
                                  if (.not. kick) then
                                     mfdv = (aint(pset%pdata%mass / mass_SN_tot) - stage) / cg%dvol
-                                    call sf_inject(cg, pfl%ien, pfl%idn, i, j, k, mfdv * en_SN09, mfdv * en_SN01)
+                                    call sf_inject(cg, pfl%ien, pfl%idn, i, j, k, is, ish, mfdv * en_SN09, mfdv * en_SN01, dt, sne_dump)
                                  endif
                                  pset%pdata%tform = t
                               endif
@@ -235,11 +241,12 @@ contains
                         if (mass > mass_SN_tot) then
                            if (.not. kick) then
                               mfdv = aint(mass/mass_SN_tot) / cg%dvol
-                              call sf_inject(cg, pfl%ien, pfl%idn, i, j, k, mfdv * en_SN09, mfdv * en_SN01)
+                              call sf_inject(cg, pfl%ien, pfl%idn, i, j, k, is, ish, mfdv * en_SN09, mfdv * en_SN01, dt, sne_dump)
                            endif
                            tbirth = t
                         endif
-                        call cg%pset%add(pid, mass, pos, vel, acc, ener, in, phy, out, fin, tbirth, tdyn)
+                        !print *, 'stellar particle creation', pos, cg%dx, phy, out, fin, pid
+                        if (t .lt. 0.5) call cg%pset%add(pid, mass, pos, vel, acc, ener, in, phy, out, fin, tbirth, tdyn)
                      endif
                   enddo
                enddo
@@ -262,6 +269,7 @@ contains
                      do i = ijkl(xdim), ijkr(xdim)
                         do j = ijkl(ydim), ijkr(ydim)
                            do k = ijkl(zdim), ijkr(zdim)
+                              if (.not. cg%leafmap(i,j,k)) cycle
                               ijk1 = nint((pset%pdata%pos - [cg%coord(CENTER,xdim)%r(i), cg%coord(CENTER,ydim)%r(j), cg%coord(CENTER,zdim)%r(k)]) * cg%idl, kind=4)
                               aijk1 = sum(abs(ijk1))
                               if (aijk1 > 0.0 .and. tcond1) then
@@ -271,9 +279,9 @@ contains
                                  cg%u(pfl%ien,i,j,k) = cg%u(pfl%ien,i,j,k) - ekin(cg%u(pfl%imx,i,j,k), cg%u(pfl%imy,i,j,k), cg%u(pfl%imz,i,j,k), cg%u(pfl%idn,i,j,k))  ! remove ekin
                                  cg%u(pfl%imx:pfl%imz,i,j,k) = cg%u(pfl%imx:pfl%imz,i,j,k) + ijk1 * padd
                                  cg%u(pfl%ien,i,j,k) = cg%u(pfl%ien,i,j,k) + ekin(cg%u(pfl%imx,i,j,k), cg%u(pfl%imy,i,j,k), cg%u(pfl%imz,i,j,k), cg%u(pfl%idn,i,j,k))  ! add new ekin
-                              else if (aijk1 == 0 .and. tcond2) then    ! Instantaneous injection Agertz
+                              else if (aijk1 == 0 .and. tcond2) then    ! Instantaneous injection SNe Agertz
                                  mfdv = aint(pset%pdata%mass / mass_SN_tot) / cg%dvol
-                                 call sf_inject(cg, pfl%ien, pfl%idn, i, j, k, mfdv * en_SN09, mfdv * en_SN01)
+                                 call sf_inject(cg, pfl%ien, pfl%idn, i, j, k, is, ish, mfdv * en_SN09, mfdv * en_SN01, dt, sne_dump)
                               endif
                            enddo
                         enddo
@@ -312,7 +320,7 @@ contains
 
    end subroutine sf_fed
 
-   subroutine sf_inject(cg, ien, idn, i, j, k, mft, mfcr)
+   subroutine sf_inject(cg, ien, idn, i, j, k, is, ish, mft, mfcr, dt, sne_dump)
 
       use grid_cont,      only: grid_container
 #ifdef COSM_RAYS
@@ -332,8 +340,9 @@ contains
       implicit none
 
       type(grid_container), pointer :: cg
-      integer(kind=4),   intent(in) :: ien, idn, i, j, k
-      real,              intent(in) :: mft, mfcr
+      integer(kind=4),   intent(in) :: ien, idn, i, j, k, is, ish
+      real,              intent(in) :: mft, mfcr, dt
+      logical,           intent(in) :: sne_dump
 
 #ifdef THERM
       cg%u(ien,i,j,k) = cg%u(ien,i,j,k)  + mft  ! adding SN energy
@@ -354,6 +363,9 @@ contains
          endif
       endif
 #endif /* CRESP */
+
+      if (sne_dump) cg%q(is)%arr(i,j,k)   = cg%u(ien,i,j,k) / (2*dt)
+      if (sne_dump) cg%q(ish)%arr(i,j,k)  = cg%q(ish)%arr(i,j,k) + cg%u(ien,i,j,k)
 
       return
       if (cg%u(ien,i,j,k) > mft * mfcr) return ! suppress compiler warnings on unused arguments
@@ -413,19 +425,22 @@ end function check_threshold
 
     end subroutine attribute_id
 
-
     logical function SF_crit(pfl, cg, i, j, k, tdyn) result(cond)
 
     use constants,             only: pi
+#ifdef COSM_RAYS
     use crhelpers,             only: divv_i
+#endif /* COSM_RAYS */
     use fluidtypes,            only: component_fluid
     use grid_cont,             only: grid_container
     use named_array_list,      only: wna
     use units,                 only: fpiG, kboltz, mH
+#ifdef THERM
     use thermal,               only: calc_tcool, itemp
+#endif /* THERM */
 
     real,    intent(in)                       :: tdyn
-    real                                      :: density_thr, G, RJ, tcool, kbgmh, temp
+    real                                      :: G, RJ, tcool, kbgmh, temp
     integer, intent(in)                       :: i, j, k
     type(grid_container), pointer, intent(in) :: cg
     class(component_fluid), pointer           :: pfl
@@ -435,15 +450,22 @@ end function check_threshold
 
     !if ((abs(cg%z(k)) > 7000) .or. ((cg%x(i)**2+cg%y(j)**2) > 20000**2)) return ! no SF in the stream
 
-    if (cg%w(wna%fi)%arr(pfl%idn,i,j,k) .lt. density_thr) return   ! threshold density
+    if  (.not. check_threshold(cg, pfl%idn, i, j, k)) return   ! threshold density
+    cond = .true.
+    return
 
+#ifdef THERM
     temp = cg%q(itemp)%arr(i,j,k)
     if (temp .gt. temp_thr) return
+#endif /* THERM */
 
+#ifdef COSM_RAYS
     if (cg%q(divv_i)%arr(i,j,k) .ge. 0) return                     ! convergent flow
+#endif /* COSM_RAYS */
 
     !if (cg%w(wna%fi)%arr(pfl%idn,i,j,k) * cg%dvol .lt. 1.2 * 10**6) return   ! part mass > 3 10^5
 
+#ifdef THERM
     RJ = 2.8 * sqrt(temp/1000) * sqrt(3*pi/(32*G*cg%w(wna%fi)%arr(pfl%idn,i,j,k)))
 
     !print *, 'Jeans mass', 4*pi/3 * RJ**3 * cg%w(wna%fi)%arr(pfl%idn,i,j,k), pi/6.0 * pfl%cs**3 / G**(3.0/2) / cg%w(wna%fi)%arr(pfl%idn,i,j,k)**0.5, 'mass', cg%w(wna%fi)%arr(pfl%idn,i,j,k) * cg%dvol, 'temp', temp, 'dens', cg%w(wna%fi)%arr(pfl%idn,i,j,k)
@@ -453,9 +475,34 @@ end function check_threshold
     kbgmh  = kboltz / (pfl%gam_1 * mH)
     call calc_tcool(temp, cg%w(wna%fi)%arr(pfl%idn,i,j,k), kbgmh, tcool)
     if (tcool .gt. tdyn) return
+#endif /* THERM */
 
     cond = .true.
 
   end function SF_crit
+
+  logical function add_SFmass(pset, x, y, z, dist_max, sector) result(add)
+
+    use constants,        only: ndims, xdim, ydim, zdim, LO, HI
+    use particle_func,    only: particle_in_area
+    use particle_types,   only: particle
+
+    type(particle), pointer, intent(in)           :: pset
+    real, dimension(ndims,LO:HI), intent(in)      :: sector
+    real, intent(in)                              :: x,y,z, dist_max
+    real                                          :: dist
+
+    add = .false.
+
+    if (particle_in_area(pset%pdata%pos, sector)) then
+       add = .true.
+    !else
+    !   dist = sqrt( (pset%pdata%pos(xdim) - x)**2 + (pset%pdata%pos(ydim) - y)**2 + (pset%pdata%pos(zdim) - z)**2 )
+    !   if (dist .lt. dist_max) add = .true.
+    endif
+
+    !if ((add .eqv. .true.) .and. (x .lt. -5000) .and. (y .lt. -5000)) print *, pset%pdata%pos(:), x, y, z, dist, sector
+
+  end function add_SFmass
 
 end module star_formation

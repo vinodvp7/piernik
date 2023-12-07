@@ -65,11 +65,10 @@ contains
       out = particle_in_area(pos, cg%bnd_out)   ! Ghost particle
 
       ijk = ijk_of_particle(pos, dom%edge(:,LO), cg%idl)
-      if (any(ijk(:) < cg%ijkse(:, LO) .and. dom%has_dir(:)) .or. any(ijk(:) > cg%ijkse(:, HI) .and. dom%has_dir(:))) then
-         fin = .false.
-      else
-         fin = cg%leafmap(ijk(xdim), ijk(ydim), ijk(zdim))
-      endif
+
+      ijk = max(ijk, cg%ijkse(:,LO))
+      ijk = min(ijk, cg%ijkse(:,HI))
+      fin = cg%leafmap(ijk(xdim), ijk(ydim), ijk(zdim))
 
       if (indomain) return
 
@@ -77,6 +76,10 @@ contains
          in  = .true.
          phy = .true.
          out = .true.
+         ijk = ijk_of_particle(pos, dom%edge(:,LO), cg%idl)
+         ijk = max(ijk, cg%l%off)
+         ijk = min(ijk, cg%l%off + cg%l%n_d)
+         fin = cg%leafmap(ijk(xdim), ijk(ydim), ijk(zdim))
       endif
 
    end subroutine is_part_in_cg

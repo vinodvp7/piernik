@@ -45,10 +45,10 @@ module star_formation
    real                  :: dens_thr, temp_thr, eps_sf, mass_SN, max_part_mass
    integer(kind=4)       :: n_SN
    logical               :: kick
-   real                  :: dmass_stars
+   real                  :: dmass_stars, dist_accr
    character(len=dsetnamelen), parameter :: sfr_n  = "SFR_n", sfrh_n = "SFRh_n", sne_n = "SNe_n", sneh_n = "SNeh_n"
 
-   namelist /STAR_FORMATION_CONTROL/ kick, dens_thr, temp_thr, eps_sf, mass_SN, n_SN, max_part_mass
+   namelist /STAR_FORMATION_CONTROL/ kick, dens_thr, temp_thr, eps_sf, mass_SN, n_SN, max_part_mass, dist_accr
 
 contains
 
@@ -72,6 +72,7 @@ contains
       mass_SN          = 100.0         ! Mass of star forming gas triggering one SNe
       n_SN             = 1000          ! Threshold of number of SN needed to inject the corresponding energy
       max_part_mass    = mass_SN * n_SN
+      dist_accr        = 50.0          ! Distance of gas accretion for the star forming particles
 
       if (master) then
 
@@ -98,6 +99,7 @@ contains
          rbuff(3) = eps_sf
          rbuff(4) = mass_SN
          rbuff(5) = max_part_mass
+         rbuff(6) = dist_accr
 
          ibuff(1) = n_SN
 
@@ -111,13 +113,14 @@ contains
 
          kick = lbuff(1)
 
-         dens_thr = rbuff(1)
-         temp_thr = rbuff(2)
-         eps_sf  = rbuff(3)
-         mass_SN = rbuff(4)
-         max_part_mass = rbuff(5)
+         dens_thr        = rbuff(1)
+         temp_thr        = rbuff(2)
+         eps_sf          = rbuff(3)
+         mass_SN         = rbuff(4)
+         max_part_mass   = rbuff(5)
+         dist_accr       = rbuff(6)
 
-         n_SN = ibuff(1)
+         n_SN            = ibuff(1)
 
       endif
 
@@ -165,7 +168,6 @@ contains
 
       tini     = 10.0
       tinj     = 6.5
-      dmax     = 50.0
       fpadd    = 1.8e40 * gram * cm /sek * 2.**0.38 * 2 * dt / tinj / 26  ! see Agertz+2013
       mass_SN_tot = mass_SN * n_SN
       en_SN    = n_SN * 10.0**51 * erg
@@ -208,7 +210,7 @@ contains
                      pset => cg%pset%first
                      do while (associated(pset))
                         if ((pset%pdata%tform + tini >= 0.0) .and. (pset%pdata%mass < max_part_mass)) then
-                           if (add_SFmass(pset, cg%x(i), cg%y(j), cg%z(k), dmax, sector)) then
+                           if (add_SFmass(pset, cg%x(i), cg%y(j), cg%z(k), sector)) then
                            !if (particle_in_area(pset%pdata%pos, sector)) then
                               stage = aint(pset%pdata%mass / mass_SN_tot)
                               frac = sf_dens2dt / cg%u(pfl%idn,i,j,k)
@@ -481,7 +483,7 @@ end function check_threshold
 
   end function SF_crit
 
-  logical function add_SFmass(pset, x, y, z, dist_max, sector) result(add)
+  logical function add_SFmass(pset, x, y, z, sector) result(add)
 
     use constants,        only: ndims, xdim, ydim, zdim, LO, HI
     use particle_func,    only: particle_in_area
@@ -489,16 +491,16 @@ end function check_threshold
 
     type(particle), pointer, intent(in)           :: pset
     real, dimension(ndims,LO:HI), intent(in)      :: sector
-    real, intent(in)                              :: x,y,z, dist_max
+    real, intent(in)                              :: x,y,z
     real                                          :: dist
 
     add = .false.
 
     if (particle_in_area(pset%pdata%pos, sector)) then
        add = .true.
-    !else
-    !   dist = sqrt( (pset%pdata%pos(xdim) - x)**2 + (pset%pdata%pos(ydim) - y)**2 + (pset%pdata%pos(zdim) - z)**2 )
-    !   if (dist .lt. dist_max) add = .true.
+    else
+       dist = sqrt( (pset%pdata%pos(xdim) - x)**2 + (pset%pdata%pos(ydim) - y)**2 + (pset%pdata%pos(zdim) - z)**2 )
+       if (dist .lt. dist_accr) add = .true.
     endif
 
     !if ((add .eqv. .true.) .and. (x .lt. -5000) .and. (y .lt. -5000)) print *, pset%pdata%pos(:), x, y, z, dist, sector

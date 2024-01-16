@@ -58,7 +58,7 @@ contains
       real, dimension(ndims),        intent(in)  :: pos
       logical,                       intent(in)  :: indomain
       logical,                       intent(out) :: in, phy, out, fin
-      integer(kind=4), dimension(ndims)          :: ijk
+      integer(kind=8), dimension(ndims)          :: ijk
 
       in  = particle_in_area(pos, cg%bnd_in)
       phy = particle_in_area(pos, cg%fbnd)
@@ -66,8 +66,8 @@ contains
 
       ijk = ijk_of_particle(pos, dom%edge(:,LO), cg%idl)
 
-      ijk = max(ijk, cg%ijkse(:,LO))
-      ijk = min(ijk, cg%ijkse(:,HI))
+      ijk = max(ijk, int(cg%ijkse(:,LO), kind=8))
+      ijk = min(ijk, int(cg%ijkse(:,HI), kind=8))
       fin = cg%leafmap(ijk(xdim), ijk(ydim), ijk(zdim))
 
       if (indomain) return
@@ -150,7 +150,7 @@ contains
       do while (associated(cgl))
          call cgl%cg%costs%start
          call is_part_in_cg(cgl%cg, pos, indomain, in, phy, out, fin)
-         toadd = (phy .and. fin) .or. (out .and. .not. (in .or. fin)) ! finest refinement level for partilels in (including outside particles) OR pariticles for all refinement levels in a area of internal boundaries (including fine-coarse)
+         toadd = out .and. fin
 #ifdef NBODY_CHECK_PID
          if (toadd) then
             pset => cgl%cg%pset%first

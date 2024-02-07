@@ -37,7 +37,7 @@ module particle_types
    private
    public :: particle, particle_set, particle_data, npb
 
-   integer(kind=4), parameter :: npb = 1   !< number of cells between in and phy or between phy and out boundaries
+   integer(kind=4), parameter :: npb = 2   !< number of cells between in and phy or between phy and out boundaries
 
    !>
    !! \brief simple particle: just mass and position
@@ -105,6 +105,10 @@ contains
 
    subroutine init(this)
 
+      use constants,  only: ndims
+      use dataio_pub, only: die
+      use domain,     only: dom
+
       implicit none
 
       class(particle_set), intent(inout) :: this     !< an object invoking the type-bound procedure
@@ -113,6 +117,9 @@ contains
       this%first => null()
       this%last  => null()
       this%cnt   =  0
+
+      if (dom%eff_dim /= ndims) call die("[particle_types:init] Only 3D is supported")
+      ! Various functions related to particles aren't really ready for 2D grid. Perhaps it won't ever be needed.
 
    end subroutine init
 

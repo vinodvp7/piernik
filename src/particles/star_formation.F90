@@ -248,7 +248,7 @@ contains
                            tbirth = t
                         endif
                         !print *, 'stellar particle creation', pos, cg%dx, phy, out, fin, pid
-                        if (t .lt. 0.5) call cg%pset%add(pid, mass, pos, vel, acc, ener, in, phy, out, fin, tbirth, tdyn)
+                        call cg%pset%add(pid, mass, pos, vel, acc, ener, in, phy, out, fin, tbirth, tdyn)
                      endif
                   enddo
                enddo

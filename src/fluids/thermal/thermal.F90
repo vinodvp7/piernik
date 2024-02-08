@@ -239,17 +239,21 @@ contains
                call die('[init_thermal] Cooling curve function not implemented')
          end select
 
-         if (isochoric == 1) then
-            d1 = d_isochoric
-            heat(i) = G0_heat * d1**2 + G1_heat * d1 + G2_heat
-         else if (isochoric == 2) then
-            write(msg,'(3a)') 'isobaric case is not working well around equilibrium temperature'
-            if ((master) .and. (i == 1)) call warn(msg)
-            d1 = Teq / 10**logT(i)
-            heat(i) = G0_heat * d1**2 + G1_heat * d1 + G2_heat
+         if (scheme == 'EIS') then
+            if (isochoric == 1) then
+               d1 = d_isochoric
+               heat(i) = G0_heat * d1**2 + G1_heat * d1 + G2_heat
+            else if (isochoric == 2) then
+               write(msg,'(3a)') 'isobaric case is not working well around equilibrium temperature'
+               if ((master) .and. (i == 1)) call warn(msg)
+               d1 = Teq / 10**logT(i)
+               heat(i) = G0_heat * d1**2 + G1_heat * d1 + G2_heat
+            endif
+            lambda(i) = cool(i) - heat(i)/d1**2
+         else
+            lambda(i) = cool(i)
          endif
 
-         lambda(i) = cool(i) - heat(i)/d1**2
          if (i > 1) then
             if ((lambda(i-1) * lambda(i) <= 0.0) .and. (Teql .equals. 0.0)) Teql = T
             if ((T > Teql) .and. (Teql > 0.0) .and. (lambda(i-1) * lambda(i) < 0.0)) call die('[thermal:fit_cooling_curve] More than 1 Teql')
@@ -385,6 +389,7 @@ contains
       use func,       only: ekin, emag
       use grid_cont,  only: grid_container
       use mpisetup,   only: master
+      use ppp,        only: ppp_main
       use units,      only: kboltz, mH
 
       implicit none
@@ -422,6 +427,7 @@ contains
             kinmag_ener = ekin(cg%u(pfl%imx,:,:,:), cg%u(pfl%imy,:,:,:), cg%u(pfl%imz,:,:,:), dens)
             if (pfl%is_magnetized) kinmag_ener = kinmag_ener + emag(cg%b(xdim,:,:,:), cg%b(ydim,:,:,:), cg%b(zdim,:,:,:))
 
+            call ppp_main%start('Cooling_heating_scheme')
             select case (scheme)
 
                case ('Explicit')
@@ -432,7 +438,9 @@ contains
                            call cool(ta(i,j,k), cfunc)
                            call heat(dens(i,j,k), hfunc)
                            esrc = dens(i,j,k)**2 * cfunc + hfunc
-                           dt_cool = min(dt, cfl_coolheat*abs(1./(esrc/int_ener)))
+                           !dt_cool = min(dt, cfl_coolheat*abs(1./(esrc/int_ener)))
+                           call calc_tcool(ta(i,j,k), dens(i,j,k), kbgmh, tcool)
+                           dt_cool = min(dt, tcool/10.0)
                            t1 = 0.0
                            do while (t1 < dt)
                               call cool(ta(i,j,k), cfunc)
@@ -456,14 +464,12 @@ contains
                            if (ta(i,j,k) .lt. 10.0) ta(i,j,k) = 10.0
                            if (ta(i,j,k) .gt. 10.0**8) ta(i,j,k) = 10.0**8
                            call calc_tcool(ta(i,j,k), dens(i,j,k), kbgmh, tcool)
-                           !tcool = 1.0
                            dt_cool = min(dt, tcool/10.0)
                            t1 = 0.0
                            do while (t1 < dt)
                               call temp_EIS(tcool, dt_cool, igamma(pfl%gam), kbgmh, ta(i,j,k), dens(i,j,k), Tnew)
                               !Tnew = ta(i,j,k)
                               int_ener    = dens(i,j,k) * kbgmh * Tnew
-                              !if (int_ener .gt. 10.0) print *, 'wow!', i, j, k, int_ener, Tnew, ta(i,j,k), dens(i,j,k), tcool
                               ener(i,j,k) = kinmag_ener(i,j,k) + int_ener
                               ta(i,j,k) = Tnew
                               t1 = t1 + dt_cool
@@ -478,8 +484,12 @@ contains
                      do j = 1, n(ydim)
                         do k = 1, n(zdim)
                            int_ener = ener(i,j,k) - kinmag_ener(i,j,k)
-                           tcool    = kbgmh * ta(i,j,k) / (dens(i,j,k) * abs(L0_cool) * (ta(i,j,k)/Teq)**alpha_cool)
-                           dt_cool  = min(dt, tcool/100.0)
+                           !tcool    = kbgmh * ta(i,j,k) / (dens(i,j,k) * abs(L0_cool) * (ta(i,j,k)/Teq)**alpha_cool)
+                           ta(i,j,k) = int_ener * ikbgmh / dens(i,j,k)
+                           if (ta(i,j,k) .lt. 10.0) ta(i,j,k) = 10.0
+                           if (ta(i,j,k) .gt. 10.0**8) ta(i,j,k) = 10.0**8
+                           call calc_tcool(ta(i,j,k), dens(i,j,k), kbgmh, tcool)
+                           dt_cool  = min(dt, tcool/10.0)
                            t1 = 0.0
                            do while (t1 < dt)
                               ta(i,j,k) = int_ener * ikbgmh / dens(i,j,k)
@@ -503,6 +513,7 @@ contains
                   if (master) call warn(msg)
 
             end select
+            call ppp_main%stop('Cooling_heating_scheme')
 
             deallocate(kinmag_ener)
          enddo

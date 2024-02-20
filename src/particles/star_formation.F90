@@ -211,8 +211,15 @@ contains
                      do while (associated(pset))
                         if ((pset%pdata%tform + tini >= 0.0) .and. (pset%pdata%mass < max_part_mass)) then
                            if (add_SFmass(pset, cg%x(i), cg%y(j), cg%z(k), sector)) then
-                           !if (particle_in_area(pset%pdata%pos, sector)) then
                               stage = aint(pset%pdata%mass / mass_SN_tot)
+                              if ( (kick) .and. (stage >= 1) ) then
+                                 t1 = t - pset%pdata%tform
+                                 tj = t1 - tinj
+                                 if (tj < 0.0) then
+                                    pset => pset%nxt
+                                    cycle
+                                 endif
+                              endif
                               frac = sf_dens2dt / cg%u(pfl%idn,i,j,k)
                               pset%pdata%vel      = (pset%pdata%mass * pset%pdata%vel + frac * cg%u(pfl%imx:pfl%imz,i,j,k) * cg%dvol) / (pset%pdata%mass + mass)
                               pset%pdata%mass     =  pset%pdata%mass + mass

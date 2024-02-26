@@ -47,14 +47,14 @@ module thermal
    logical                         :: thermal_active
    real                            :: alpha_cool, L0_cool, G0_heat, G1_heat, G2_heat, cfl_coolheat
    real                            :: Teq          !> cooling parameter
-   real                            :: Teql         !> temperature of cooling / heating equilibrium
+   real, dimension(10)             :: Teql         !> temperatures of cooling / heating equilibrium
    integer(kind=4), protected      :: itemp = INVALID
    real                            :: x_ion        !> ionization degree
    integer(kind=4)                 :: isochoric    !> 1 for isochoric, 2 for isobaric
    real                            :: d_isochoric  ! constant density used in isochoric case
    real                            :: TN, ltntrna
    real, dimension(:), allocatable :: Tref, alpha, lambda0, Y
-   integer                         :: nfuncs
+   integer                         :: nfuncs, neql
 
 contains
 
@@ -181,7 +181,7 @@ contains
 
    end subroutine init_thermal
 
-   subroutine fit_cooling_curve
+   subroutine fit_cooling_curve(dens)
 
       use dataio_pub,  only: msg, warn, die, printinfo
       use func,        only: operator(.equals.)
@@ -189,6 +189,8 @@ contains
       use units,       only: cm, erg, sek, mH
 
       implicit none
+
+      real(kind=8), intent(in), optional      :: dens
 
       integer                                 :: nbins
       integer, parameter                      :: coolfile = 1
@@ -198,7 +200,7 @@ contains
 
       if (cool_model /= 'piecewise_power_law') return
       if (master) then
-         call printinfo('[thermal:fit_cooling_curve] Cooling & heating handled with a single cool - heat curve fitted with a piecewise power law function')
+         !call printinfo('[thermal:fit_cooling_curve] Cooling & heating handled with a single cool - heat curve fitted with a piecewise power law function')
          if (scheme == 'Explicit') call warn('[thermal:fit_cooling_curve][scheme: Explicit] Warning: Make sure you are not using the heating in the cooling curve.')
          if (scheme == 'EE')       call warn('[thermal:fit_cooling_curve][scheme: EE] Warning: Make sure you are not using the heating in both the explicit and EI schemes.')
       endif
@@ -207,13 +209,14 @@ contains
          open(unit=coolfile, file=cool_file, action='read', status='old')
          read(coolfile,*) nbins
          if (master) then
-            write(msg,'(3a,i8,a)') '[thermal] Reading ', trim(cool_file), ' file with ', nbins, ' points'
-            call printinfo(msg)
+            !write(msg,'(3a,i8,a)') '[thermal] Reading ', trim(cool_file), ' file with ', nbins, ' points'
+            !call printinfo(msg)
          endif
          allocate(logT(nbins), lambda(nbins), cool(nbins), heat(nbins))
          do i = 1, nbins
             read(coolfile,*) logT(i), cool(i)
          enddo
+         close(unit=coolfile)
       else
          nbins = 700
          allocate(logT(nbins), lambda(nbins), cool(nbins), heat(nbins))
@@ -222,8 +225,9 @@ contains
          enddo
       endif
 
-      d1 = 0.0
+      d1 = d_isochoric
       Teql = 0.0
+      neql = 0
       do i = 1, nbins
          T = 10**logT(i)
 
@@ -233,6 +237,8 @@ contains
             case ('Heintz')
                if ((master) .and. (i == 1)) call printinfo('[thermal:fit_cooling_curve] Heintz cooling function used. Cooling power law parameters not used.')
                cool(i) = (7.3 * 10.0**(-21) * exp(-118400/(T+1500)) + 7.9 * 10.0**(-27) * exp(-92/T) ) * erg / sek * cm**3 / mH**2 * x_ion**2
+            case('testcase')
+               cool(i) = 5 + cos(1.0+T/10.0)
             case ('tabulated')
                cool(i) = cool(i) * erg / sek * cm**3 / mH**2 * x_ion**2
             case default
@@ -240,29 +246,41 @@ contains
          end select
 
          if (scheme == 'EIS') then
-            if (isochoric == 1) then
-               d1 = d_isochoric
-               heat(i) = G0_heat * d1**2 + G1_heat * d1 + G2_heat
-            else if (isochoric == 2) then
-               write(msg,'(3a)') 'isobaric case is not working well around equilibrium temperature'
-               if ((master) .and. (i == 1)) call warn(msg)
-               d1 = Teq / 10**logT(i)
-               heat(i) = G0_heat * d1**2 + G1_heat * d1 + G2_heat
-            endif
+            select case (heat_model)
+               case('G012')
+                  if (isochoric == 1) then
+                     d1 = d_isochoric
+                  else if (isochoric == 2) then
+                     write(msg,'(3a)') 'isobaric case is not working well around equilibrium temperature'
+                     if ((master) .and. (i == 1)) call warn(msg)
+                     d1 = Teq / 10**logT(i)
+                  else if (isochoric == 3) then
+                     if (present(dens)) d1 = dens
+                  endif
+                  heat(i) = G0_heat * d1**2 + G1_heat * d1 + G2_heat
+               case('testcase')
+                  heat(i) = 5.5 - 0.01 * T
+            end select
             lambda(i) = cool(i) - heat(i)/d1**2
+            !print *, T, cool(i), heat(i)/d1**2, lambda(i)
          else
             lambda(i) = cool(i)
          endif
 
          if (i > 1) then
-            if ((lambda(i-1) * lambda(i) <= 0.0) .and. (Teql .equals. 0.0)) Teql = T
-            if ((T > Teql) .and. (Teql > 0.0) .and. (lambda(i-1) * lambda(i) < 0.0)) call die('[thermal:fit_cooling_curve] More than 1 Teql')
+            if (lambda(i-1) * lambda(i) <= 0.0) then
+               neql = neql + 1
+               if (neql .gt. 10) call die('[thermal:fit_cooling_curve] More than 10 Teql')
+               Teql(neql) = T
+               !write(msg, '(a,f10.4)') '[thermal] Equilibrium Temperature = ', Teql(neql)
+               !call printinfo(msg)
+            endif
          endif
       enddo
-      if (master) then
-         write(msg, '(a,f10.2)') '[thermal] Equilibrium Temperature = ', Teql
-         call printinfo(msg)
-      endif
+      !if (master) then
+         !write(msg, '(a,f10.2)') '[thermal] Equilibrium Temperature = ', Teql
+         !call printinfo(msg)
+      !endif
 
       call fit_proc(nbins, logT, lambda)   ! Find nfuncs and Perform fit
       deallocate(logT, lambda, cool, heat)
@@ -280,17 +298,20 @@ contains
 
       integer,                intent(in)    :: nbins
       real, dimension(nbins), intent(inout) :: logT, lambda
-      integer                               :: i, j, k, iter
-      real                                  :: a, b, r, rlim, logTeql
+      integer                               :: i, j, k, iter, n
+      real                                  :: a, b, r, rlim, logTeql1
+      real, dimension(10)                   :: logTeql
       real, dimension(nbins)                :: fit, loglambda
       logical                               :: eq_point, set_nfuncs, fill_array
 
       rlim = 10.0**(-6)
-      if (Teql .gt. 0.0) then
-         logTeql = log10(Teql)
-      else
-         logTeql = -1.0 * huge(1)
-      endif
+      do i = 1, neql
+         if (Teql(i) .gt. 0.0) then
+            logTeql(i) = log10(Teql(i))
+         else
+            logTeql(i) = -1.0 * huge(1)
+         endif
+      enddo
 
       do i = 1, nbins
          if (lambda(i) .equals. 0.0) then
@@ -300,6 +321,10 @@ contains
          endif
       enddo
 
+      if (allocated(Tref)) deallocate(Tref)
+      if (allocated(alpha)) deallocate(alpha)
+      if (allocated(lambda0)) deallocate(lambda0)
+
       do iter = 1, 2
          set_nfuncs = (iter == 1)
          fill_array = (iter == 2)
@@ -308,43 +333,54 @@ contains
          i = 1
          k = 0
          do j = 2, nbins
-            if (logT(j) .equals. logTeql) then                                       ! log(lambda) goes to -inf at T=Teql
+            if (any(logTeql .equals. logT(j))) then                                       ! log(lambda) goes to -inf at T=Teql
                cycle
-            else if ((logT(j-1) <= logTeql) .and. logT(j) > logTeql) then   ! Look for the point right after Teql
-               if (isochoric == 1) then                                                      ! Linear fit of lambda between the point right before Teql, and 0
-                  a =  - lambda(i)/ (logTeql - logT(i))
-                  b = 0.0
-                  k = k + 1
-                  if (fill_array) then
-                     Tref(k) = 10**logT(i)
-                     alpha(k) = b
-                     lambda0(k) = a/log(10.0)/Teql
-                  endif
-                  lambda(j+1) = a * logT(j+1)                                            ! Reassign lambda after Teql to match the linear function
-                  loglambda(j+1) = log10(abs(a * logT(j+1)))
-               endif
-               i = j
             else
-               a = (loglambda(j) - loglambda(i)) / (logT(j) - logT(i))
-               b = loglambda(j) - a*logT(j)
-               fit(:) = a*logT + b
-               r = sum( abs((loglambda(i:j) - fit(i:j))/fit(i:j)) ) / (j-i+1)
-               eq_point = .false.
-               if (j < nbins) then
-                  if (logT(j+1) >= logTeql .and. logT(j) < logTeql) eq_point = .true.
-               endif
-               if ((r > rlim) .or. (eq_point)) then
-                  k = k + 1
-                  !if (k > nfuncs) call die('[init_thermal]: too many piecewise functions')
-                  if (fill_array) then
-                     Tref(k) = 10**logT(i)
-                     if (i > 1) then
-                        if ((isochoric == 2) .and. ((logT(i-1) <= logTeql) .and. logT(i) > logTeql)) Tref(k) = Teql
+               do n = 1, neql
+                  if ((logT(j-1) <= logTeql(n)) .and. logT(j) > logTeql(n)) then   ! Look for the point right after Teql
+                     if ((isochoric == 1) .or. (isochoric ==3)) then                                                      ! Linear fit of lambda between the point right before Teql, and 0
+                        a =  - lambda(i)/ (logTeql(n) - logT(i))
+                        b = 0.0
+                        k = k + 1
+                        if (fill_array) then
+                           Tref(k) = 10**logT(i)
+                           alpha(k) = b
+                           lambda0(k) = a/log(10.0)/Teql(n)
+                        endif
+                        lambda(j+1) = a * logT(j+1)                                            ! Reassign lambda after Teql to match the linear function
+                        loglambda(j+1) = log10(abs(a * logT(j+1)))
                      endif
-                     alpha(k) = a
-                     lambda0(k) = lambda(j)/abs(lambda(j)) * 10**(b+a*logT(i))
+                     i = j
+                     exit
                   endif
-                  i = j
+               enddo
+               if (i .ne. j) then
+                  a = (loglambda(j) - loglambda(i)) / (logT(j) - logT(i))
+                  b = loglambda(j) - a*logT(j)
+                  fit(:) = a*logT + b
+                  r = sum( abs((loglambda(i:j) - fit(i:j))/fit(i:j)) ) / (j-i+1)
+                  eq_point = .false.
+                  if (j < nbins) then
+                     logTeql1 = logTeql(1)
+                     do n = 1, neql
+                        if (logT(j+1) >= logTeql(n) .and. logT(j) < logTeql(n)) eq_point = .true.
+                        logTeql1 = logTeql(n)
+                        exit
+                     enddo
+                  endif
+                  if ((r > rlim) .or. (eq_point)) then
+                     k = k + 1
+                     !if (k > nfuncs) call die('[init_thermal]: too many piecewise functions')
+                     if (fill_array) then
+                        Tref(k) = 10**logT(i)
+                        if (i > 1) then
+                           if ((isochoric == 2) .and. ((logT(i-1) <= logTeql1) .and. logT(i) > logTeql1)) Tref(k) = 10**logTeql1
+                        endif
+                        alpha(k) = a
+                        lambda0(k) = lambda(j)/abs(lambda(j)) * 10**(b+a*logT(i))
+                     endif
+                     i = j
+                  endif
                endif
             endif
          enddo
@@ -352,8 +388,8 @@ contains
          if (set_nfuncs) then
             nfuncs = k
             if (master) then
-               write(msg, '(a,i4)') '[thermal] fit nfuncs = ', nfuncs
-               call printinfo(msg)
+               !write(msg, '(a,i4)') '[thermal] fit nfuncs = ', nfuncs
+               !call printinfo(msg)
             endif
          endif
 
@@ -361,18 +397,18 @@ contains
             TN = 10**8
             ltntrna = lambda0(nfuncs) * (TN/Tref(nfuncs))**alpha(nfuncs)
 
-            if (.false.) then ! this might be used in some future implementation
-               allocate(Y(nfuncs))
-               Y = 0.0
-               Y(nfuncs) = - 1 / (isochoric-alpha(nfuncs)) * ((TN/Tref(nfuncs))**(alpha(nfuncs)-isochoric) - 1)
-               do i = nfuncs-1, 1, -1
-                  if (alpha(i) .equals. 0.0) then
-                     Y(i) = Y(i+1) - ltntrna / lambda0(i) / TN * log((Teql - Tref(i)) / (Tref(i+1)-Teql))
-                  else
-                     Y(i) = Y(i+1) - ltntrna / lambda0(i) / (isochoric-alpha(i)) * (Tref(i)/TN)**isochoric * (1 - (Tref(i)/Tref(i+1))**(alpha(i)-isochoric))
-                  endif
-               enddo
-            endif
+    !        if (.false.) then ! this might be used in some future implementation
+    !           allocate(Y(nfuncs))
+    !           Y = 0.0
+    !           Y(nfuncs) = - 1 / (isochoric-alpha(nfuncs)) * ((TN/Tref(nfuncs))**(alpha(nfuncs)-isochoric) - 1)
+    !           do i = nfuncs-1, 1, -1
+    !              if (alpha(i) .equals. 0.0) then
+    !                 Y(i) = Y(i+1) - ltntrna / lambda0(i) / TN * log((Teql - Tref(i)) / (Tref(i+1)-Teql))
+    !              else
+    !                 Y(i) = Y(i+1) - ltntrna / lambda0(i) / (isochoric-alpha(i)) * (Tref(i)/TN)**isochoric * (1 - (Tref(i)/Tref(i+1))**(alpha(i)-isochoric))
+    !              endif
+    !           enddo
+    !        endif
          endif
       enddo
 
@@ -459,6 +495,7 @@ contains
                   do i = 1, n(xdim)
                      do j = 1, n(ydim)
                         do k = 1, n(zdim)
+                           if (isochoric .eq. 3) call fit_cooling_curve(dens(i,j,k))
                            int_ener = ener(i,j,k) - kinmag_ener(i,j,k)
                            ta(i,j,k) = int_ener * ikbgmh / dens(i,j,k)
                            if (ta(i,j,k) .lt. 10.0) ta(i,j,k) = 10.0
@@ -562,8 +599,8 @@ contains
 
       real,    intent(in)  :: temp, dens, kbgmh
       real,    intent(out) :: tcool
-      integer              :: ii
-      real                 :: alpha1, Tref1, lambda1, diff
+      integer              :: ii, n
+      real                 :: alpha1, Tref1, lambda1, diff, diff1, diff2, Teql1
 
       if (cool_model == 'piecewise_power_law') then
          call find_temp_bin(temp, ii)
@@ -577,7 +614,13 @@ contains
       endif
 
       if (alpha1 .equals. 0.0) then
-         diff = max(abs(temp - Teql), 0.000001)
+         diff1 = huge(1.)
+         do n = 1, neql
+            diff2 = abs(temp - Teql(n))
+            if (diff2 .lt. diff1) Teql1 = Teql(n)
+            diff1 = diff2
+         enddo
+         diff = max(abs(temp - Teql1), 0.000001)
          tcool = kbgmh * temp / (dens * abs(lambda1) * diff)
       else
          tcool = kbgmh * temp / (dens * abs(lambda1) * (temp/Tref1)**alpha1)
@@ -646,8 +689,8 @@ contains
 
       real, intent(in)  :: tcool, dt, fiso, temp, dens, kbgmh
       real, intent(out) :: Tnew
-      real              :: lambda1, T1, alpha0, Y0f, tcool2, diff
-      integer           :: ii
+      real              :: lambda1, T1, alpha0, Y0f, tcool2, diff, Teql1, diff1, diff2
+      integer           :: ii, n
 
       select case (cool_model)
 
@@ -671,16 +714,23 @@ contains
             alpha0 = alpha(ii)
             lambda1 = lambda0(ii)
             if (alpha0 .equals. 0.0) then
-               diff = max(abs(temp-Teql), 0.000001)
+               diff1 = huge(1.)
+               do n = 1, neql
+                  diff2 = abs(temp - Teql(n))
+                  if (diff2 .lt. diff1) Teql1 = Teql(n)
+                  diff1 = diff2
+               enddo
+               diff = max(abs(temp-Teql1), 0.00000001)
                !Y0 = Y(ii) + ltntrna / lambda1 / TN * log((abs(Teql - T1) / diff))
-               Y0f = log((abs(Teql - T1) / diff)) / lambda1
+               Y0f = log((abs(Teql1 - T1) / diff)) / lambda1
                tcool2 = kbgmh * temp / (lambda1 * diff * dens)
                tcool2 = min(tcool2, 1.0e6 * TN / ltntrna)
                Y0f = Y0f + temp / lambda1 / diff * dt/tcool2
                !Tnew = Teql - sign(1.0, Teql - temp) * (Teql-T1) * exp(-TN * lambda1 / ltntrna * (Y0 - Y(ii)))
-               Tnew = Teql - sign(1.0, Teql - temp) * (Teql-T1) * exp(-lambda1 * Y0f)
+               Tnew = Teql1 - sign(1.0, Teql1 - temp) * (Teql1-T1) * exp(-lambda1 * Y0f)
             else
-               Tnew = temp * (1 - (isochoric-alpha0) * sign(1.0,lambda1)* fiso * dt / tcool)**(1.0/(isochoric-alpha0))
+               Tnew = temp * (1 - (1-alpha0) * sign(1.0,lambda1)* fiso * dt / tcool)**(1.0/(1-alpha0))
+               if (isochoric .eq. 2) Tnew = temp * (1 - (isochoric-alpha0) * sign(1.0,lambda1)* fiso * dt / tcool)**(1.0/(isochoric-alpha0))
             endif
          case ('null')
             return

@@ -332,7 +332,7 @@ contains
 
       use grid_cont,      only: grid_container
 #ifdef COSM_RAYS
-      use cr_data,        only: icr_H1, cr_table
+      use cr_data,        only: icr_H1, cr_index
       use initcosmicrays, only: iarr_crn, cr_active
 #endif /* COSM_RAYS */
 #ifdef CRESP
@@ -356,7 +356,7 @@ contains
       cg%u(ien,i,j,k) = cg%u(ien,i,j,k)  + mft  ! adding SN energy
 #endif /* THERM */
 #ifdef COSM_RAYS
-      if (cr_active > 0.0) cg%u(iarr_crn(cr_table(icr_H1)),i,j,k) = cg%u(iarr_crn(cr_table(icr_H1)),i,j,k) + mfcr  ! adding CR
+      if (cr_active > 0.0) cg%u(iarr_crn(cr_index(icr_H1)),i,j,k) = cg%u(iarr_crn(cr_index(icr_H1)),i,j,k) + mfcr  ! adding CR
 #endif /* COSM_RAYS */
 #ifdef TRACER
          cg%u(flind%trc%beg,i,j,k) = cg%w(wna%fi)%arr(idn,i,j,k)

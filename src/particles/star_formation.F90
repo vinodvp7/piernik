@@ -201,7 +201,6 @@ contains
                   do k = cg%ijkse(zdim,LO), cg%ijkse(zdim,HI)
                      if (.not. cg%leafmap(i,j,k)) cycle
                      sector(zdim,:) = [cg%coord(LO,zdim)%r(k), cg%coord(HI,zdim)%r(k)]
-                     !if (.not.check_threshold(cg, pfl%idn, i, j, k)) cycle
                      tdyn = sqrt(3 * pi / (32 * newtong * cg%u(pfl%idn,i,j,k) + cg%q(ig)%arr(i,j,k)))
                      if (.not. SF_crit(pfl, cg, i, j, k, tdyn)) cycle
                      fed = .false.
@@ -457,16 +456,12 @@ end function check_threshold
     G = fpiG/(4*pi)
     cond = .false.
 
-    !if ((abs(cg%z(k)) > 7000) .or. ((cg%x(i)**2+cg%y(j)**2) > 20000**2)) return ! no SF in the stream
-
     if  (.not. check_threshold(cg, pfl%idn, i, j, k)) return   ! threshold density
-    cond = .true.
-    return
 
-#ifdef THERM
-    temp = cg%q(itemp)%arr(i,j,k)
-    if (temp .gt. temp_thr) return
-#endif /* THERM */
+    !if ((abs(cg%z(k)) > 7000) .or. ((cg%x(i)**2+cg%y(j)**2) > 20000**2)) return ! no SF in the stream
+    !cond = .true.
+    !return
+
 
 #ifdef COSM_RAYS
     if (cg%q(divv_i)%arr(i,j,k) .ge. 0) return                     ! convergent flow

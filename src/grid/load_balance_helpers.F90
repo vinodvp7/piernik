@@ -319,6 +319,7 @@ contains
       subroutine log_summary
 
          use dataio_pub, only: printinfo
+         use mpisetup,   only: nproc
          use procnames,  only: pnames
 
          implicit none
@@ -326,11 +327,12 @@ contains
          integer :: p, host, lines, per_line, l
          real :: dt_wall
          integer, parameter :: max_one_line = 8, max_per_line = 12
+         integer, parameter :: s_ind = I_ONE  ! can be anything within size(cost_labels) because all values are the same
 
          if (prev_time >= 0.) then
             dt_wall = MPI_Wtime() - prev_time
 
-            write(msg, '(a,f11.3,3a)') "All accumulated cg costs out of ", mul*dt_wall, " ", trim(prefix), "s"
+            write(msg, '(a,f11.3,3a,f5.1,a)') "All accumulated cg costs out of ", mul*dt_wall, " ", trim(prefix), "s, ", 100*sum(all_proc_stats(N_STATS, I_ONE, :))/nproc/dt_wall, "% spent on cg (averaged globally)"
             call printinfo(msg)
 
             do host = lbound(pnames%proc_on_node, 1), ubound(pnames%proc_on_node, 1)
@@ -340,16 +342,16 @@ contains
 
                   if (size(ph%proc) <= max_one_line) then
                      do p = lbound(ph%proc, 1), ubound(ph%proc, 1)
-                        if (all_proc_stats(N_STATS, I_ONE, ph%proc(p)) > 0.) then
-                           write(msg(len_trim(msg)+1:), '(f11.3)') mul*all_proc_stats(N_STATS, I_ONE, ph%proc(p))
+                        if (all_proc_stats(N_STATS, s_ind, ph%proc(p)) > 0.) then
+                           write(msg(len_trim(msg)+1:), '(f11.3)') mul*all_proc_stats(N_STATS, s_ind, ph%proc(p))
                         else
                            write(msg(len_trim(msg)+1:), '(a11)') "-"
                         endif
                      enddo
                      write(msg(len_trim(msg)+1:), '(a)') " | "
                      do p = lbound(ph%proc, 1), ubound(ph%proc, 1)
-                        if (all_proc_stats(N_STATS, I_ONE, ph%proc(p)) > 0.) then
-                           write(msg(len_trim(msg)+1:), '(f6.1,a)') all_proc_stats(N_STATS, I_ONE, ph%proc(p))/dt_wall * 100., "%"
+                        if (all_proc_stats(N_STATS, s_ind, ph%proc(p)) > 0.) then
+                           write(msg(len_trim(msg)+1:), '(f6.1,a)') all_proc_stats(N_STATS, s_ind, ph%proc(p))/dt_wall * 100., "%"
                         else
                            write(msg(len_trim(msg)+1:), '(a7)') "-"
                         endif
@@ -363,8 +365,8 @@ contains
                         do p =   lbound(ph%proc, 1) + per_line * (l - 1), &
                              min(lbound(ph%proc, 1) + per_line *  l - 1 , &
                              &   ubound(ph%proc, 1))
-                           if (all_proc_stats(N_STATS, I_ONE, ph%proc(p)) > 0.) then
-                              write(msg(len_trim(msg)+1:), '(f11.3)') mul*all_proc_stats(N_STATS, I_ONE, ph%proc(p))
+                           if (all_proc_stats(N_STATS, s_ind, ph%proc(p)) > 0.) then
+                              write(msg(len_trim(msg)+1:), '(f11.3)') mul*all_proc_stats(N_STATS, s_ind, ph%proc(p))
                            else
                               write(msg(len_trim(msg)+1:), '(a11)') "-"
                            endif
@@ -376,8 +378,8 @@ contains
                         do p =   lbound(ph%proc, 1) + per_line * (l - 1), &
                              min(lbound(ph%proc, 1) + per_line *  l - 1 , &
                              &   ubound(ph%proc, 1))
-                           if (all_proc_stats(N_STATS, I_ONE, ph%proc(p)) > 0.) then
-                              write(msg(len_trim(msg)+1:), '(f10.1,a)') all_proc_stats(N_STATS, I_ONE, ph%proc(p))/dt_wall * 100., "%"
+                           if (all_proc_stats(N_STATS, s_ind, ph%proc(p)) > 0.) then
+                              write(msg(len_trim(msg)+1:), '(f10.1,a)') all_proc_stats(N_STATS, s_ind, ph%proc(p))/dt_wall * 100., "%"
                            else
                               write(msg(len_trim(msg)+1:), '(a11)') "-"
                            endif

@@ -93,6 +93,10 @@ contains
       use mpisetup,           only: master, piernik_MPI_Allreduce, nproc
       use ppp,                only: ppp_main
       use timer,              only: set_timer
+#ifdef NBODY
+      use  func,              only: operator(.notequals.)
+      use particle_utils,     only: global_balance_particles
+#endif /* NBODY */
 
       implicit none
 
@@ -107,6 +111,10 @@ contains
       character(len=len(msg)), save :: prev_msg
       real :: lf
       character(len=*), parameter :: leaves_label = "leaves_update"
+#ifdef NBODY
+      real :: lb_part
+      real, save :: prev_lb_part = -1.
+#endif /* NBODY */
 
       call ppp_main%start(leaves_label, PPP_AMR)
 
@@ -121,7 +129,7 @@ contains
       do while (associated(curl))
          if (curl%l%id == base_level_id) this%coarsest_leaves => curl
          !> \todo Find first not fully covered level, but current IO implementation depends on leaves
-         !! as a complete set of cg from base level to finest level, so be careful.
+         !!       as a complete set of cg from base level to finest level, so be careful.
          curl => curl%coarser
       enddo
 
@@ -181,6 +189,15 @@ contains
       if (master .and. (msg(ih:is) /= prev_msg(ih:prev_is))) call printinfo(msg)
       prev_msg = msg
       prev_is = is
+
+#ifdef NBODY
+      lb_part = global_balance_particles()
+      if (master .and. (lb_part .notequals. prev_lb_part)) then
+         write(msg, '(a,f7.4)')"[cg_leaves:update] particles load balance: ", lb_part
+         call printinfo(msg)
+      endif
+      prev_lb_part = lb_part
+#endif /* NBODY */
 
       call ppp_main%stop(leaves_label, PPP_AMR)
 

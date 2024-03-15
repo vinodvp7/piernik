@@ -470,6 +470,7 @@ end function check_threshold
     !if (cg%w(wna%fi)%arr(pfl%idn,i,j,k) * cg%dvol .lt. 1.2 * 10**6) return   ! part mass > 3 10^5
 
 #ifdef THERM
+    temp = cg%q(itemp)%arr(i,j,k)
     RJ = 2.8 * sqrt(temp/1000) * sqrt(3*pi/(32*G*cg%w(wna%fi)%arr(pfl%idn,i,j,k)))
 
     !print *, 'Jeans mass', 4*pi/3 * RJ**3 * cg%w(wna%fi)%arr(pfl%idn,i,j,k), pi/6.0 * pfl%cs**3 / G**(3.0/2) / cg%w(wna%fi)%arr(pfl%idn,i,j,k)**0.5, 'mass', cg%w(wna%fi)%arr(pfl%idn,i,j,k) * cg%dvol, 'temp', temp, 'dens', cg%w(wna%fi)%arr(pfl%idn,i,j,k)

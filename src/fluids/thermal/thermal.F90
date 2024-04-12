@@ -529,7 +529,6 @@ contains
                            dt_cool  = min(dt, tcool/10.0)
                            t1 = 0.0
                            do while (t1 < dt)
-                              ta(i,j,k) = int_ener * ikbgmh / dens(i,j,k)
                               call temp_EIS(tcool, dt_cool, igamma(pfl%gam), kbgmh, ta(i,j,k), dens(i,j,k), Tnew)
                               int_ener    = dens(i,j,k) * kbgmh * Tnew
                               ener(i,j,k) = kinmag_ener(i,j,k) + int_ener
@@ -538,6 +537,7 @@ contains
                               int_ener    = int_ener    + hfunc * dt_cool
                               ener(i,j,k) = ener(i,j,k) + hfunc * dt_cool
 
+                              ta(i,j,k) = int_ener * ikbgmh / dens(i,j,k)
                               t1 = t1 + dt_cool
                               if (t1 + dt_cool > dt) dt_cool = dt - t1
                            enddo

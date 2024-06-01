@@ -41,7 +41,7 @@ module thermal
    implicit none
 
    private
-   public ::  init_thermal, thermal_active, cfl_coolheat, thermal_sources, itemp, fit_cooling_curve, cleanup_thermal, calc_tcool
+   public ::  init_thermal, thermal_active, cfl_coolheat, thermal_sources, itemp, fit_cooling_curve, cleanup_thermal, calc_tcool, find_temp_bin, alpha, Tref, lambda0, G1_heat
 
    character(len=cbuff_len)        :: cool_model, cool_curve, heat_model, scheme, cool_file
    logical                         :: thermal_active
@@ -305,6 +305,8 @@ contains
       logical                               :: eq_point, set_nfuncs, fill_array
 
       rlim = 10.0**(-6)
+
+      logTeql = -1.0 * huge(1)
       do i = 1, neql
          if (Teql(i) .gt. 0.0) then
             logTeql(i) = log10(Teql(i))

@@ -1,0 +1,151 @@
+ $BASE_DOMAIN
+    n_d = 64, 64, 64
+    bnd_xl = 'per'
+    bnd_xr = 'per'
+    bnd_yl = 'per'
+    bnd_yr = 'per'
+    bnd_zl = 'per'
+    bnd_zr = 'per'
+    xmin   = -1.0e3
+    xmax   = 1.0e3
+    ymin   = -1.0e3
+    ymax   = 1.0e3
+    zmin   = -1.0e3
+    zmax   = 1.0e3
+ /
+
+ $MPI_BLOCKS
+    allow_uneven = .true.
+    allow_noncart = .true.
+    dd_unif_quality = 1.1
+    dd_rect_quality = 1.1
+ /
+
+ $UNITS
+    units_set = "PSM"
+ /
+
+ $RESTART_CONTROL
+    restart  = 'last'
+ /
+
+ $END_CONTROL
+    tend   = 500.0
+    nend   = 100000
+ /
+
+ $OUTPUT_CONTROL
+    problem_name ='sf'
+    run_id =  'b22'
+    dt_hdf  = 1.0
+    dt_res  = 0.0
+    dt_log  = 1.0e-5
+    dt_tsl  = 1.0e-5
+    vars(1)  = 'dens'
+    vars(2)  = 'velx'
+    vars(3)  = 'vely'
+    vars(4)  = 'velz'
+    vars(5)  = 'encr'
+    vars(6)  = 'gpot'
+    vars(7) = 'sfrl'  ! star formation rate at the last timestep
+    vars(8) = 'sfrh'    ! star formation rate since last dump
+    vars(9) = 'temp'
+    vars(10) = 'snel'    ! supernovae explosion rate at the last timestep
+    vars(11) = 'sneh'   ! supernovae explosion rate since last dump
+ /
+
+ $FLUID_IONIZED
+    gamma  = 1.67
+    selfgrav = .true.
+ /
+
+ $FLUID_NEUTRAL
+ /
+
+ 
+ $NUMERICAL_SETUP
+    cfl    = 0.1
+    smalld = 1.e-5
+    smallei= 1.e-5
+    !limiter = 'minmod'
+    limiter= 'vanleer'
+    disallow_negatives = .false.
+    solver_str = 'riemann'
+    cflcontrol = 'none'
+    integration_order = 2
+    
+ /
+
+ $GRAVITY
+    external_gp = "null"
+ /
+
+ $RESISTIVITY
+ /
+
+ $THERMAL
+   thermal_active = .true.
+   cool_model     = 'piecewise_power_law'
+   cool_curve     = 'tabulated'
+   cool_file      = 'cool_Kobayashi.txt'
+   heat_model     = 'G012'
+   scheme         = 'EE'
+   alpha_cool     = 1.5
+   Teq            = 1000.0
+   Lambda_0       = 1.0e-25
+   G0             = 0.0e-25
+   G1             = 1.0e-26
+   G2             = 0.0e-27
+   x_ion          = 1.0
+   cfl_coolheat   = 0.001
+   isochoric      = 1
+/
+
+$STAR_FORMATION_CONTROL
+  kick = .false.
+  dens_thr = 0.035   ! 0.035 !MH      ! Density threshold for star formation. Warning: Star formation also requires the cell mass to reach the Jeans mass (this criterion is only hardcoded for now, like the div(v) <0 criterion)
+  temp_thr = 1000000 ! 10000 !MH       ! Max temperature for star formation
+  mass_SN = 100.0          ! How much mass of star forming gas is required to reach 1 SNe
+  n_SN = 1 ! 1   !MH              ! How many SNe required to trigger the corresponding feedback. e.g. n_SN = 10:
+                           ! The module will wait until the star forming particle reaches 10 * mass_SN to inject the energy of 10 SNe at once.
+  max_part_mass = 1.0e4    ! A star forming particle will keep accreting gas and releasing feedback until it reaches max_part_mass.
+                           ! Once it reaches this maximum it is locked and cannot contribute to star formation and feedback anymore.
+  eps_sf = 0.1             ! star formation efficiency
+  dist_accr = 50.0         ! Distance of gas accretion for the star formin particles
+/
+
+ $PROBLEM_CONTROL
+    d0     = 0.025
+    p0     = 0.247
+    T0     = 860.0
+    amp    = 0.001
+    ix     = 2
+    iy     = 0
+    iz     = 0
+    mode   = 2
+ /
+
+$IO_PARAMS
+    t_dmass_stars   = .true.
+    t_dmass_stars_tot = .true.
+ /
+ 
+ $MULTIGRID_SOLVER
+    stdout    = .true.
+    dirty_debug = .true.
+ /
+
+ $MULTIGRID_GRAVITY
+    grav_bnd_str  = "periodic"
+ /
+
+ $INTERACTIONS
+ /
+
+ $AMR
+ bsize = 32, 32
+level_max = 2
+n_updamr = 3
+jeans_ref     = 40.  ! Require really good Jeans-length refinement
+jeans_plot = .true.  ! because we asked for "nJ" in plot vars(:)
+ /

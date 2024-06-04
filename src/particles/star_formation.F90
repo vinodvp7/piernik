@@ -42,8 +42,7 @@ module star_formation
 
    integer(kind=4), parameter            :: giga = 1000000000
    integer(kind=4)                       :: pid_gen, maxpid, dpid
-   real                  :: dens_thr, temp_thr, eps_sf, mass_SN, max_part_mass
-   integer(kind=4)       :: n_SN
+   real                  :: dens_thr, temp_thr, eps_sf, mass_SN, max_part_mass, n_SN
    logical               :: kick
    real                  :: dmass_stars, dist_accr
    character(len=dsetnamelen), parameter :: sfr_n  = "SFR_n", sfrh_n = "SFRh_n", sne_n = "SNe_n", sneh_n = "SNeh_n"
@@ -70,7 +69,7 @@ contains
       temp_thr         = 1.0e4         ! Maximum Temperature for star formation
       eps_sf           = 0.1           ! Star formation efficiency
       mass_SN          = 100.0         ! Mass of star forming gas triggering one SNe
-      n_SN             = 1000          ! Threshold of number of SN needed to inject the corresponding energy
+      n_SN             = 1.0           ! Threshold of number of SN needed to inject the corresponding energy
       max_part_mass    = mass_SN * n_SN
       dist_accr        = 50.0          ! Distance of gas accretion for the star forming particles
 
@@ -101,7 +100,7 @@ contains
          rbuff(5) = max_part_mass
          rbuff(6) = dist_accr
 
-         ibuff(1) = n_SN
+         rbuff(7) = n_SN
 
       endif
 
@@ -120,7 +119,7 @@ contains
          max_part_mass   = rbuff(5)
          dist_accr       = rbuff(6)
 
-         n_SN            = ibuff(1)
+         n_SN            = rbuff(7)
 
       endif
 
@@ -226,6 +225,7 @@ contains
                               if (aint(pset%pdata%mass / mass_SN_tot) > stage) then
                                  if (.not. kick) then
                                     mfdv = (aint(pset%pdata%mass / mass_SN_tot) - stage) / cg%dvol
+                                    print *, 'Injecting ', aint(pset%pdata%mass / mass_SN_tot) - stage, 'SNe after mass accumulation'
                                     call sf_inject(cg, pfl%ien, pfl%idn, i, j, k, is, ish, mfdv * en_SN09, mfdv * en_SN01, dt, sne_dump)
                                  endif
                                  pset%pdata%tform = t
@@ -249,6 +249,7 @@ contains
                         if (mass > mass_SN_tot) then
                            if (.not. kick) then
                               mfdv = aint(mass/mass_SN_tot) / cg%dvol
+                              print *, 'Injecting ', mfdv, 'SNe from particle creation'
                               call sf_inject(cg, pfl%ien, pfl%idn, i, j, k, is, ish, mfdv * en_SN09, mfdv * en_SN01, dt, sne_dump)
                            endif
                            tbirth = t
@@ -435,7 +436,7 @@ end function check_threshold
 
     logical function SF_crit(pfl, cg, i, j, k, tdyn) result(cond)
 
-    use constants,             only: pi
+    use constants,             only: pi, HI, LO, xdim, ydim, zdim
 #ifdef COSM_RAYS
     use crhelpers,             only: divv_i
 #endif /* COSM_RAYS */
@@ -459,15 +460,11 @@ end function check_threshold
     if  (.not. check_threshold(cg, pfl%idn, i, j, k)) return   ! threshold density
 
     !if ((abs(cg%z(k)) > 7000) .or. ((cg%x(i)**2+cg%y(j)**2) > 20000**2)) return ! no SF in the stream
-    !cond = .true.
-    !return
 
 
 #ifdef COSM_RAYS
     if (cg%q(divv_i)%arr(i,j,k) .ge. 0) return                     ! convergent flow
 #endif /* COSM_RAYS */
-
-    !if (cg%w(wna%fi)%arr(pfl%idn,i,j,k) * cg%dvol .lt. 1.2 * 10**6) return   ! part mass > 3 10^5
 
 #ifdef THERM
     temp = cg%q(itemp)%arr(i,j,k)

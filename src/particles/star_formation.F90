@@ -42,12 +42,12 @@ module star_formation
 
    integer(kind=4), parameter            :: giga = 1000000000
    integer(kind=4)                       :: pid_gen, maxpid, dpid
-   real                  :: dens_thr, temp_thr, eps_sf, mass_SN, max_part_mass, n_SN
-   logical               :: kick
+   real                  :: dens_thr, temp_thr, eps_sf, mass_SN, max_part_mass, n_SN, SN_ener
+   logical               :: kick, Jeans_crit, divv_crit, tdyn_crit
    real                  :: dmass_stars, dist_accr
    character(len=dsetnamelen), parameter :: sfr_n  = "SFR_n", sfrh_n = "SFRh_n", sne_n = "SNe_n", sneh_n = "SNeh_n"
 
-   namelist /STAR_FORMATION_CONTROL/ kick, dens_thr, temp_thr, eps_sf, mass_SN, n_SN, max_part_mass, dist_accr
+   namelist /STAR_FORMATION_CONTROL/ kick, dens_thr, temp_thr, eps_sf, mass_SN, n_SN, max_part_mass, dist_accr, SN_ener, Jeans_crit, divv_crit, tdyn_crit
 
 contains
 
@@ -64,7 +64,10 @@ contains
       if (master) call printinfo("[star_formation:init_SF] Commencing star_formation module initialization")
 #endif /* VERBOSE */
 
-      kick             = .true.        ! Momentum injection before energy injection
+      kick             = .false.       ! Momentum injection before energy injection
+      Jeans_crit       = .true.        ! SF criterion based on Jeans mass
+      divv_crit        = .true.        ! SF criterion based on negative divergence of velocity
+      tdyn_crit        = .true.        ! SF criterion based on dynamical time greater than cooling time
       dens_thr         = 0.035         ! Density threshold for star formation
       temp_thr         = 1.0e4         ! Maximum Temperature for star formation
       eps_sf           = 0.1           ! Star formation efficiency
@@ -72,6 +75,7 @@ contains
       n_SN             = 1.0           ! Threshold of number of SN needed to inject the corresponding energy
       max_part_mass    = mass_SN * n_SN
       dist_accr        = 50.0          ! Distance of gas accretion for the star forming particles
+      SN_ener          = 1.0 * 10**51  ! Energy injected by one SNe
 
       if (master) then
 
@@ -92,6 +96,9 @@ contains
          call nh%compare_namelist()
 
          lbuff(1) = kick
+         lbuff(2) = Jeans_crit
+         lbuff(3) = divv_crit
+         lbuff(4) = tdyn_crit
 
          rbuff(1) = dens_thr
          rbuff(2) = temp_thr
@@ -99,8 +106,8 @@ contains
          rbuff(4) = mass_SN
          rbuff(5) = max_part_mass
          rbuff(6) = dist_accr
-
          rbuff(7) = n_SN
+         rbuff(8) = SN_ener
 
       endif
 
@@ -110,7 +117,10 @@ contains
 
       if (slave) then
 
-         kick = lbuff(1)
+         kick          = lbuff(1)
+         Jeans_crit    = lbuff(2)
+         divv_crit     = lbuff(3)
+         tdyn_crit     = lbuff(4)
 
          dens_thr        = rbuff(1)
          temp_thr        = rbuff(2)
@@ -118,8 +128,8 @@ contains
          mass_SN         = rbuff(4)
          max_part_mass   = rbuff(5)
          dist_accr       = rbuff(6)
-
          n_SN            = rbuff(7)
+         SN_ener         = rbuff(8)
 
       endif
 
@@ -169,7 +179,7 @@ contains
       tinj     = 6.5
       fpadd    = 1.8e40 * gram * cm /sek * 2.**0.38 * 2 * dt / tinj / 26  ! see Agertz+2013
       mass_SN_tot = mass_SN * n_SN
-      en_SN    = n_SN * 10.0**51 * erg
+      en_SN    = n_SN * SN_ener * erg
 #ifdef COSM_RAYS
       en_SN01  = cr_eff * cr_active * en_SN
       en_SN09  = (1 - cr_eff * cr_active) * en_SN
@@ -225,7 +235,6 @@ contains
                               if (aint(pset%pdata%mass / mass_SN_tot) > stage) then
                                  if (.not. kick) then
                                     mfdv = (aint(pset%pdata%mass / mass_SN_tot) - stage) / cg%dvol
-                                    print *, 'Injecting ', aint(pset%pdata%mass / mass_SN_tot) - stage, 'SNe after mass accumulation'
                                     call sf_inject(cg, pfl%ien, pfl%idn, i, j, k, is, ish, mfdv * en_SN09, mfdv * en_SN01, dt, sne_dump)
                                  endif
                                  pset%pdata%tform = t
@@ -249,12 +258,10 @@ contains
                         if (mass > mass_SN_tot) then
                            if (.not. kick) then
                               mfdv = aint(mass/mass_SN_tot) / cg%dvol
-                              print *, 'Injecting ', mfdv, 'SNe from particle creation'
                               call sf_inject(cg, pfl%ien, pfl%idn, i, j, k, is, ish, mfdv * en_SN09, mfdv * en_SN01, dt, sne_dump)
                            endif
                            tbirth = t
                         endif
-                        !print *, 'stellar particle creation', pos, cg%dx, phy, out, fin, pid
                         call cg%pset%add(pid, mass, pos, vel, acc, ener, in, phy, out, fin, tbirth, tdyn)
                      endif
                   enddo
@@ -463,20 +470,25 @@ end function check_threshold
 
 
 #ifdef COSM_RAYS
-    if (cg%q(divv_i)%arr(i,j,k) .ge. 0) return                     ! convergent flow
+    if ((divv_crit) .and. (cg%q(divv_i)%arr(i,j,k) .ge. 0)) return                     ! convergent flow
 #endif /* COSM_RAYS */
 
 #ifdef THERM
     temp = cg%q(itemp)%arr(i,j,k)
-    RJ = 2.8 * sqrt(temp/1000) * sqrt(3*pi/(32*G*cg%w(wna%fi)%arr(pfl%idn,i,j,k)))
 
-    !print *, 'Jeans mass', 4*pi/3 * RJ**3 * cg%w(wna%fi)%arr(pfl%idn,i,j,k), pi/6.0 * pfl%cs**3 / G**(3.0/2) / cg%w(wna%fi)%arr(pfl%idn,i,j,k)**0.5, 'mass', cg%w(wna%fi)%arr(pfl%idn,i,j,k) * cg%dvol, 'temp', temp, 'dens', cg%w(wna%fi)%arr(pfl%idn,i,j,k)
-    !print *, 'Jeans mass', 4*pi/3 * RJ**3 * cg%w(wna%fi)%arr(pfl%idn,i,j,k), pfl%cs, 2.8 * sqrt(temp/1000)!, pi/6.0 * pfl%cs**3 / G**(3.0/2) / cg%w(wna%fi)%arr(pfl%idn,i,j,k)**0.5
-    if (cg%w(wna%fi)%arr(pfl%idn,i,j,k) * cg%dvol .lt. 4*pi/3 * RJ**3 * cg%w(wna%fi)%arr(pfl%idn,i,j,k)) return !, pi/6.0 * pfl%cs**3 / G**(3.0/2) / cg%w(wna%fi)%arr(pfl%idn,i,j,k)**0.5)) return  !pi/6.0 * pfl%cs**3 / G**(3.0/2) / cg%w(wna%fi)%arr(pfl%idn,i,j,k)**0.5 ) return    ! Jeans mass
+    if (Jeans_crit) then
+       RJ = 2.8 * sqrt(temp/1000) * sqrt(3*pi/(32*G*cg%w(wna%fi)%arr(pfl%idn,i,j,k)))
 
-    kbgmh  = kboltz / (pfl%gam_1 * mH)
-    call calc_tcool(temp, cg%w(wna%fi)%arr(pfl%idn,i,j,k), kbgmh, tcool)
-    if (tcool .gt. tdyn) return
+       !print *, 'Jeans mass', 4*pi/3 * RJ**3 * cg%w(wna%fi)%arr(pfl%idn,i,j,k), pi/6.0 * pfl%cs**3 / G**(3.0/2) / cg%w(wna%fi)%arr(pfl%idn,i,j,k)**0.5, 'mass', cg%w(wna%fi)%arr(pfl%idn,i,j,k) * cg%dvol, 'temp', temp, 'dens', cg%w(wna%fi)%arr(pfl%idn,i,j,k)
+       !print *, 'Jeans mass', 4*pi/3 * RJ**3 * cg%w(wna%fi)%arr(pfl%idn,i,j,k), pfl%cs, 2.8 * sqrt(temp/1000)!, pi/6.0 * pfl%cs**3 / G**(3.0/2) / cg%w(wna%fi)%arr(pfl%idn,i,j,k)**0.5
+       if (cg%w(wna%fi)%arr(pfl%idn,i,j,k) * cg%dvol .lt. 4*pi/3 * RJ**3 * cg%w(wna%fi)%arr(pfl%idn,i,j,k)) return !, pi/6.0 * pfl%cs**3 / G**(3.0/2) / cg%w(wna%fi)%arr(pfl%idn,i,j,k)**0.5)) return  !pi/6.0 * pfl%cs**3 / G**(3.0/2) / cg%w(wna%fi)%arr(pfl%idn,i,j,k)**0.5 ) return    ! Jeans mass
+    endif
+
+    if (tdyn_crit) then
+       kbgmh  = kboltz / (pfl%gam_1 * mH)
+       call calc_tcool(temp, cg%w(wna%fi)%arr(pfl%idn,i,j,k), kbgmh, tcool)
+       if (tcool .gt. tdyn) return
+    endif
 #endif /* THERM */
 
     cond = .true.
@@ -502,8 +514,6 @@ end function check_threshold
        dist = sqrt( (pset%pdata%pos(xdim) - x)**2 + (pset%pdata%pos(ydim) - y)**2 + (pset%pdata%pos(zdim) - z)**2 )
        if (dist .lt. dist_accr) add = .true.
     endif
-
-    !if ((add .eqv. .true.) .and. (x .lt. -5000) .and. (y .lt. -5000)) print *, pset%pdata%pos(:), x, y, z, dist, sector
 
   end function add_SFmass
 

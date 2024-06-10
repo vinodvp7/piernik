@@ -55,8 +55,8 @@ contains
 
    subroutine init_SF
 
-      use dataio_pub,   only: nh, printinfo
-      use mpisetup,     only: ibuff, lbuff, rbuff, master, slave, piernik_MPI_Bcast
+     use dataio_pub,   only: nh, printinfo, warn
+     use mpisetup,     only: ibuff, lbuff, rbuff, master, slave, piernik_MPI_Bcast
 
       implicit none
 
@@ -131,6 +131,8 @@ contains
          n_SN            = rbuff(7)
          SN_ener         = rbuff(8)
 
+         if ((kick) .and. (mass_SN .ne. max_part_mass)) call warn('[star_formation] Warning: With kick we assume particules only accrete up to 1 explosion loadout mass (n_SN * mass_SN) in 1 timestep.')
+
       endif
 
    end subroutine init_SF
@@ -143,6 +145,7 @@ contains
       use cg_leaves,        only: leaves
       use cg_list,          only: cg_list_element
       use constants,        only: ndims, xdim, ydim, zdim, LO, HI, CENTER, pi, nbdn_n
+      use dataio_pub,       only: warn
       use domain,           only: dom
       use fluidindex,       only: flind
       use fluidtypes,       only: component_fluid
@@ -231,6 +234,7 @@ contains
                               frac = sf_dens2dt / cg%u(pfl%idn,i,j,k)
                               pset%pdata%vel      = (pset%pdata%mass * pset%pdata%vel + frac * cg%u(pfl%imx:pfl%imz,i,j,k) * cg%dvol) / (pset%pdata%mass + mass)
                               pset%pdata%mass     =  pset%pdata%mass + mass
+                              if ((kick) .and. (mass_SN .ne. max_part_mass) .and. (mass .ge. 2*mass_SN)) call warn('[star formation] Too much mass accreted in one timestep. Only one supernova loadout (n_SN) will be released.')
                               call sf_fed(cg, pfl, dt, i, j, k, ir, irh, mass, 1 - frac, sfrl_dump, sfrh_dump)
                               if (aint(pset%pdata%mass / mass_SN_tot) > stage) then
                                  if (.not. kick) then
@@ -296,7 +300,11 @@ contains
                                  cg%u(pfl%imx:pfl%imz,i,j,k) = cg%u(pfl%imx:pfl%imz,i,j,k) + ijk1 * padd
                                  cg%u(pfl%ien,i,j,k) = cg%u(pfl%ien,i,j,k) + ekin(cg%u(pfl%imx,i,j,k), cg%u(pfl%imy,i,j,k), cg%u(pfl%imz,i,j,k), cg%u(pfl%idn,i,j,k))  ! add new ekin
                               else if (aijk1 == 0 .and. tcond2) then    ! Instantaneous injection SNe Agertz
-                                 mfdv = aint(pset%pdata%mass / mass_SN_tot) / cg%dvol
+                                 if (mass_SN .eq. max_part_mass) then
+                                    mfdv = aint(pset%pdata%mass / mass_SN_tot) / cg%dvol
+                                 else
+                                    mfdv = 1                      !We assume only n_SN explosions are triggered at once
+                                 endif
                                  call sf_inject(cg, pfl%ien, pfl%idn, i, j, k, is, ish, mfdv * en_SN09, mfdv * en_SN01, dt, sne_dump)
                               endif
                            enddo

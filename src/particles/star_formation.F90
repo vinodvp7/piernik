@@ -75,7 +75,7 @@ contains
       n_SN             = 1.0           ! Threshold of number of SN needed to inject the corresponding energy
       max_part_mass    = mass_SN * n_SN
       dist_accr        = 50.0          ! Distance of gas accretion for the star forming particles
-      SN_ener          = 1.0 * 10**51  ! Energy injected by one SNe
+      SN_ener          = 1.0 * 10.0**51  ! Energy injected by one SNe
 
       if (master) then
 

@@ -45,8 +45,7 @@ contains
       use cg_list,          only: cg_list_element
       use cg_list_dataop,   only: ind_val
       use constants,        only: ndims, xdim, ydim, zdim, gp_n, gpot_n, gp1b_n, sgp_n, nbdn_n, prth_n, one, zero, LO, PPP_PART
-      use dataio_pub,       only: warn
-      use domain,           only: dom, is_refined
+      use domain,           only: dom
       use gravity,          only: source_terms_grav
       use grid_cont,        only: grid_container
       use named_array_list, only: qna
@@ -73,7 +72,6 @@ contains
       real,    dimension(ndims)      :: dist
       real                           :: Mtot
       integer(kind=4)                :: ig, ip, ib
-      logical, save                  :: firstcall = .true.
       character(len=*), parameter    :: potacc_i_label = "upd_part_gpot_acc:pre", potacc_label = "upd_part_gpot_acc"
 
       call ppp_main%start(potacc_i_label, PPP_PART)
@@ -109,11 +107,6 @@ contains
       call ppp_main%stop(potacc_i_label, PPP_PART)
 
       if (global_count_all_particles() == 0) return
-
-      if (firstcall .and. is_refined) then
-         call warn("[particle_gravity:update_particle_gravpot_and_acc] AMR not fully implemented yet")
-         firstcall = .false.
-      endif
 
       call ppp_main%start(potacc_label, PPP_PART)
 
@@ -468,9 +461,9 @@ contains
       if (dom%eff_dim /= ndims) call die("[particle_gravity:update_particle_acc_tsc] Only 3D version is implemented")
 
       ijkp(:, I0) = nint((pos(:) - cg%fbnd(:,LO)-cg%dl(:)/2.) * cg%idl(:) + int(cg%lhn(:, LO)) + dom%nb, kind=4)
-      ijkp(:, IM) = max(ijkp(:, I0) - 1, int(cg%lhn(:, LO)))
-      ijkp(:, IP) = min(ijkp(:, I0) + 1, int(cg%lhn(:, HI)))
-      full_span = (ijkp(zdim, IM) == ijkp(zdim, I0) - 1) .and. (ijkp(zdim, IP) == ijkp(zdim, I0) + 1)
+      ijkp(:, IM) = max(ijkp(:, I0) - 1, int(cg%lhn(:, LO)) + 1)
+      ijkp(:, IP) = min(ijkp(:, I0) + 1, int(cg%lhn(:, HI)) - 1)
+      full_span =(ijkp(zdim, IM) == ijkp(zdim, I0) - 1) .and. (ijkp(zdim, IP) == ijkp(zdim, I0) + 1)
       ! Unlike mapping, for acceleration we need one extra cell
       if (any(ijkp(:, IM) < cg%lhn(:, LO)) .or. any(ijkp(:, IP) > cg%lhn(:, HI))) &
            call die("[particle_gravity:update_particle_acc_tsc] the particle flew too far into ghostcells")

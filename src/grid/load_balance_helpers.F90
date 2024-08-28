@@ -59,9 +59,8 @@ contains
       use constants,      only: I_ONE, base_level_id, PPP_AMR
       use dataio_pub,     only: msg, warn
       use global,         only: nstep
-      use load_balance,   only: balance_cg, balance_host, enable_exclusion, exclusion_thr, &
-           &                    verbosity, verbosity_nstep, umsg_verbosity, &
-           &                    V_NONE, V_SUMMARY, V_HOST, V_DETAILED, V_ELABORATE
+      use load_balance,   only: exclusion_thr, verbosity, verbosity_nstep, umsg_verbosity, &
+           &                    VB_NONE, VB_SUMMARY, VB_HOST, VB_DETAILED, VB_ELABORATE
       use mpisetup,       only: master, FIRST, LAST, err_mpi
       use MPIF,           only: MPI_COMM_WORLD, MPI_DOUBLE_PRECISION, MPI_Wtime
       use MPIFUN,         only: MPI_Gather
@@ -111,8 +110,8 @@ contains
 
          if (nstep >= 1) call update_costs
 
-         if (((verbosity > V_NONE) .and. ((nstep <= 0 .and. verbosity_nstep <= 1) .or. (nstep > 0 .and. mod(nstep, verbosity_nstep) == 0))) &
-              .or. (umsg_verbosity > V_NONE)) then
+         if (((verbosity > VB_NONE) .and. ((nstep <= 0 .and. verbosity_nstep <= 1) .or. (nstep > 0 .and. mod(nstep, verbosity_nstep) == 0))) &
+              .or. (umsg_verbosity > VB_NONE)) then
 
             ! Choose between s and ms.
             maxv = maxval(all_proc_stats(:, I_MAX - lbound(stat_labels) + I_ONE, :))
@@ -131,25 +130,28 @@ contains
                endif
             else
                v = verbosity
-               if (umsg_verbosity > V_NONE) then
-                  v = min(V_ELABORATE, umsg_verbosity)
-                  umsg_verbosity = V_NONE
+               if (umsg_verbosity > VB_NONE) then
+                  v = min(VB_ELABORATE, umsg_verbosity)
+                  umsg_verbosity = VB_NONE
                   ! Intentionally the reset occurs only when umsg_verbosity triggers printing (maxv has to be > 0.)
                endif
                select case (v)
-                  case (V_ELABORATE:)
+                  case (VB_ELABORATE:)
                      call log_elaborate
-                  case (V_DETAILED)
+                  case (VB_DETAILED)
                      call log_detailed
-                  case (V_HOST)
-                  case (V_SUMMARY)
+                  case (VB_HOST)
+                  case (VB_SUMMARY)
                end select
-               if (v >= V_HOST) call log_host
-               if (v >= V_SUMMARY) call log_summary
-               if ((balance_cg > 0. .or. balance_host > 0. .or. enable_exclusion) .and. (nstep >= 1)) call log_speed
+               if (v >= VB_HOST) call log_host
+               if (v >= VB_SUMMARY) call log_summary
+               if (nstep >= 1) call log_speed
             endif
 
          endif
+
+         call speed_check
+
       endif
 
       deallocate(all_proc_stats, send_stats)
@@ -195,6 +197,7 @@ contains
       subroutine log_elaborate
 
          use cg_cost_stats, only: I_SUM2
+         use constants,     only: V_INFO
          use dataio_pub,    only: printinfo
          use procnames,     only: pnames
 
@@ -214,7 +217,7 @@ contains
                              write(msg(len_trim(msg)+1:), '(3a,f10.3,3a)') merge(": ", ", ", j == lbound(stat_labels, 1)), &
                              &                                             trim(stat_labels(j)), "= ", mul*stat(j), " ", trim(prefix), "s "
                      enddo
-                     call printinfo(msg)
+                     call printinfo(msg, V_INFO)
                   endif
                enddo
             endif
@@ -225,7 +228,7 @@ contains
       subroutine log_detailed
 
          use cg_cost_stats, only: I_AVG, I_SIGMA
-         use constants,     only: I_ZERO
+         use constants,     only: I_ZERO, V_INFO
          use dataio_pub,    only: printinfo
          use procnames,     only: pnames
 
@@ -240,7 +243,7 @@ contains
             endif
          enddo
          write(msg(len_trim(msg)+1:), '(a)') " (per cg)"
-         call printinfo(msg)
+         call printinfo(msg, V_INFO)
 
          do p = FIRST, LAST
             write(msg, '(2a,i5,a)')"@", pnames%procnames(p)(:max(h_l, pnames%maxnamelen)), p, " :"
@@ -256,7 +259,7 @@ contains
                   endif
                endif
             enddo
-            call printinfo(msg)
+            call printinfo(msg, V_INFO)
          enddo
 
       end subroutine log_detailed
@@ -265,7 +268,7 @@ contains
 
          use cg_cost_data,  only: cg_cost_data_t
          use cg_cost_stats, only: I_AVG, I_SUM, I_SUM2
-         use constants,     only: I_ZERO
+         use constants,     only: I_ZERO, V_INFO
          use dataio_pub,    only: printinfo
          use procnames,     only: pnames
 
@@ -281,7 +284,7 @@ contains
             endif
          enddo
          write(msg(len_trim(msg)+1:), '(a)') " (per cg, on whole host)"
-         call printinfo(msg)
+         call printinfo(msg, V_INFO)
 
          do host = lbound(pnames%proc_on_node, 1), ubound(pnames%proc_on_node, 1)
             ! this is a bit awkward but we need to find moments over a host from already computed moments on threads
@@ -310,7 +313,7 @@ contains
                      endif
                   endif
                enddo
-               call printinfo(msg)
+               call printinfo(msg, V_INFO)
             end associate
          enddo
 
@@ -318,6 +321,7 @@ contains
 
       subroutine log_summary
 
+         use constants,  only: V_INFO
          use dataio_pub, only: printinfo
          use mpisetup,   only: nproc
          use procnames,  only: pnames
@@ -333,7 +337,7 @@ contains
             dt_wall = MPI_Wtime() - prev_time
 
             write(msg, '(a,f11.3,3a,f5.1,a)') "All accumulated cg costs out of ", mul*dt_wall, " ", trim(prefix), "s, ", 100*sum(all_proc_stats(N_STATS, I_ONE, :))/nproc/dt_wall, "% spent on cg (averaged globally)"
-            call printinfo(msg)
+            call printinfo(msg, V_INFO)
 
             do host = lbound(pnames%proc_on_node, 1), ubound(pnames%proc_on_node, 1)
                associate (ph => pnames%proc_on_node(host))
@@ -356,7 +360,7 @@ contains
                            write(msg(len_trim(msg)+1:), '(a7)') "-"
                         endif
                      enddo
-                     call printinfo(msg)
+                     call printinfo(msg, V_INFO)
                   else
                      lines = ceiling(real(size(ph%proc)) / max_per_line)
                      per_line = ceiling(real(size(ph%proc)) / lines)  ! or max_per_line for extremely heterogeneous set of nodes
@@ -371,7 +375,7 @@ contains
                               write(msg(len_trim(msg)+1:), '(a11)') "-"
                            endif
                         enddo
-                        call printinfo(msg)
+                        call printinfo(msg, V_INFO)
                      enddo
                      do l = 1, lines
                         write(msg, '(2a)') repeat(" ", pnames%maxnamelen + 1), " | "
@@ -384,7 +388,7 @@ contains
                               write(msg(len_trim(msg)+1:), '(a11)') "-"
                            endif
                         enddo
-                        call printinfo(msg)
+                        call printinfo(msg, V_INFO)
                      enddo
                   endif
 
@@ -397,7 +401,7 @@ contains
 
       subroutine log_speed
 
-         use constants,  only: fmt_len
+         use constants,  only: fmt_len, V_INFO
          use dataio_pub, only: printinfo, warn
          use procnames,  only: pnames
 
@@ -429,7 +433,7 @@ contains
                      else
                         write(msg, '(3a)') "@", ph%nodename(:pnames%maxnamelen), " <MHD speed> = N/A"
                      endif
-                     call printinfo(msg)
+                     call printinfo(msg, V_INFO)
 
                   end associate
                enddo
@@ -456,6 +460,46 @@ contains
          endif
 
       end subroutine log_speed
+
+      !>
+      !! \brief Detects uneven load balance by checking the time spent on cgs and suggests a rebalance.
+      !!
+      !! Depends on prior call to print_costs.
+      !<
+
+      subroutine speed_check
+
+         use load_balance, only: imbalance_tol, rebalance_asap, flexible_balance
+         use mpisetup,     only: slave
+         use procnames,    only: pnames
+
+         implicit none
+
+         integer :: p, n
+         real :: min_s, max_s
+         integer, parameter :: s_ind = I_ONE  ! can be anything within size(cost_labels) because all values are the same
+
+         if (slave .or. .not. flexible_balance) return
+
+         n = 0
+         min_s = huge(1.)
+         max_s = -min_s
+
+         do p = lbound(all_proc_stats, 3), ubound(all_proc_stats, 3)
+            associate (s => all_proc_stats(N_STATS, s_ind, p))
+               if (pnames%wtime(p) > epsilon(1.)) then
+                  if (s < min_s) min_s = s
+                  if (s > max_s) max_s = s
+                  n = n + 1
+               endif
+            end associate
+         enddo
+
+         if (n > 0) then
+            if (max_s * imbalance_tol > min_s) rebalance_asap = .true.
+         endif
+
+      end subroutine speed_check
 
    end subroutine print_costs
 

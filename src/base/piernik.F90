@@ -31,12 +31,12 @@
 program piernik
 ! pulled by ANY
 
-   use all_boundaries,    only: all_bnd
    use cg_leaves,         only: leaves
    use cg_list_global,    only: all_cg
-   use constants,         only: PIERNIK_START, PIERNIK_INITIALIZED, PIERNIK_FINISHED, PIERNIK_CLEANUP, fplen, stdout, I_ONE, CHK, FINAL_DUMP, cbuff_len, PPP_IO, PPP_MPI
+   use constants,         only: PIERNIK_START, PIERNIK_INITIALIZED, PIERNIK_FINISHED, PIERNIK_CLEANUP, &
+        &                       fplen, stdout, I_ONE, CHK, FINAL_DUMP, cbuff_len, PPP_IO, PPP_MPI, pLOR, V_LOG, V_INFO
    use dataio,            only: write_data, user_msg_handler, check_log, check_tsl, dump, cleanup_dataio
-   use dataio_pub,        only: nend, tend, msg, printinfo, warn, die, code_progress, nstep_start
+   use dataio_pub,        only: nend, tend, msg, print_char_line, printinfo, warn, die, code_progress, nstep_start
    use div_B,             only: print_divB_norm
    use finalizepiernik,   only: cleanup_piernik
    use fluidindex,        only: flind
@@ -45,7 +45,8 @@ program piernik
    use initpiernik,       only: init_piernik
    use lb_helpers,        only: costs_maintenance
    use list_of_cg_lists,  only: all_lists
-   use mpisetup,          only: master, piernik_MPI_Barrier, piernik_MPI_Bcast, cleanup_mpi
+   use load_balance,      only: n_rebalance, flexible_balance, r_rebalance, rebalance_asap
+   use mpisetup,          only: master, piernik_MPI_Barrier, piernik_MPI_Bcast, piernik_MPI_Allreduce, cleanup_mpi
    use named_array_list,  only: qna, wna
    use ppp,               only: cleanup_profiling, update_profiling, ppp_main
    use refinement,        only: emergency_fix, updAMR_after
@@ -72,13 +73,13 @@ program piernik
    character(len=fplen) :: nstr, tstr
    logical, save        :: first_step = .true., just_expanded
    real                 :: tlast
-   logical              :: try_rebalance, rs
+   logical              :: rs
 
    ! ppp-related
    character(len=cbuff_len)    :: label, buf
    character(len=*), parameter :: f_label = "finalize"
 
-   try_rebalance = .false.
+   rebalance_asap = .false.
    tlast = 0.0
 
    code_progress = PIERNIK_START
@@ -102,17 +103,15 @@ program piernik
    end_sim = .false.
 
    if (master) then
-      call printinfo("======================================================================================================", .false.)
-      call printinfo("###############     Simulation     ###############", .false.)
-      call printinfo("Named arrays present at start:", to_stdout=.false.)
-      call qna%print_vars(to_stdout=.false.)
-      call wna%print_vars(to_stdout=.false.)
-      call printinfo("Grid lists present at start:", to_stdout=.false.)
+      call print_char_line("=")
+      call printinfo("###############     Simulation     ###############", V_LOG)
+      call printinfo("Named arrays present at start:", V_LOG)
+      call qna%print_vars
+      call wna%print_vars
+      call printinfo("Grid lists present at start:", V_LOG)
    endif
-   call all_lists%print(to_stdout = .false.)  ! needs all procs to participate
-   if (master) then
-      call printinfo("======================================================================================================", .false.)
-   endif
+   call all_lists%print  ! needs all procs to participate
+   if (master) call print_char_line("=")
 
    call print_progress(nstep)
    if (print_divB > 0) call print_divB_norm
@@ -131,7 +130,7 @@ program piernik
       dump(:) = .false.
       if (associated(problem_domain_update)) then
          call problem_domain_update
-         if (emergency_fix) try_rebalance = .true.
+         if (emergency_fix) rebalance_asap = .true.
          just_expanded = emergency_fix
          call update_refinement(refinement_fixup_only=.true.)
 #ifdef MAGNETIC
@@ -179,11 +178,13 @@ program piernik
          ! * new "refine" or "correcting" events should not occur
          ! * some "derefine" events are allowed
          ! It can be used for diagnostic purposes. In production runs it may cost too much.
-         if (try_rebalance) then
-            !> \todo try to rewrite this ugly chain of flags passed through global variables into something more fool-proof
+
+         call piernik_MPI_Allreduce(rebalance_asap, pLOR)
+         if (   rebalance_asap .or. &
+              & (mod(nstep, n_rebalance) == 0) .or. &
+              & (flexible_balance .and. nstep_start + r_rebalance == nstep) ) then
             call leaves%balance_and_update(" (re-balance) ")
-            call all_bnd ! For some strange reasons this call prevents MPI-deadlock
-            try_rebalance = .false.
+            rebalance_asap = .false.
          endif
 
          if (print_divB > 0) then
@@ -218,11 +219,11 @@ program piernik
       write(nstr, '(i7)') nstep
       tstr = adjustl(tstr)
       nstr = adjustl(nstr)
-      call printinfo("======================================================================================================", .false.)
-      call printinfo("###############     Finishing     ###############", .false.)
+      call print_char_line("=")
+      call printinfo("###############     Finishing     ###############", V_LOG)
       if (t >= tend) then
          write(msg, '(2a)') "Simulation has reached final time t = ",trim(tstr)
-         call printinfo(msg)
+         call printinfo(msg, V_INFO)
       endif
       if (nstep >= nend) then
          write(msg, '(4a)') "Maximum step count exceeded (",trim(nstr),") at t = ",trim(tstr)
@@ -237,15 +238,13 @@ program piernik
          call warn(msg)
       endif
 
-      call printinfo("Named arrays present at finish:", to_stdout=.false.)
-      call qna%print_vars(to_stdout=.false.)
-      call wna%print_vars(to_stdout=.false.)
-      call printinfo("Grid lists present at finish:", to_stdout=.false.)
+      call printinfo("Named arrays present at finish:", V_LOG)
+      call qna%print_vars
+      call wna%print_vars
+      call printinfo("Grid lists present at finish:", V_LOG)
    endif
-   call all_lists%print(to_stdout = .false.)  ! needs all procs to participate
-   if (master) then
-      call printinfo("======================================================================================================", .false.)
-   endif
+   call all_lists%print  ! needs all procs to participate
+   if (master) call print_char_line("=")
 
    if (associated(finalize_problem)) call finalize_problem
 
@@ -259,23 +258,22 @@ program piernik
 
    code_progress = PIERNIK_CLEANUP
 
-   if (master) write(stdout, '(a)', advance='no') "Finishing #"
-
+   if (master) write(stdout, '(/,a)', advance='no') "   Finishing #"
    call cleanup_piernik
 
    call ppp_main%stop(f_label)
    call ppp_main%publish  ! we can use HDF5 here because we don't rely on anything that is affected by cleanup_hdf5
    call cleanup_profiling
-   call cleanup_mpi
+   call cleanup_mpi       ! No calls to warn() or printinfo() are allowed beyond this point.
    call cleanup_dataio
 
-   if (master) write(stdout,'(a)')"#"
+   if (master) write(stdout,'(a,/)')"#"
 
 contains
 
    subroutine print_progress(nstep)
 
-      use constants,  only: tmr_fu
+      use constants,  only: tmr_fu, V_ESSENTIAL
       use dataio_pub, only: printinfo, msg
       use global,     only: dt, t
       use timer,      only: set_timer, get_timestamp
@@ -292,7 +290,7 @@ contains
             first_run = (set_timer(tmr_fu) < 0.0)
          endif
          write(msg, fmt900) nstep, dt, t, set_timer(tmr_fu), get_timestamp()
-         call printinfo(msg, .true.)
+         call printinfo(msg, V_ESSENTIAL, .true.)
       endif
 
    end subroutine print_progress
@@ -303,6 +301,7 @@ contains
    subroutine grace_period
 
       use all_boundaries, only: all_fluid_boundaries
+      use constants,      only: V_INFO
       use dataio_pub,     only: printinfo
       use global,         only: grace_period_passed, relax_time
       use interactions,   only: interactions_grace_passed
@@ -318,7 +317,7 @@ contains
          if (relax_time > 0.0) then
             ! write info message only if relax_time was set
             write(msg,'(A,ES10.3)') "[piernik:grace_period] grace period has passed.", t
-            if (master) call printinfo(msg)
+            if (master) call printinfo(msg, V_INFO)
          endif
          call interactions_grace_passed
          if (associated(problem_grace_passed)) call problem_grace_passed

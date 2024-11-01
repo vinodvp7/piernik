@@ -71,6 +71,7 @@ endif
 CPPFLAGS := $(CPPFLAGS) $(shell $(F90) -c $(CPPFLAGS) $(F90FLAGS) ../compilers/tests/mpi_allgatherv_bug.F90 && $(F90) $(LDFLAGS) -o mpi_allgatherv_bug mpi_allgatherv_bug.o $(LIBS) && ./mpi_allgatherv_bug || echo -DFORBID_F08)
 CPPFLAGS := $(CPPFLAGS) $(shell $(F90) $(CPPFLAGS) $(F90FLAGS) ../compilers/tests/mpi_f08.F90 2> /dev/null && echo -DMPIF08 || echo -DNO_MPIF08_AVAILABLE)
 CPPFLAGS := $(CPPFLAGS) $(shell $(F90) $(CPPFLAGS) $(F90FLAGS) ../compilers/tests/mpi.F90 2> /dev/null || echo -DNO_ALL_MPI_FUNCTIONS_AVAILABLE)
+CPPFLAGS := $(CPPFLAGS) $(shell $(F90) $(CPPFLAGS) $(F90FLAGS) ../compilers/tests/F2018.F90 2> /dev/null || echo -DNO_F2018)
 
 all: env.dat print_setup $(PROG)
 
@@ -85,8 +86,8 @@ ifeq ("$(SILENT)","1")
 endif
 \t@$(ECHO) $(F90) $(LDFLAGS) -o $@ '*.o' $(LIBS)
 \t@$(F90) $(LDFLAGS) -o $@ $(OBJS) $(LIBS)
-\t@touch mpi_f08.o mpi.o a.out mpi_allgatherv_bug mpi_allgatherv_bug.o
-\t@$(RM) mpi_f08.o mpi.o a.out mpi_allgatherv_bug mpi_allgatherv_bug.o
+\t@touch mpi_f08.o mpi.o a.out mpi_allgatherv_bug mpi_allgatherv_bug.o F2018.o
+\t@$(RM) mpi_f08.o mpi.o a.out mpi_allgatherv_bug mpi_allgatherv_bug.o F2018.o
 \t@AO1=`mktemp _ao_XXXXXX`;\\
 \tAO2=`mktemp _ao_XXXXXX`;\\
 \t$(ECHO) $(OBJS) | tr ' ' '\\n' | sort > $$AO1;\\
@@ -485,7 +486,7 @@ def setup_piernik(data=None):
             try:
                 os.symlink('../' + f,
                            objdir + '/' + strip_leading_path([f])[0])
-            except:
+            except FileExistsError:
                 print("Possible duplicate link or a name clash :", f)
                 raise
 
@@ -617,8 +618,10 @@ def setup_piernik(data=None):
             break
 
     # assign color to boxes according to their location in source tree
-    colors = {'src': 'red', 'src/base': 'green', 'src/grid': 'magenta',
-              'src/fluids': 'yellow', 'src/IO': 'cyan', 'problems': 'blue'}
+    # some more colors that can be used: tan, lavender, beige, mauve
+    colors = {'src': 'red', 'src/base': 'green', 'src/base/mpi': 'seagreen', 'src/grid': 'purple', 'src/particles': 'salmon',
+              'src/multigrid': 'orange', 'src/gravity': 'gold3', 'src/scheme': 'brown', 'src/grid/refinement': 'magenta',
+              'src/fluids': 'blue', 'src/fluids/cosmicrays': 'cyan', 'src/IO': 'yellow', 'problems': 'pink', 'src/magnetic': 'gray'}
 
     # create dictionary that maps file to directories
     dirs = {}
@@ -634,18 +637,36 @@ def setup_piernik(data=None):
     # write the connectivity file
     dd = open(objdir + '/dep.dot', "w")
     dd.write("digraph piernik {\n")
-    dd.write("\t label=\"Dependency graph for the \'" +
-             args[0] + "\' problem\"\n")
+    dd.write("\t label=\"Dependency graph for the \'" + args[0] + "\' problem\"\n")
     for m in dep:
         for mod in dep_s[m].difference(dep[m]):
             try:
                 longest_key = max(dirs[mod].intersection(set(colors.keys())))
-                dd.write(
-                    "\t \"%s\" [color=%s];\n" % (mod, colors[longest_key]))
+                dd.write('\t "%s" [color="%s"];\n' % (mod, colors[longest_key]))
                 del dirs[mod]  # prevent duplicates
-            except:
+            except KeyError:
                 pass
             dd.write('\t "' + mod + '" -> "' + m + '"\n')
+    dd.write('\t subgraph legend {\n\t\t label = "Legend"\n')
+    roots = []
+    for k in colors:
+        dd.write('\t\t "%s" [color="%s"]\n' % (k, colors[k]))
+        llen = 0
+        ldir = ""
+        for kk in colors:
+            if k != kk:
+                if kk in k:
+                    if len(kk) > llen:
+                        llen = len(kk)
+                        ldir = kk
+        if llen > 0:
+            dd.write('\t\t "%s" -> "%s"\n' % (ldir, k))
+        else:
+            roots.append(k)
+    dd.write('\t }\n')
+    for r in roots:
+        dd.write('\t {"piernik" -> "%s" [style = "invisible"; dir=none]}\n' % r)
+        # Formally we should calculate the bottom node, not assume it'll be just "piernik"
     dd.write("}\n")
     dd.close()
 

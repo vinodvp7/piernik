@@ -245,7 +245,6 @@ contains
       call this%dot%update_global(this%first, this%cnt, this%l%off) ! communicate everything that was added before
       call this%dot%update_SFC_id_range(this%l%off)
       call this%find_neighbors ! requires access to whole this%dot%gse(:)%c(:)%se(:,:)
-      call this%update_req     ! Perhaps this%find_neighbors added some new entries
       call this%dot%update_tot_se
       call this%print_segments
 
@@ -316,9 +315,10 @@ contains
 
    subroutine update_decomposition_properties(this)
 
-      use constants,  only: base_level_id, pLOR
-      use domain,     only: is_mpi_noncart, is_multicg, is_refined, is_uneven
-      use mpisetup,   only: proc, piernik_MPI_Allreduce, proc
+      use allreduce, only: piernik_MPI_Allreduce
+      use constants, only: base_level_id, pLOR
+      use domain,    only: is_mpi_noncart, is_multicg, is_refined, is_uneven
+      use mpisetup,  only: proc, proc
 
       implicit none
 
@@ -383,8 +383,8 @@ contains
 
    subroutine check_update_all(this)
 
+      use allreduce, only: piernik_MPI_Allreduce
       use constants, only: pLOR
-      use mpisetup,  only: piernik_MPI_Allreduce
 
       implicit none
 

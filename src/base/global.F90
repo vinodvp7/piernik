@@ -33,8 +33,9 @@
 !<
 module global
 
-   use constants, only: cbuff_len, xdim, zdim
-   use mpisetup,  only: extra_barriers
+   use barrier,      only: extra_barriers
+   use constants,    only: cbuff_len, xdim, zdim
+   use mpi_wrappers, only: MPI_wrapper_stats
 
    implicit none
 
@@ -44,7 +45,7 @@ module global
         &    dt, dt_initial, dt_max_grow, dt_shrink, dt_cur_shrink, dt_min, dt_max, dt_old, dt_full, dtm, t, t_saved, nstep, nstep_saved, max_redostep_attempts, &
         &    repetitive_steps, integration_order, limiter, limiter_b, smalld, smallei, smallp, use_smalld, use_smallei, interpol_str, &
         &    relax_time, grace_period_passed, cfr_smooth, skip_sweep, geometry25D, &
-        &    dirty_debug, do_ascii_dump, show_n_dirtys, no_dirty_checks, sweeps_mgu, use_fargo, print_divB, do_external_corners, prefer_merged_MPI, &
+        &    dirty_debug, do_ascii_dump, show_n_dirtys, no_dirty_checks, sweeps_mgu, use_fargo, print_divB, do_external_corners, prefer_merged_MPI, waitall_timeout, &
         &    divB_0_method, cc_mag, glm_alpha, use_eglm, cfl_glm, ch_grid, w_epsilon, psi_bnd, ord_mag_prolong, ord_fluid_prolong, which_solver
 
    logical         :: dn_negative = .false.
@@ -114,9 +115,10 @@ module global
         &                     max_redostep_attempts, limiter, limiter_b, relax_time, integration_order, cfr_smooth, skip_sweep, geometry25D, sweeps_mgu, print_divB, &
         &                     use_fargo, divB_0, glm_alpha, use_eglm, cfl_glm, ch_grid, interpol_str, w_epsilon, psi_bnd_str, ord_mag_prolong, ord_fluid_prolong, do_external_corners, solver_str
 
-   logical                       :: prefer_merged_MPI !< prefer internal_boundaries_MPI_merged over internal_boundaries_MPI_1by1
+   logical :: prefer_merged_MPI  !< prefer internal_boundaries_MPI_merged over internal_boundaries_MPI_1by1
+   real :: waitall_timeout       !< when > 0. then replace MPI_Waitall with MPI_Test* calls and print some diagnostics it the timeout is reached
 
-   namelist /PARALLEL_SETUP/ extra_barriers, prefer_merged_MPI
+   namelist /PARALLEL_SETUP/ extra_barriers, prefer_merged_MPI, MPI_wrapper_stats, waitall_timeout
 
 contains
 
@@ -168,20 +170,23 @@ contains
 !! \n \n
 !! <table border="+1">
 !!   <tr><td width="150pt"><b>parameter</b></td><td width="135pt"><b>default value</b></td><td width="200pt"><b>possible values</b></td><td width="315pt"> <b>description</b></td></tr>
-!!   <tr><td>prefer_merged_MPI </td><td>.true.  </td><td>logical </td><td>\copydoc global::prefer_merged_MPI </td></tr>
-!!   <tr><td>extra_barriers    </td><td>.false. </td><td>logical </td><td>\copydoc mpisetup::extra_barriers  </td></tr>
+!!   <tr><td>prefer_merged_MPI </td><td>.true.  </td><td>logical </td><td>\copydoc global::prefer_merged_MPI      </td></tr>
+!!   <tr><td>extra_barriers    </td><td>.false. </td><td>logical </td><td>\copydoc mpi_wrapper::extra_barriers    </td></tr>
+!!   <tr><td>MPI_wrapper_stats </td><td>.false. </td><td>logical </td><td>\copydoc mpi_wrapper::MPI_wrapper_stats </td></tr>
+!!   <tr><td>waitall_timeout   </td><td>0.      </td><td>real    </td><td>\copydoc mpi_wrapper::waitall_timeout   </td></tr>
 !! </table>
 !! \n \n
 
 !<
    subroutine init_global
 
+      use bcast,      only: piernik_MPI_Bcast
       use constants,  only: big_float, one, PIERNIK_INIT_DOMAIN, INVALID, DIVB_CT, DIVB_HDC, &
            &                BND_INVALID, BND_ZERO, BND_REF, BND_OUT, I_ZERO, O_INJ, O_LIN, O_I2, INVALID, &
-           &                RTVD_SPLIT, HLLC_SPLIT, RIEMANN_SPLIT, GEO_XYZ, V_INFO, V_DEBUG
+           &                RTVD_SPLIT, HLLC_SPLIT, RIEMANN_SPLIT, GEO_XYZ, V_INFO, V_DEBUG, V_ESSENTIAL
       use dataio_pub, only: die, msg, warn, code_progress, printinfo, nh
       use domain,     only: dom
-      use mpisetup,   only: cbuff, ibuff, lbuff, rbuff, master, slave, piernik_MPI_Bcast
+      use mpisetup,   only: cbuff, ibuff, lbuff, rbuff, master, slave
 
       implicit none
 
@@ -252,7 +257,9 @@ contains
       do_external_corners =.false.
       solver_str = ""
 
-      prefer_merged_MPI = .false.  ! non-merged MPI in internal_boundaries are implemented without buffers, which often is faster
+      prefer_merged_MPI = .true.  ! Non-merged MPI in internal_boundaries are implemented without buffers, which can be faster, especially for bsize(:) larger than 3*16, but in some non-periodic setups internal_boundaries_MPI_1by1 has tag collisions, so merged_MPI is currently safer.
+      MPI_wrapper_stats = .false.
+      waitall_timeout   = 0.
 
       if (master) then
 
@@ -333,6 +340,7 @@ contains
          rbuff(14) = cfl_glm
          rbuff(15) = w_epsilon
          rbuff(16) = dt_shrink
+         rbuff(17) = waitall_timeout
 
          lbuff(1)   = use_smalld
          lbuff(2)   = use_smallei
@@ -347,6 +355,7 @@ contains
          lbuff(13)  = disallow_CRnegatives
          lbuff(14)  = prefer_merged_MPI
          lbuff(15)  = extra_barriers
+         lbuff(16)  = MPI_wrapper_stats
 
       endif
 
@@ -370,6 +379,7 @@ contains
          disallow_CRnegatives  = lbuff(13)
          prefer_merged_MPI     = lbuff(14)
          extra_barriers        = lbuff(15)
+         MPI_wrapper_stats     = lbuff(16)
 
          smalld                = rbuff( 1)
          smallc                = rbuff( 2)
@@ -387,6 +397,7 @@ contains
          cfl_glm               = rbuff(14)
          w_epsilon             = rbuff(15)
          dt_shrink             = rbuff(16)
+         waitall_timeout       = rbuff(17)
 
          limiter               = cbuff(1)
          limiter_b             = cbuff(2)
@@ -532,6 +543,11 @@ contains
 
       tstep_attempt = I_ZERO
       dt_cur_shrink = one
+
+      if (waitall_timeout > 0. .and. master) then
+         write(msg, '(a,g0.2,a)')"[global:init_global] Timeout for MPI_Waitall is ", waitall_timeout, " s."
+         call printinfo(msg, V_ESSENTIAL)
+      endif
 
    end subroutine init_global
 

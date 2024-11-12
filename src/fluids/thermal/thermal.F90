@@ -48,13 +48,16 @@ module thermal
    real                            :: alpha_cool, L0_cool, G0_heat, G1_heat, G2_heat, cfl_coolheat
    real                            :: Teq          !> cooling parameter
    real, dimension(10)             :: Teql         !> temperatures of cooling / heating equilibrium
+   real, dimension(:,:), allocatable :: Teql_tab         !> temperatures of cooling / heating equilibrium
    integer(kind=4), protected      :: itemp = INVALID
    real                            :: x_ion        !> ionization degree
    integer(kind=4)                 :: isochoric    !> 1 for isochoric, 2 for isobaric
    real                            :: d_isochoric  ! constant density used in isochoric case
    real                            :: TN, ltntrna
-   real, dimension(:), allocatable :: Tref, alpha, lambda0, Y
-   integer                         :: nfuncs, neql
+   real, dimension(:), allocatable :: Tref, alpha, lambda0, Y, dens_tab
+   real, dimension(:,:), allocatable :: Tref_tab, alpha_tab, lambda0_tab
+   integer                         :: nfuncs, neql, ndens_tab
+   integer, dimension(:), allocatable :: nfuncs_tab, neql_tab
 
 contains
 
@@ -72,8 +75,10 @@ contains
 
       real :: G0, G1, G2  !> standard heating model coefficients in cgs units
       real :: Lambda_0    !> power law cooling model coefficient in cgs units
+      real :: dens, ddens
+      integer :: i
 
-      namelist /THERMAL/ thermal_active, heat_model, Lambda_0, alpha_cool, Teq, G0, G1, G2, x_ion, cfl_coolheat, isochoric, scheme, cool_model, cool_curve, cool_file, d_isochoric
+      namelist /THERMAL/ thermal_active, heat_model, Lambda_0, alpha_cool, Teq, G0, G1, G2, x_ion, cfl_coolheat, isochoric, scheme, cool_model, cool_curve, cool_file, d_isochoric, ndens_tab
 
       if (code_progress < PIERNIK_INIT_MPI) call die("[thermal:init_thermal] mpi not initialized.")
 
@@ -93,6 +98,7 @@ contains
       G0             = 1.0e-25
       G1             = 1.0e-25
       G2             = 1.0e-27
+      ndens_tab      = 100
       x_ion          = 1.0
       isochoric      = 1
       d_isochoric    = 1.0
@@ -135,6 +141,7 @@ contains
          cbuff(5) = scheme
 
          ibuff(1) = isochoric
+         ibuff(2) = ndens_tab
 
       endif
 
@@ -164,6 +171,7 @@ contains
          d_isochoric    = rbuff(9)
 
          isochoric      = ibuff(1)
+         ndens_tab      = ibuff(2)
 
       endif
 
@@ -176,7 +184,36 @@ contains
       G2_heat = G2       * erg / sek / cm**3
       L0_cool = Lambda_0 * erg / sek * cm**3 / mH**2 * x_ion**2
 
-      call fit_cooling_curve()
+      if (isochoric == 4) then
+         allocate(Tref_tab(ndens_tab, 50), lambda0_tab(ndens_tab, 50), alpha_tab(ndens_tab, 50))
+         allocate(dens_tab(ndens_tab), nfuncs_tab(ndens_tab), neql_tab(ndens_tab))
+         allocate(Teql_tab(ndens_tab,10))
+         Tref_tab = 0.0
+         lambda0_tab = 0.0
+         alpha_tab = 0.0
+         ddens = 8.0/ndens_tab
+         dens = -6
+         do i = 1, ndens_tab
+            dens = dens + ddens
+            dens_tab(i) = 10.0**dens
+            call fit_cooling_curve(dens_tab(i))
+            if (nfuncs .gt. 100) call die('Too many fitting bins', nfuncs)
+            !print *, i, 'Cooling function fitted for density', 10**(dens), 'and with', nfuncs, 'functions'
+            Tref_tab(i, 1:nfuncs) = Tref(:)
+            lambda0_tab(i, 1:nfuncs) = lambda0(:)
+            alpha_tab(i, 1:nfuncs) = alpha(:)
+            nfuncs_tab(i) = nfuncs
+            neql_tab(i) = neql
+            Teql_tab(i,:) = Teql
+          !  print *, i, 'Teql', Teql
+          !  print *, i, 'alpha', alpha(:)
+          !  print *, i, 'lambda', lambda0(:)
+            !print *, Tref_tab(i,:)
+         enddo
+         deallocate(Tref, alpha, lambda0)
+      else
+         call fit_cooling_curve()
+      endif
 
       if (scheme == 'Explicit') call warn('[thermal:init_thermal][scheme: Explicit] Warning: substepping with a different timestep for every cell in the Explicit scheme leads to perturbations. Take a very small cfl_coolheat (~10^-6) or use a constant timestep.')
 
@@ -185,7 +222,6 @@ contains
    subroutine fit_cooling_curve(dens)
 
       use dataio_pub,  only: msg, warn, die, printinfo
-      use func,        only: operator(.equals.)
       use mpisetup,    only: master
       use units,       only: cm, erg, sek, mH
 
@@ -238,7 +274,7 @@ contains
             case ('Heintz')
                if ((master) .and. (i == 1)) call printinfo('[thermal:fit_cooling_curve] Heintz cooling function used. Cooling power law parameters not used.')
                cool(i) = (7.3 * 10.0**(-21) * exp(-118400/(T+1500)) + 7.9 * 10.0**(-27) * exp(-92/T) ) * erg / sek * cm**3 / mH**2 * x_ion**2
-            case('testcase')
+            case ('testcase')
                cool(i) = 5 + cos(1.0+T/10.0)
             case ('tabulated')
                cool(i) = cool(i) * erg / sek * cm**3 / mH**2 * x_ion**2
@@ -248,18 +284,18 @@ contains
 
          if (scheme == 'EIS') then
             select case (heat_model)
-               case('G012')
+               case ('G012')
                   if (isochoric == 1) then
                      d1 = d_isochoric
                   else if (isochoric == 2) then
                      write(msg,'(3a)') 'isobaric case is not working well around equilibrium temperature'
                      if ((master) .and. (i == 1)) call warn(msg)
                      d1 = Teq / 10**logT(i)
-                  else if (isochoric == 3) then
+                  else if (isochoric .ge. 3) then
                      if (present(dens)) d1 = dens
                   endif
                   heat(i) = G0_heat * d1**2 + G1_heat * d1 + G2_heat
-               case('testcase')
+               case ('testcase')
                   heat(i) = 5.5 - 0.01 * T
             end select
             lambda(i) = cool(i) - heat(i)/d1**2
@@ -340,7 +376,8 @@ contains
             else
                do n = 1, neql
                   if ((logT(j-1) <= logTeql(n)) .and. logT(j) > logTeql(n)) then   ! Look for the point right after Teql
-                     if ((isochoric == 1) .or. (isochoric ==3)) then                                                      ! Linear fit of lambda between the point right before Teql, and 0
+                     if ((isochoric == 1) .or. (isochoric .ge. 3)) then                                                      ! Linear fit of lambda between the point right before Teql, and 0
+                        !print *, 'Equilibrium point!', Teql(n)
                         a =  - lambda(i)/ (logTeql(n) - logT(i))
                         b = 0.0
                         k = k + 1
@@ -572,26 +609,60 @@ contains
 
    end function igamma
 
-   subroutine find_temp_bin(temp, ii)
+   subroutine find_temp_bin(temp, ii, nfuncs1)
 
       implicit none
 
       real,    intent(in)  :: temp
       integer, intent(out) :: ii
-      integer              :: i
+      integer,intent(in), optional:: nfuncs1
+      integer              :: i, nfuncs2
 
       ii = 0
-      if (temp >= Tref(nfuncs)) then
-         ii = nfuncs
+      if (present(nfuncs1)) then
+         nfuncs2 = nfuncs1
+      else
+         nfuncs2 = nfuncs
+      endif
+
+      if (temp >= Tref(nfuncs2)) then
+         ii = nfuncs2
       else if (temp < Tref(2)) then
          ii = 1
       else
-         do i = 2, nfuncs - 1
+         do i = 2, nfuncs2 - 1
             if ((temp >= Tref(i)) .and. (temp < Tref(i+1))) ii = i
          enddo
       endif
 
     end subroutine find_temp_bin
+
+    subroutine interp_coolcurve(dens, ii, fact)
+
+      implicit none
+
+      real,    intent(in)  :: dens
+      integer, intent(out) :: ii
+      real, intent(out)    :: fact
+      integer              :: i
+
+      ii = 0
+      if (dens >= dens_tab(ndens_tab)) then
+         ii = ndens_tab
+         fact = 1.0
+      else if (dens < dens_tab(2)) then
+         ii = 1
+         fact = 1.0
+      else
+         do i = 1, ndens_tab - 1
+            if ((dens >= dens_tab(i)) .and. (dens < dens_tab(i+1))) then
+               ii = i
+               fact = (dens_tab(i+1) - dens) / (dens_tab(i+1) - dens_tab(i))
+            endif
+         enddo
+      endif
+
+    end subroutine interp_coolcurve
 
     subroutine calc_tcool(temp, dens, kbgmh, tcool)
 
@@ -604,6 +675,10 @@ contains
       integer              :: ii, n
       real                 :: alpha1, Tref1, lambda1, diff, diff1, diff2, Teql1
 
+      if (isochoric == 4) then
+         call calc_tcool_tab(temp, dens, kbgmh, tcool)
+         return
+      endif
       if (cool_model == 'piecewise_power_law') then
          call find_temp_bin(temp, ii)
          alpha1  = alpha(ii)
@@ -630,7 +705,50 @@ contains
 
     end subroutine calc_tcool
 
-   subroutine cool(temp, coolf)
+    subroutine calc_tcool_tab(temp, dens, kbgmh, tcool)
+
+      use func,        only: operator(.equals.)
+
+      implicit none
+
+      real,    intent(in)  :: temp, dens, kbgmh
+      real,    intent(out) :: tcool
+      integer              :: ii, n, jj
+      real                 :: alpha1, Tref1, lambda1, diff, diff1, diff2, Teql1, fact
+
+      if (cool_model == 'piecewise_power_law') then
+         call interp_coolcurve(dens, jj, fact)
+         allocate(Tref(nfuncs_tab(jj)), lambda0(nfuncs_tab(jj)), alpha(nfuncs_tab(jj)))
+         Tref(:) = Tref_tab(jj,1:nfuncs_tab(jj))
+         lambda0(:) = lambda0_tab(jj,1:nfuncs_tab(jj))
+         alpha(:) = alpha_tab(jj,1:nfuncs_tab(jj))
+         neql = neql_tab(jj)
+         call find_temp_bin(temp, ii, nfuncs_tab(jj))
+         Tref1 = Tref(ii)
+         alpha1 = alpha(ii)
+         lambda1 = lambda0(ii)
+      else
+         print *, '[thermal] Error: Need piecewise Power law'
+      endif
+
+      if (alpha1 .equals. 0.0) then
+         diff1 = huge(1.)
+         do n = 1, neql
+            diff2 = abs(temp - Teql_tab(jj,n))
+            if (diff2 .lt. diff1) Teql1 = Teql_tab(jj,n)
+            diff1 = diff2
+         enddo
+         diff = max(abs(temp - Teql1), 0.000001)
+         tcool = kbgmh * temp / (dens * abs(lambda1) * diff)
+      else
+         tcool = kbgmh * temp / (dens * abs(lambda1) * (temp/Tref1)**alpha1)
+      endif
+
+      deallocate(Tref, lambda0, alpha)
+
+    end subroutine calc_tcool_tab
+
+    subroutine cool(temp, coolf)
 
       use dataio_pub, only: msg, warn
       use mpisetup,   only: master
@@ -745,7 +863,79 @@ contains
 
        if (Tnew < 10.0) Tnew = 10.0                        ! To improve
 
-   end subroutine temp_EIS
+     end subroutine temp_EIS
+
+     subroutine temp_EIS_tab(tcool, dt, fiso, kbgmh, temp, dens, Tnew)
+
+      use dataio_pub, only: msg, warn, die
+      use func,       only: operator(.equals.)
+      use mpisetup,   only: master
+
+      implicit none
+
+      real, intent(in)  :: tcool, dt, fiso, temp, dens, kbgmh
+      real, intent(out) :: Tnew
+      real              :: lambda1, T1, alpha0, Y0f, tcool2, diff, Teql1, diff1, diff2, fact
+      integer           :: i, jj, ii, n
+
+      select case (cool_model)
+
+         case ('power_law')
+            call die('[thermal] Power law not appropriate here.')
+
+         case ('piecewise_power_law')
+            call interp_coolcurve(dens, jj, fact)
+            allocate(Tref(nfuncs_tab(jj)), lambda0(nfuncs_tab(jj)), alpha(nfuncs_tab(jj)))
+            Tref(:) = Tref_tab(jj,1:nfuncs_tab(jj))
+            lambda0(:) = lambda0_tab(jj,1:nfuncs_tab(jj))
+            alpha(:) = alpha_tab(jj,1:nfuncs_tab(jj))
+            neql = neql_tab(jj)
+            call find_temp_bin(temp, ii, nfuncs_tab(jj))
+            T1 = Tref(ii)
+            alpha0 = alpha(ii)
+            lambda1 = lambda0(ii)
+            if (alpha0 .equals. 0.0) then
+               diff1 = huge(1.)
+               do n = 1, neql
+                  diff2 = abs(temp - Teql_tab(jj,n))
+                  if (diff2 .lt. diff1) Teql1 = Teql_tab(jj,n)
+                  diff1 = diff2
+               enddo
+               diff = max(abs(temp-Teql1), 0.00000001)
+               !Y0 = Y(ii) + ltntrna / lambda1 / TN * log((abs(Teql - T1) / diff))
+               Y0f = log((abs(Teql1 - T1) / diff)) / lambda1
+               tcool2 = kbgmh * temp / (lambda1 * diff * dens)
+               tcool2 = min(tcool2, 1.0e6 * TN / ltntrna)
+               Y0f = Y0f + temp / lambda1 / diff * dt/tcool2
+               !Tnew = Teql - sign(1.0, Teql - temp) * (Teql-T1) * exp(-TN * lambda1 / ltntrna * (Y0 - Y(ii)))
+               Tnew = Teql1 - sign(1.0, Teql1 - temp) * (Teql1-T1) * exp(-lambda1 * Y0f)
+               if (.not. (Tnew .ge. 0.0)) then
+                  print *, 'Linear portion failed', dens, temp, Tnew, Y0f, Teql1-T1, diff, lambda1, dt/tcool2
+                  call die('[thermal: temp_EIS_tab]')
+               endif
+            else
+               Tnew = temp * (1 - (1-alpha0) * sign(1.0,lambda1)* fiso * dt / tcool)**(1.0/(1-alpha0))
+               if (.not. (Tnew .ge. 0.0)) then
+                  print *, 'PL portion failed', dens, temp, Tnew, (1-alpha0) * sign(1.0,lambda1)* fiso * dt / tcool, (1.0/(1-alpha0)),  (1 - (1-alpha0) * sign(1.0,lambda1)* fiso * dt / tcool), (1 - (1-alpha0) * sign(1.0,lambda1)* fiso * dt / tcool)**(1.0/(1-alpha0))
+                  call die('[thermal: temp_EIS_tab]')
+               endif
+            endif
+         case ('null')
+            return
+
+         case default
+            write(msg,'(3a)') 'Cool model: ',cool_model,' not implemented'
+            if (master) call warn(msg)
+
+       end select
+
+       if (Tnew < 10.0) Tnew = 10.0                        ! To improve
+
+       deallocate(Tref, lambda0, alpha)
+
+       !print *, dens, temp, Tnew
+
+   end subroutine temp_EIS_tab
 
    subroutine cleanup_thermal
 

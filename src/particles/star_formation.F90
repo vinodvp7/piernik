@@ -55,8 +55,9 @@ contains
 
    subroutine init_SF
 
+     use bcast,        only: piernik_MPI_Bcast
      use dataio_pub,   only: nh, printinfo, warn
-     use mpisetup,     only: ibuff, lbuff, rbuff, master, slave, piernik_MPI_Bcast
+     use mpisetup,     only: ibuff, lbuff, rbuff, master, slave
 
       implicit none
 

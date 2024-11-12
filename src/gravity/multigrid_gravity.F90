@@ -832,7 +832,7 @@ contains
 !! This routine is also responsible for communicating the solution to the rest of world via sgp array.
 !<
 
-   subroutine multigrid_solve_grav(i_sg_dens, q_sg_dens, potential, use_particles)
+   subroutine multigrid_solve_grav(i_sg_dens, q_sg_dens, potential, use_particles, history)
 
       use cg_leaves,         only: leaves
       use constants,         only: sgp_n, tmr_mg
@@ -848,6 +848,7 @@ contains
       integer(kind=4), dimension(:), optional, intent(in) :: q_sg_dens      !< indices to selfgravitating cg%q fields
       integer(kind=4), optional,               intent(in) :: potential      !< index to store the potential
       logical, optional,                       intent(in) :: use_particles  !< pass .false. to ignore particles
+      type(soln_history), pointer, optional,   intent(in) :: history        !< alternative history for different gravitational field
 
       integer :: grav_bnd_global
       integer(kind=4) :: i_pot
@@ -880,10 +881,14 @@ contains
          grav_bnd = bnd_givenval
          call init_source(i_sg_dens, q_sg_dens, use_particles)
          vstat%cprefix = "Gm-"
-
       endif
 
-      call poisson_solver(inner)
+      if (present(history)) then
+         vstat%cprefix = "Gh-"
+         call poisson_solver(history)
+      else
+         call poisson_solver(inner)
+      endif
 
       call leaves%q_copy(solution, i_pot)
 

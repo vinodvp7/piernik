@@ -45,7 +45,7 @@ module star_formation
    real                  :: dens_thr, temp_thr, eps_sf, mass_SN, max_part_mass, n_SN, SN_ener, dt_violent_FB
    logical               :: kick, Jeans_crit, divv_crit, tdyn_crit, delayed, kineticFB, inject_mass, SF_redo_timestep
    real                  :: dmass_stars, dist_accr
-   character(len=dsetnamelen), parameter :: sfr_n  = "SFR_n", sfrh_n = "SFRh_n", sne_n = "SNe_n", sneh_n = "SNeh_n"
+   character(len=dsetnamelen), parameter :: sfr_n  = "SFR_n", sfrh_n = "SFRh_n", snel_n = "SNel_n", sneh_n = "SNeh_n", sne_n = "SNe_n"
 
    namelist /STAR_FORMATION_CONTROL/ kick, dens_thr, temp_thr, eps_sf, mass_SN, n_SN, max_part_mass, dist_accr, SN_ener, Jeans_crit, divv_crit, tdyn_crit, delayed, kineticFB, inject_mass, dt_violent_FB
 
@@ -185,7 +185,7 @@ contains
       type(grid_container),  pointer    :: cg
       type(particle), pointer           :: pset
       class(component_fluid), pointer   :: pfl
-      integer(kind=4)                   :: pid, ig, ir, irh, is, ish, ifl, i, j, k, aijk1, i1, j1, k1, p
+      integer(kind=4)                   :: pid, ig, ir, irh, is, isn, ish, ifl, i, j, k, aijk1, i1, j1, k1, p
       integer(kind=4), dimension(ndims) :: ijk1, ijkp, ijkl, ijkr
       real, dimension(ndims)            :: pos, vel, acc, v
       real, dimension(ndims,LO:HI)      :: sector
@@ -218,7 +218,8 @@ contains
       ig = qna%ind(nbdn_n)
       if (sfrl_dump) ir = qna%ind(sfr_n)
       if (sfrh_dump) irh = qna%ind(sfrh_n)
-      if (sne_dump)  is = qna%ind(sne_n)
+      if (sne_dump)  isn = qna%ind(sne_n)
+      if (sne_dump)  is  = qna%ind(snel_n)
       if (sne_dump)  ish = qna%ind(sneh_n)
 
       if (delayed) then                ! Prepare for MPI communications for energy injections
@@ -236,6 +237,11 @@ contains
          cg => cgl%cg
          if (sfrl_dump) cg%q(ir)%arr = 0.0
          if (sne_dump)  cg%q(is)%arr = 0.0
+         
+       !  cg%q(irh)%arr = 0.0
+       !  cg%q(ish)%arr = 0.0
+       !  cg%q(isn)%arr = 0.0
+
          do ifl = 1, flind%fluids
             pfl => flind%all_fluids(ifl)%fl
             do i = cg%ijkse(xdim,LO), cg%ijkse(xdim,HI)
@@ -275,6 +281,7 @@ contains
                               if (aint(pset%pdata%mass / mass_SN_tot) > stage) then          ! Threshold mass reached, the sink particle will go supernova!
                                  if ((.not. kick) .and. (.not. delayed)) then
                                     mfdv = (aint(pset%pdata%mass / mass_SN_tot) - stage) / cg%dvol
+                                    if (sne_dump) cg%q(isn)%arr(i,j,k)   = cg%q(isn)%arr(i,j,k) + 1
                                     call sf_inject(cg, pfl%ien, pfl%idn, i, j, k, is, ish, mfdv * en_SN09, mfdv * en_SN01, dt, sne_dump)   ! SNe energy injection
                                  endif
                                  pset%pdata%tform = t
@@ -300,6 +307,7 @@ contains
                         if (mass > mass_SN_tot) then          ! Threshold mass instantaneously reached, the sink particle will go supernova!
                            if ((.not. kick) .and. (.not. delayed)) then
                               mfdv = aint(mass/mass_SN_tot) / cg%dvol
+                              if (sne_dump) cg%q(isn)%arr(i,j,k)   = cg%q(isn)%arr(i,j,k) + 1
                               call sf_inject(cg, pfl%ien, pfl%idn, i, j, k, is, ish, mfdv * en_SN09, mfdv * en_SN01, dt, sne_dump)
                            endif
                            tbirth = t
@@ -367,7 +375,8 @@ contains
                                     cg%u(pfl%imx:pfl%imz,i,j,k) = cg%u(pfl%imx:pfl%imz,i,j,k) + ijk1 * padd
                                     cg%u(pfl%ien,i,j,k) = cg%u(pfl%ien,i,j,k) + ekin(cg%u(pfl%imx,i,j,k), cg%u(pfl%imy,i,j,k), cg%u(pfl%imz,i,j,k), cg%u(pfl%idn,i,j,k))  ! add new ekin
                                  else if (aijk1 == 0 .and. tcond2) then    ! Instantaneous injection SNe Agertz
-                                     call sf_inject(cg, pfl%ien, pfl%idn, i, j, k, is, ish, mfdv * en_SN09, mfdv * en_SN01, dt,sne_dump)
+                                    if (sne_dump) cg%q(isn)%arr(i,j,k)   = cg%q(isn)%arr(i,j,k) + 1
+                                    call sf_inject(cg, pfl%ien, pfl%idn, i, j, k, is, ish, mfdv * en_SN09, mfdv * en_SN01, dt,sne_dump)
                                  endif
 
                               ! Delayed FB in 7^3 cells
@@ -388,6 +397,9 @@ contains
                                  endif
                                  if (.not. cg%leafmap(i,j,k)) cycle
 
+                                 if ((sne_dump) .and. (aijk1 == 0)) then
+                                    cg%q(isn)%arr(i,j,k)   = cg%q(isn)%arr(i,j,k) + 1
+                                 endif
                                  call TIGRESS_injection(cg, pfl, dens_amb, cg%dx, mfdv, 1.0/343, ijk1, aijk1, i, j, k, is, ish, sne_dump)
 
                               endif
@@ -484,7 +496,7 @@ contains
       endif
 #endif /* CRESP */
 
-      if (sne_dump) cg%q(is)%arr(i,j,k)   = mft / (2*dt)
+      if (sne_dump) cg%q(is)%arr(i,j,k)   = cg%q(is)%arr(i,j,k) + mft / (2*dt)
       if (sne_dump) cg%q(ish)%arr(i,j,k)  = cg%q(ish)%arr(i,j,k) + mft
 
       return
@@ -826,8 +838,8 @@ end function check_threshold
 
                       if (.not. cg%leafmap(i,j,k)) cycle
                       if ((dx .gt. cg%dx*2) .or. (dx .lt. cg%dx/2.0) .or. (frac .eq. 0.0)) then
-                              print *, '[star_formation] ........ERROR..........', dx, cg%dx
-                              call die('[star_formation] Weird values in dx and cg%dx')
+                         print *, '[star_formation] ........ERROR..........', dx, cg%dx
+                         call die('[star_formation] Weird values in dx and cg%dx')
                       endif
 
 
@@ -908,14 +920,14 @@ end function check_threshold
        nz = min(ceiling((z-dx - cg%coord(LO, zdim)%r(cg%ijkse(zdim,LO))) / dx), 3) + min(ceiling((cg%coord(HI, zdim)%r(cg%ijkse(zdim,HI)) - z) / dx), 4)
     endif
 
-    frac = nx*ny*nz/342.0
 
     if (cg%dx .eq. dx) then
-       frac = frac / 342.0
+       frac = 1.0 / 343
     else if (cg%dx .eq. 2*dx) then
+       frac = nx*ny*nz/343.0
        frac = frac / (ceiling(nx/2.0) * ceiling(ny/2.0) * ceiling(nz/2.0))
     else if (cg%dx .eq. dx/2.0) then
-       frac = frac / (nx*ny*nz*8)
+       frac = 1.0 / (343*8)
     else
        frac = 0.0                        ! Should not be injected on lower refinement levels
     endif

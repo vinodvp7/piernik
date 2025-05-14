@@ -26,8 +26,7 @@
 !
 #include "piernik.h"
 
-!>
-!! \brief This module gathers all applicable timestep limits and computes next timestep.
+!>!! \brief This module gathers all applicable timestep limits and computes next timestep.
 !! \deprecated remove "__INTEL_COMPILER" clauses as soon as Intel Compiler gets required features and/or bug fixes
 !<
 
@@ -265,9 +264,6 @@ contains
       if (.not. repetitive_steps) return
 
       unwanted_negatives = .false.
-      c_all_bck = c_all
-      call time_step(checkdt, flind, .false.)
-      c_all = c_all_bck
 
       call piernik_MPI_Allreduce(dn_negative, pLOR)
       call piernik_MPI_Allreduce(ei_negative, pLOR)
@@ -297,6 +293,9 @@ contains
          ei_negative  = .false.
       endif
 
+      c_all_bck = c_all
+      call time_step(checkdt, flind, .false.)
+      c_all = c_all_bck
       call set_repeat_step(unwanted_negatives)
       call sync_repeat_step
       if (repeat_step()) call reset_freezing_speed

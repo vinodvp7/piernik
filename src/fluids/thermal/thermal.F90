@@ -222,6 +222,7 @@ contains
    subroutine fit_cooling_curve(dens)
 
       use dataio_pub,  only: msg, warn, die, printinfo
+      use func,        only: operator(.equals.)
       use mpisetup,    only: master
       use units,       only: cm, erg, sek, mH
 
@@ -245,10 +246,10 @@ contains
       if (cool_curve == 'tabulated') then
          open(unit=coolfile, file=cool_file, action='read', status='old')
          read(coolfile,*) nbins
-         if (master) then
-            !write(msg,'(3a,i8,a)') '[thermal] Reading ', trim(cool_file), ' file with ', nbins, ' points'
-            !call printinfo(msg)
-         endif
+      !   if (master) then
+      !      write(msg,'(3a,i8,a)') '[thermal] Reading ', trim(cool_file), ' file with ', nbins, ' points'
+      !      call printinfo(msg)
+      !   endif
          allocate(logT(nbins), lambda(nbins), cool(nbins), heat(nbins))
          do i = 1, nbins
             read(coolfile,*) logT(i), cool(i)
@@ -313,10 +314,6 @@ contains
             endif
          endif
       enddo
-      !if (master) then
-         !write(msg, '(a,f10.2)') '[thermal] Equilibrium Temperature = ', Teql
-         !call printinfo(msg)
-      !endif
 
       call fit_proc(nbins, logT, lambda)   ! Find nfuncs and Perform fit
       deallocate(logT, lambda, cool, heat)
@@ -326,7 +323,7 @@ contains
    subroutine fit_proc(nbins, logT, lambda)
 
       use constants,  only: big
-      use dataio_pub, only: msg, printinfo !,die
+      use dataio_pub, only: msg, printinfo
       use func,       only: operator(.equals.)
       use mpisetup,   only: master
 
@@ -426,10 +423,10 @@ contains
 
          if (set_nfuncs) then
             nfuncs = k
-            if (master) then
-               !write(msg, '(a,i4)') '[thermal] fit nfuncs = ', nfuncs
-               !call printinfo(msg)
-            endif
+          !  if (master) then
+          !     write(msg, '(a,i4)') '[thermal] fit nfuncs = ', nfuncs
+          !     call printinfo(msg)
+          !  endif
          endif
 
          if (fill_array) then
@@ -462,17 +459,24 @@ contains
       use fluidindex, only: flind
       use fluidtypes, only: component_fluid
       use func,       only: ekin, emag
+      use global,     only: smallei, use_smallei
       use grid_cont,  only: grid_container
       use mpisetup,   only: master
       use ppp,        only: ppp_main
       use units,      only: kboltz, mH
+#ifdef COSM_RAYS
+      use cr_data,        only: icr_H1, cr_index
+      use initcosmicrays, only: iarr_crn, cr_active, gamma_cr_1
+#endif /* COSM_RAYS */
 
       implicit none
 
       real,                    intent(in) :: dt
-      real, dimension(:, :, :), pointer   :: ta, dens, ener
+      real, dimension(:, :, :), pointer   :: ta, dens, ener, encr, magx, magy, magz
       real, dimension(:,:,:), allocatable :: kinmag_ener
-      real                                :: dt_cool, t1, tcool, cfunc, hfunc, esrc, kbgmh, ikbgmh, Tnew, int_ener
+      real, dimension(:), pointer         :: X,Y,Z
+      real                                :: dt_cool, t1, tcool, cfunc, hfunc, esrc, kbgmh, ikbgmh, Tnew, int_ener, fact_G1, R1, CR_heating
+      real                                :: vax, vay, vaz, gradpcrx, gradpcry, gradpcrz, va, maxva, maxcrheating
       integer                             :: ifl, i, j, k
       integer, dimension(3)               :: n
 
@@ -496,6 +500,17 @@ contains
             dens => cg%u(pfl%idn,:,:,:)
             ener => cg%u(pfl%ien,:,:,:)
             ta   => cg%q(itemp)%arr(:,:,:)
+#ifdef COSM_RAYS
+            magx => cg%b(xdim,:,:,:)
+            magy => cg%b(ydim,:,:,:)
+            magz => cg%b(zdim,:,:,:)
+            encr => cg%u(iarr_crn(cr_index(icr_H1)),:,:,:)
+#endif /* COSM_RAYS */
+
+            X => cg%x(:)
+            Y => cg%y(:)
+            Z => cg%z(:)
+
 
             n = shape(ta)
             allocate(kinmag_ener(n(xdim),n(ydim),n(zdim)))
@@ -539,13 +554,19 @@ contains
                            ta(i,j,k) = int_ener * ikbgmh / dens(i,j,k)
                            if (ta(i,j,k) .lt. 10.0) ta(i,j,k) = 10.0
                            if (ta(i,j,k) .gt. 10.0**8) ta(i,j,k) = 10.0**8
+                           if (.not. (ta(i,j,k) .ge. 0.0)) ta(i,j,k) = 10.0**8
                            call calc_tcool(ta(i,j,k), dens(i,j,k), kbgmh, tcool)
                            dt_cool = min(dt, tcool/10.0)
                            t1 = 0.0
                            do while (t1 < dt)
-                              call temp_EIS(tcool, dt_cool, igamma(pfl%gam), kbgmh, ta(i,j,k), dens(i,j,k), Tnew)
+                              if (isochoric .eq. 4) then
+                                 call temp_EIS_tab(tcool, dt_cool, igamma(pfl%gam), kbgmh, ta(i,j,k), dens(i,j,k), Tnew)
+                              else
+                                 call temp_EIS(tcool, dt_cool, igamma(pfl%gam), kbgmh, ta(i,j,k), dens(i,j,k), Tnew)
+                              endif
                               !Tnew = ta(i,j,k)
                               int_ener    = dens(i,j,k) * kbgmh * Tnew
+                              if (use_smallei) int_ener = max(int_ener, smallei)
                               ener(i,j,k) = kinmag_ener(i,j,k) + int_ener
                               ta(i,j,k) = Tnew
                               t1 = t1 + dt_cool
@@ -556,9 +577,11 @@ contains
                   enddo
 
                case ('EE')
-                  do i = 1, n(xdim)
-                     do j = 1, n(ydim)
-                        do k = 1, n(zdim)
+                  maxva = 0
+                  maxcrheating=0
+                  do i = 5, n(xdim)-4
+                     do j = 5, n(ydim)-4
+                        do k = 5, n(zdim)-4
                            int_ener = ener(i,j,k) - kinmag_ener(i,j,k)
                            !tcool    = kbgmh * ta(i,j,k) / (dens(i,j,k) * abs(L0_cool) * (ta(i,j,k)/Teq)**alpha_cool)
                            ta(i,j,k) = int_ener * ikbgmh / dens(i,j,k)
@@ -567,14 +590,57 @@ contains
                            call calc_tcool(ta(i,j,k), dens(i,j,k), kbgmh, tcool)
                            dt_cool  = min(dt, tcool/10.0)
                            t1 = 0.0
+                           R1 = sqrt(X(i)**2+Y(j)**2)
+                           if (R1 .lt. 400) then
+                                !  fact_G1 = 1.0
+                                  fact_G1 = 0.01/0.00021 * exp(-dens(i,j,k)/1.775) / 10    !Following Moon+21
+                           else
+                               !fact_G1 = 10.0**(80000/3.0 /R1**2 - 8/3.0)
+                               !fact_G1 = 10.0**(288.0/5 * 10.0**4 / R1**2 - 18.0/5)
+                               fact_G1 = 10.0**(144.0/5 * 10.0**4 / R1**2 - 9.0/5)
+                           endif
+                           if ((abs(Z(k)) .lt. 50) .and. (abs(Z(k)) .gt. 30))  then
+                              !fact_G1 = fact_G1 * (-0.0495 * abs(Z(k)) + 2.485)
+                              fact_G1 = fact_G1 * (-0.045 * abs(Z(k)) + 2.35)
+                           else if (abs(Z(k)) .gt. 50) then
+                              !fact_G1 = 0.01
+                              fact_G1 = 0.1
+                           endif
+                           !fact_G1 = max(fact_G1, 0.01)
+                           fact_G1 = max(fact_G1, 0.1)
+                           !fact_G1 = 1.0                !!!!! MODIFIED
+
+                           if (ta(i,j,k) .gt. 15000.0) then
+                              fact_G1 = 0.0
+                           endif
+                           CR_heating = 0.0
+#ifdef COSM_RAYS
+                           if (cr_active .eq. 1.0) then
+                              vax = magx(i,j,k) / (sqrt(2.0*dens(i,j,k)))
+                              vay = magy(i,j,k) / (sqrt(2.0*dens(i,j,k)))
+                              vaz = magz(i,j,k) / (sqrt(2.0*dens(i,j,k)))
+                              gradpcrx = gamma_cr_1 * (encr(i+1,j,k) - encr(i-1,j,k)) / (2.0*cg%dx)
+                              gradpcry = gamma_cr_1 * (encr(i,j+1,k) - encr(i,j-1,k)) / (2.0*cg%dy)
+                              gradpcrz = gamma_cr_1 * (encr(i,j,k+1) - encr(i,j,k-1)) / (2.0*cg%dz)
+                              CR_heating = abs(vax*gradpcrx + vay*gradpcry + vaz*gradpcrz)
+                              va = sqrt(vax**2+vay**2+vaz**2)
+                              !va = sqrt(emag(magx(i,j,k), magy(i,j,k), magz(i,j,k))/(2.0*dens(i,j,k)))
+                              if (va .gt. maxva) maxva = va
+                              if (CR_heating .gt. maxcrheating) maxcrheating = CR_heating
+                           endif
+
+#endif /* COSM_RAYS */
+
                            do while (t1 < dt)
                               call temp_EIS(tcool, dt_cool, igamma(pfl%gam), kbgmh, ta(i,j,k), dens(i,j,k), Tnew)
                               int_ener    = dens(i,j,k) * kbgmh * Tnew
                               ener(i,j,k) = kinmag_ener(i,j,k) + int_ener
 
-                              call heat(dens(i,j,k), hfunc)
+                              call heat(dens(i,j,k), hfunc, fact_G1, CR_heating)
                               int_ener    = int_ener    + hfunc * dt_cool
-                              ener(i,j,k) = ener(i,j,k) + hfunc * dt_cool
+                              if (use_smallei) int_ener = max(int_ener, smallei)
+                              !ener(i,j,k) = ener(i,j,k) + hfunc * dt_cool
+                              ener(i,j,k) = kinmag_ener(i,j,k) + int_ener
 
                               ta(i,j,k) = int_ener * ikbgmh / dens(i,j,k)
                               t1 = t1 + dt_cool
@@ -776,7 +842,7 @@ contains
 
    end subroutine cool
 
-   subroutine heat(dens, heatf)
+   subroutine heat(dens, heatf, fact_G1, CR_heating)
 
       use dataio_pub, only: msg, warn
       use mpisetup,   only: master
@@ -785,10 +851,17 @@ contains
 
       real, intent(in)  :: dens
       real, intent(out) :: heatf
+      real, intent(in), optional :: fact_G1, CR_heating
 
       select case (heat_model)
-         case ('G012')
-            heatf =  G0_heat * dens**2 + G1_heat * dens + G2_heat
+      case ('G012')
+            if (present(CR_heating)) G2_heat = G2_heat + CR_heating
+            if (present(fact_G1)) then
+               heatf =  G0_heat * dens**2 + G1_heat * fact_G1 * dens  + G2_heat
+            else
+               heatf =  G0_heat * dens**2 + G1_heat * dens  + G2_heat
+            endif
+            if (present(CR_heating)) G2_heat = G2_heat - CR_heating
          case ('null')
             heatf = 0.0
          case default
@@ -933,7 +1006,6 @@ contains
 
        deallocate(Tref, lambda0, alpha)
 
-       !print *, dens, temp, Tnew
 
    end subroutine temp_EIS_tab
 

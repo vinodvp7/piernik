@@ -404,7 +404,9 @@ contains
       use fluidtypes, only: component_fluid
       use func,       only: emag, ekin
       use global,     only: smallei, use_smallei, ei_negative, disallow_negatives
+#ifdef THERM
       use units,      only: kboltz, mH
+#endif /* THERM */
 
       implicit none
 
@@ -414,7 +416,10 @@ contains
 
 !locals
 
-      real, dimension(n)              :: kin_ener, int_ener, mag_ener, temperature
+      real, dimension(n)              :: kin_ener, int_ener, mag_ener
+#ifdef THERM
+      real, dimension(n)              :: temperature
+#endif /* THERM */
       class(component_fluid), pointer :: pfl
       integer                         :: ifl
       real                            :: kbgmh, ikbgmh
@@ -424,8 +429,6 @@ contains
       do ifl = 1, flind%fluids
          pfl => flind%all_fluids(ifl)%fl
          if (pfl%has_energy) then
-            kbgmh  = kboltz / (pfl%gam_1 * mH)
-            ikbgmh = pfl%gam_1 * mH / kboltz
             kin_ener = ekin(u1(:, pfl%imx), u1(:, pfl%imy), u1(:, pfl%imz), u1(:, pfl%idn))
             if (pfl%is_magnetized) then
                mag_ener = emag(bb(:, xdim), bb(:, ydim), bb(:, zdim))
@@ -436,9 +439,12 @@ contains
 
             if (disallow_negatives) ei_negative = ei_negative .or. (any(int_ener < zero))
             if (use_smallei) int_ener = max(int_ener, smallei)
+#ifdef THERM
+            kbgmh  = kboltz / (pfl%gam_1 * mH)
+            ikbgmh = pfl%gam_1 * mH / kboltz
             temperature = max(int_ener * ikbgmh /  u1(:, pfl%idn), 10.0)
             int_ener =  u1(:, pfl%idn) * temperature * kbgmh
-
+#endif /* THERM */
             u1(:, pfl%ien) = int_ener + kin_ener
             if (pfl%is_magnetized) u1(:, pfl%ien) = u1(:, pfl%ien) + mag_ener
          endif

@@ -125,6 +125,9 @@ contains
 #ifdef TRACER
       use inittracer,     only: init_tracer
 #endif /* TRACER */
+#ifdef STREAM_CR                                   
+      use initstreamingcr only: init_streamingcr     ! 1.Added this line          
+#endif /* STREAM_CR */
 #ifdef VERBOSE
       use dataio_pub,     only: printinfo
 #endif /* VERBOSE */
@@ -151,7 +154,9 @@ contains
 #ifdef TRACER
       call init_tracer
 #endif /* TRACER */
-
+#ifdef STREAM_CR
+      call init_streamingcr                               ! 2.Added this line
+#endif /* STREAM */
       call fluid_index    ! flind has valid values afterwards
 
       cs2_max = 0.0

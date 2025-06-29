@@ -117,19 +117,19 @@ contains
       use initneutral,    only: init_neutral
       use mass_defect,    only: init_magic_mass
 #ifdef COSM_RAYS
-      use initcosmicrays, only: init_cosmicrays
+      use initcosmicrays,  only: init_cosmicrays
 #endif /* COSM_RAYS */
 #ifdef CRESP
-      use initcrspectrum, only: init_cresp
+      use initcrspectrum,  only: init_cresp
 #endif /* CRESP */
 #ifdef TRACER
-      use inittracer,     only: init_tracer
+      use inittracer,      only: init_tracer
 #endif /* TRACER */
 #ifdef STREAM_CR                                   
-      use initstreamingcr only: init_streamingcr     ! 1.Added this line          
+      use initstreamingcr, only: init_streamingcr,nscr     ! 1.Added this line          
 #endif /* STREAM_CR */
 #ifdef VERBOSE
-      use dataio_pub,     only: printinfo
+      use dataio_pub,      only: printinfo
 #endif /* VERBOSE */
 
       implicit none

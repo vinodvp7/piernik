@@ -262,6 +262,11 @@ contains
 #ifdef COSM_RAYS
       call set_cr_names
 #endif /* COSM_RAYS */
+
+#ifdef STREAM_CR
+     call set_streamingcr_names
+#endif STREAM_CR /* STREAM_CR */
+
 #ifdef CRESP
       call set_cresp_names
 #endif /* CRESP */
@@ -318,6 +323,34 @@ contains
          end select
 
       end subroutine set_fluid_names
+#ifdef STREAM_CR
+      subroutine set_streamingcr_names
+         use constants,        only: dsetnamelen, I_ONE
+         use named_array_list, only: wna, na_var_4d
+         use initstreamingcr,  only: nscr
+
+         implicit none
+
+         integer(kind=4) :: i
+         character(len=dsetnamelen) :: var
+
+         select type (lst => wna%lst)
+            type is (na_var_4d)
+            do i=I_ONE,nscr
+               write(var, '(a,i2.2)') "escr_", i
+               call lst(wna%fi)%set_compname(flind%scr(i)%iescr, var)
+               write(var, '(a,i2.2)') "fcx_", i
+               call lst(wna%fi)%set_compname(flind%scr(i)%ifcx , var)
+               write(var, '(a,i2.2)') "fcy_", i
+               call lst(wna%fi)%set_compname(flind%scr(i)%ifcy , var)
+               write(var, '(a,i2.2)') "fcz_", i
+               call lst(wna%fi)%set_compname(flind%scr(i)%ifcz , var)
+            end do
+            class default
+               call die("[cg_list_global:set_streamingcr_names] Unknown list type")
+         end select
+      end subroutine set_streamingcr_names
+#endif /* STREAM_CR */
 
 #ifdef COSM_RAYS
       subroutine set_cr_names

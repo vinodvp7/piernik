@@ -404,7 +404,7 @@ contains
       this%iescr  = this%beg                            ! index of the energy density for the first CR is 6 and the next one is 10                      
       this%ifcx   = this%iescr + I_ONE                  ! Index of flux follows from above as  7 -> 8 -> 9 
       this%ifcy   = this%ifcx  + I_ONE
-      this%ifcz   = this%ifcz  + I_ONE                  ! (this%end should match this value)
+      this%ifcz   = this%ifcy  + I_ONE                  ! (this%end should match this value)
 
       if (flind%stcosm < I_ONE) flind%components = flind%components + I_ONE     ! streaming CR is one more component and for the entire nscr species it is updated only once
       this%pos = flind%components + iscr

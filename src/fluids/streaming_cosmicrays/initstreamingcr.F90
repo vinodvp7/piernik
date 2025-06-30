@@ -144,42 +144,4 @@ subroutine init_streamingcr
     end if
     gamma_scr_1 = gamma_scr - 1.0
 end subroutine init_streamingcr
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 end module initstreamingcr

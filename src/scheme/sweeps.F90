@@ -111,7 +111,7 @@ contains
 !! Update boundaries. Perform Runge-Kutta substeps.
 !<
 
-   subroutine sweep(cdim, fargo_vel)
+   subroutine sweep(cdim,istep,fargo_vel)
 
       use cg_cost_data,     only: I_MHD, I_REFINE
       use cg_leaves,        only: leaves
@@ -154,8 +154,8 @@ contains
 
       integer(kind=4),           intent(in) :: cdim
       integer(kind=4), optional, intent(in) :: fargo_vel
+      integer,                   intent(in) :: istep
 
-      integer                          :: istep
       type(cg_list_element), pointer   :: cgl
       type(grid_container),  pointer   :: cg
       type(cg_list_dataop_t), pointer  :: sl
@@ -167,7 +167,7 @@ contains
       procedure(solve_cg_sub), pointer :: solve_cg => null()
       character(len=*), dimension(ndims), parameter :: sweep_label = [ "sweep_x", "sweep_y", "sweep_z" ]
       character(len=*), parameter :: solve_cgs_label = "solve_bunch_of_cg", cg_label = "solve_cg", init_src_label = "init_src"
-
+      
       call ppp_main%start(sweep_label(cdim))
 
       select case (which_solver)
@@ -214,7 +214,6 @@ contains
       call ppp_main%stop(init_src_label)
 
       ! This is the loop over Runge-Kutta stages
-      do istep = first_stage(integration_order), last_stage(integration_order)
 
          call initiate_flx_recv(req, cdim)
          n_recv = req%n
@@ -269,7 +268,6 @@ contains
          call req%waitall("sweeps")
 
          call update_boundaries(cdim, istep)
-      enddo
 
       call sl%delete
       deallocate(sl)

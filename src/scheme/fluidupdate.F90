@@ -136,9 +136,9 @@ contains
    subroutine make_3sweeps(forward)
 
       use cg_list_dataop,      only: expanded_domain
-      use constants,           only: xdim, ydim, zdim, I_ONE
+      use constants,           only: xdim, ydim, zdim, I_ONE, first_stage, last_stage
       use fargo,               only: make_fargosweep
-      use global,              only: skip_sweep, use_fargo
+      use global,              only: skip_sweep, use_fargo, integration_order
       use hdc,                 only: glmdamping, eglm
       use ppp,                 only: ppp_main
       use sources,             only: external_sources
@@ -168,6 +168,7 @@ contains
 
       integer(kind=4) :: s, sFRST, sLAST, sCHNG
       character(len=*), parameter :: sw3_label = "sweeps"
+      integer                     :: istep     ! stage in the time integration scheme
 
       if (forward) then
          sFRST = xdim ; sLAST = zdim ; sCHNG = I_ONE
@@ -199,15 +200,17 @@ contains
       ! The following block of code may be treated as a 3D (M)HD solver.
       ! Don't put anything inside unless you're sure it should belong to the (M)HD solver.
       call ppp_main%start(sw3_label)
-      if (use_fargo) then
-         if (.not.skip_sweep(zdim)) call make_adv_sweep(zdim, forward)
-         if (.not.skip_sweep(xdim)) call make_adv_sweep(xdim, forward)
-         if (.not.skip_sweep(ydim)) call make_fargosweep
-      else
-         do s = sFRST, sLAST, sCHNG
-            if (.not.skip_sweep(s)) call make_adv_sweep(s, forward)
-         enddo
-      endif
+      do istep = first_stage(integration_order), last_stage(integration_order)
+            if (use_fargo) then
+            if (.not.skip_sweep(zdim)) call make_adv_sweep(zdim, forward,istep)
+            if (.not.skip_sweep(xdim)) call make_adv_sweep(xdim, forward,istep)
+            if (.not.skip_sweep(ydim)) call make_fargosweep
+            else
+            do s = sFRST, sLAST, sCHNG
+                  if (.not.skip_sweep(s)) call make_adv_sweep(s, forward,istep)
+            enddo
+            endif
+      end do
       call ppp_main%stop(sw3_label)
 
 #ifdef GRAV
@@ -231,7 +234,7 @@ contains
 !!
 !! \details Effectively this is a 3D (M)HD solver that applies only terms related to the direction dir/
 !<
-   subroutine make_adv_sweep(dir, forward)
+   subroutine make_adv_sweep(dir, forward,istep)
 
       use dataio_pub,     only: die
       use domain,         only: dom
@@ -250,6 +253,7 @@ contains
 
       integer(kind=4), intent(in) :: dir      !< direction, one of xdim, ydim, zdim
       logical,         intent(in) :: forward  !< if .false. then reverse operation order in the sweep
+      integer,         intent(in) :: istep     ! stage in the time integration scheme
 
 #ifdef MAGNETIC
       if ((which_solver == RTVD_SPLIT) .and. (divB_0_method /= DIVB_CT)) call die("[fluidupdate:make_sweep] only CT is implemented in RTVD")
@@ -265,7 +269,7 @@ contains
 #endif /* MAGNETIC */
          endif
 
-         call sweep(dir)
+         call sweep(dir,istep)
 
          if (forward) then
 #ifdef MAGNETIC
@@ -273,7 +277,7 @@ contains
 #endif /* MAGNETIC */
          endif
       else
-         if (geometry25D) call sweep(dir)
+         if (geometry25D) call sweep(dir,istep)
       endif
 
 #ifdef DEBUG

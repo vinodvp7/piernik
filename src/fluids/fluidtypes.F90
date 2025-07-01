@@ -416,7 +416,7 @@ contains
       call my_allocate(this%iarr,     ma1d)
       ma2d = [ndims, this%all]
       call my_allocate(this%iarr_swp, ma2d)
-
+      ! chnage fcx -> fscrx self explanatory names everywhere
       this%iarr(1:4)           = [this%iescr, this%ifcx, this%ifcy, this%ifcz]
       this%iarr_swp(xdim, 1:4) = [this%iescr, this%ifcx, this%ifcy, this%ifcz]
       this%iarr_swp(ydim, 1:4) = [this%iescr, this%ifcy, this%ifcx, this%ifcz]

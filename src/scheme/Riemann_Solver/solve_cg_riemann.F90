@@ -96,7 +96,7 @@ contains
          do i = 1, flind%fluids
             if (flind%all_fluids(i)%fl%is_magnetized) nmag = nmag + 1
          enddo
-         if (nmag > 1) call die("[solve_cg_riemann:solve_cg_riemann] At most one magnetized fluid is implemented")
+         if (nmag > 1) call die("[solve_cg_riemann:solve_cg_riemann] At most one magnetized fluid is implemented") ! So only 1 magnetized fluid is allowed ?
          call solve_cg_ub(cg, ddim, istep)
       else
          call solve_cg_u(cg, ddim, istep)

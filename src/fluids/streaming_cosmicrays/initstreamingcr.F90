@@ -75,7 +75,7 @@ subroutine init_streamingcr
     use_floorfc             = .true.
     K_scr_paral(1:nscr)     = 0.0
     K_scr_perp(1:nscr)      = 0.0
-
+! put vm here 
 
     if (master) then
         if (.not.nh%initialized) call nh%init()

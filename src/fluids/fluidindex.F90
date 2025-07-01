@@ -121,7 +121,7 @@ contains
       use fluidtypes, only: component_stcosm
 
       implicit none
-
+       !use scr for streaming cosmic ray
       class(component_stcosm), intent(inout) :: st
       integer(kind=4),  save :: stcpos =1              ! Needed here because using st%pos goes out of bound !
 

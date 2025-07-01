@@ -286,7 +286,7 @@ contains
 #endif /* ISO */
          endif
 
-         ! Estimates of speed for left and right going waves Eq. 67
+         ! Estimates of speed for left and right going waves Eq. 67 !Vinod comment: So here is where I put v+ and v- from Jian and Oh (2017)
 
          sl  =  min(ul(i, imx) ,ur(i, imx)) - c_fastm
          sr  =  max(ul(i, imx), ur(i, imx)) + c_fastm
@@ -414,8 +414,8 @@ contains
                dn_lsqt  =  sqrt(u_starl(idn))
                dn_rsqt  =  sqrt(u_starr(idn))
 
-               alfven_l  =  sm - abs(b_ccl(i, xdim))/dn_lsqt
-               alfven_r  =  sm + abs(b_ccr(i, xdim))/dn_rsqt
+               alfven_l  =  sm - abs(b_ccl(i, xdim))/dn_lsqt                 ! SL_star
+               alfven_r  =  sm + abs(b_ccr(i, xdim))/dn_rsqt                 ! SR_star
 
                ! Intermediate discontinuities
 
@@ -735,13 +735,13 @@ contains
 
          ! HLLD fluxes
 
-         if (sl .ge.  zero) then
-            f(i,:)  =  fl
-            if (present(p_ct_flx)) p_ct_flx(i, :) = p_ctl(i, :) * ul(i, imx)
-         else if (sr .le.  zero) then
-            f(i,:)  =  fr
-            if (present(p_ct_flx)) p_ct_flx(i, :) = p_ctr(i, :) * ur(i, imx)
-         else
+         if (sl .ge.  zero) then                                                                            !-----  SL >= 0 
+            f(i,:)  =  fl                                                                                   !-----  SL >= 0 
+            if (present(p_ct_flx)) p_ct_flx(i, :) = p_ctl(i, :) * ul(i, imx)                                !-----  SL >= 0 
+         else if (sr .le.  zero) then                                                                       !+++++  SR <= 0                             
+            f(i,:)  =  fr                                                                                   !+++++  SR <= 0  
+            if (present(p_ct_flx)) p_ct_flx(i, :) = p_ctr(i, :) * ur(i, imx)                                !+++++  SR <= 0  
+         else                                                                                               !<<<<< SL < 0 and SR > 0
 
             ! Speed of contact discontinuity Eq. 38
             ! Total left and right states of pressure, so prr and prl sm_nr/sm_dr

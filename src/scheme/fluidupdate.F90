@@ -108,7 +108,7 @@ contains
       call update_chspeed
 
       halfstep = .false.
-      t = t + dt
+      t = t + dt/2.0
 
       call make_3sweeps(.true.) ! X -> Y -> Z
 
@@ -119,8 +119,8 @@ contains
 #endif /* CRESP */
 
       halfstep = .true.
-      t = t + dt
-      dtm = dt
+      t = t + dt/2.0
+      dtm = dt/2.0
 
       call make_3sweeps(.false.) ! Z -> Y -> X
       call update_magic_mass
@@ -200,17 +200,20 @@ contains
       ! The following block of code may be treated as a 3D (M)HD solver.
       ! Don't put anything inside unless you're sure it should belong to the (M)HD solver.
       call ppp_main%start(sw3_label)
-      do istep = first_stage(integration_order), last_stage(integration_order)
-            if (use_fargo) then
-            if (.not.skip_sweep(zdim)) call make_adv_sweep(zdim, forward,istep)
-            if (.not.skip_sweep(xdim)) call make_adv_sweep(xdim, forward,istep)
-            if (.not.skip_sweep(ydim)) call make_fargosweep
-            else
-            do s = sFRST, sLAST, sCHNG
-                  if (.not.skip_sweep(s)) call make_adv_sweep(s, forward,istep)
-            enddo
-            endif
-      end do
+      if (forward) then 
+            istep = first_stage(integration_order)
+      else
+            istep =  last_stage(integration_order)
+      end if 
+      if (use_fargo) then
+      if (.not.skip_sweep(zdim)) call make_adv_sweep(zdim, forward,istep)
+      if (.not.skip_sweep(xdim)) call make_adv_sweep(xdim, forward,istep)
+      if (.not.skip_sweep(ydim)) call make_fargosweep
+      else
+      do s = sFRST, sLAST, sCHNG
+            if (.not.skip_sweep(s)) call make_adv_sweep(s, forward,istep)
+      enddo
+      endif
       call ppp_main%stop(sw3_label)
 
 #ifdef GRAV

@@ -130,7 +130,6 @@ contains
       iarr_all_fscry(scrpos) = scr_fluid%ifscry
       iarr_all_fscrz(scrpos) = scr_fluid%ifscrz
       iarr_all_scr_swp(:,I_ONE + (scrpos-I_ONE)*I_FOUR:I_FOUR + (scrpos-I_ONE)*I_FOUR) = scr_fluid%iarr_scr_swp(:,:)
-
       scrpos = scrpos + 1
    end subroutine set_scrindex_arrays
 
@@ -269,6 +268,7 @@ contains
       do i=I_ONE, nscr
             call set_scrindex_arrays(flind%scr(i))
       end do
+iarr_all_swp(:,flind%scr(1)%beg:flind%scr(nscr)%end) = iarr_all_scr_swp(:,:)             ! Important to update this
 #endif /* STREAM_CR */
 
       allocate(flind%all_fluids(flind%fluids))

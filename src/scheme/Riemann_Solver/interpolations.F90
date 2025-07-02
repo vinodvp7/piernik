@@ -68,11 +68,13 @@ contains
 
    function utoq(u, b_cc) result(q)
 
-      use constants,  only: half, xdim, zdim, I_ONE
+      use constants,  only: half, xdim, zdim, I_ONE, I_THREE
       use fluidindex, only: flind
-      use fluidtypes, only: component_fluid
+      use fluidtypes, only: component_fluid, component_scr
       use func,       only: ekin
-
+   #ifdef STREAM_CR
+      use initstreamingcr, only: vm 
+   #endif /* STREAM_CR */
       implicit none
 
       real, dimension(:,:),           intent(in) :: u
@@ -81,7 +83,9 @@ contains
       real, dimension(size(u, 1), size(u, 2)) :: q
       integer                                 :: p
       class(component_fluid), pointer         :: fl
-
+   #ifdef STREAM_CR
+      class(component_scr), pointer           :: fl_scr
+   #endif /* STREAM_CR */
       do p = 1, flind%fluids
          fl => flind%all_fluids(p)%fl
 
@@ -96,8 +100,16 @@ contains
                q(:, fl%ien) =  q(:, fl%ien) - half*fl%gam_1*sum(b_cc(:, xdim:zdim)**2, dim=2) ! Primitive variable for gas pressure (p) with magnetic fields. The requirement of total pressure is dealt in the fluxes and hlld routines. (2)
             endif
          endif
-
       enddo
+   #ifdef STREAM_CR
+      do p = I_ONE, flind%stcosm
+         fl_scr => flind%scr(i)
+         q(:,fl_scr%iescr) = I_THREE * u(:,fl_scr%iescr) !(Pc =Ec/3 and divergence term of ifscr{x,y,z} = Pc)
+         q(:,fl_scr%ifscrx) =  u(:,fl_scr%iescr) / (vm*vm)
+         q(:,fl_scr%ifscry) =  u(:,fl_scr%ifscry) / (vm*vm)
+         q(:,fl_scr%ifscrz) =  u(:,fl_scr%ifscrz) / (vm*vm)
+      end do
+   #endif /* STREAM_CR */
 
       associate (iend => flind%all_fluids(flind%fluids)%fl%end)
          if (iend < flind%all) q(:, iend + I_ONE:) = u(:, iend + I_ONE:)

@@ -64,7 +64,9 @@ contains
       use constants,  only: I_ONE
       use fluidindex, only: flind
       use fluidtypes, only: component_fluid
-
+   #ifdef STREAM_CR
+         use scr_helpers, only: reimann_scr_hlle
+   #endif /* STREAM_CR */
       implicit none
 
       real, dimension(:,:), target,  intent(in)    :: ql, qr          !< left and right fluid states
@@ -99,11 +101,17 @@ contains
 
          associate (iend => flind%all_fluids(flind%fluids)%fl%end)
             ! If there are CR or tracers, then calculate their fluxes with first fluid (typically ionized).
-            if (i == 1 .and. iend < flind%all) then
-               p_ct_flx => flx(:, iend + I_ONE:)
+            if (i == 1 .and. iend < flind%all .and. flind%stcosm<I_ONE) then             ! Added this condition .and. flind%stcosm<I_ONE
+               p_ct_flx => flx(:, iend + I_ONE:)         
                p_ctl => ql(:, iend + I_ONE:)
                p_ctr => qr(:, iend + I_ONE:)
                call riemann_hlld(p_flx, p_ql, p_qr, p_bcc, p_bccl, p_bccr, cs2, fl%gam, p_ct_flx, p_ctl, p_ctr)
+            else if (flind%stcosm .ge. I_ONE) then
+               p_ct_flx => flx(:, iend + I_ONE:)         
+               p_ctl => ql(:, iend + I_ONE:)
+               p_ctr => qr(:, iend + I_ONE:)
+               call reimann_scr_hlle(p_ct_flx, p_ctl, p_ctr)
+               call riemann_hlld(p_flx, p_ql, p_qr, p_bcc, p_bccl, p_bccr, cs2, fl%gam)
             else
                call riemann_hlld(p_flx, p_ql, p_qr, p_bcc, p_bccl, p_bccr, cs2, fl%gam)
             endif

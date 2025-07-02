@@ -44,13 +44,11 @@ module initstreamingcr
     ! namelist parameters
     integer(kind=4)                         :: nscr             !< number of non-spectral streaming CR components
     real                                    :: floorescr        !< floor value of streaming CR energy density
-    real                                    :: floorfc          !< floor value of streaming CR flux density in x,y,z direction 
+    real                                    :: vm               !< maximum speed in the simulation which controls the streaming CR timestepping
     real                                    :: gamma_scr        !< adiabatic index of all streaming CR non-spectral component
     real                                    :: gamma_scr_1      !< gamma_scr - 1.0
     logical                                 :: use_floorescr    !< correct streaming CR energy density or not                              
-    logical                                 :: use_floorfc      !< correct streaming CR flux densoity or not
-    real, dimension(120)                    :: K_scr_paral      !< parallel component of diffusion coeffecient of all streaming non-spectral CR
-    real, dimension(120)                    :: K_scr_perp       !< perpendicular component of diffusion coeffecient of all streaming non-spectral CR 
+    real, dimension(120)                    :: sigmap_scr       !< \sigma'^{-1}_c 
 contains
 
 subroutine init_streamingcr
@@ -64,18 +62,15 @@ subroutine init_streamingcr
     implicit none
     integer(kind=4) :: nl,nn,icr
 
-    namelist /STREAMING_CR/ nscr, floorescr, floorfc, gamma_scr, use_floorescr, &
-                            use_floorfc, K_scr_paral, K_scr_perp
+    namelist /STREAMING_CR/ nscr, floorescr, gamma_scr, use_floorescr, sigmap_scr,vm
+                            
 
     nscr                    = 1
     floorescr               = 0.0
-    floorfc                 = 0.0
     gamma_scr               = 4./3.
+    vm                      = 100.0
     use_floorescr           = .true.
-    use_floorfc             = .true.
-    K_scr_paral(1:nscr)     = 0.0
-    K_scr_perp(1:nscr)      = 0.0
-! put vm here 
+    sigmap_scr(1:nscr)      = 0.0
 
     if (master) then
         if (.not.nh%initialized) call nh%init()
@@ -102,13 +97,12 @@ subroutine init_streamingcr
         ibuff(1) = nscr
 
         rbuff(1) = floorescr   
-        rbuff(2) = floorfc       
+        rbuff(2) = vm       
         rbuff(3) = gamma_scr
         
         lbuff(1) = use_floorescr 
-        lbuff(2) = use_floorfc  
          
-        nl       = 2                                     ! this must match the last lbuff() index above
+        nl       = 1                                     ! this must match the last lbuff() index above
         nn       = count(rbuff(:) < huge(1.), kind=4)    ! this must match the last rbuff() index above
         ibuff(ubound(ibuff, 1)    ) = nn
         ibuff(ubound(ibuff, 1) - 1) = nl
@@ -116,8 +110,7 @@ subroutine init_streamingcr
         if (nn + 2 * nscr > ubound(rbuff, 1)) call die("[initstreamingcr:init_streamingcr] rbuff size exceeded.")
         if (nl  > ubound(lbuff, 1)) call die("[initstreamingcr:init_streamingcr] lbuff size exceeded.")
         
-        rbuff(nn+1      :nn+  nscr) = K_scr_paral(1:nscr)
-        rbuff(nn+1+nscr:nn+2*nscr)  = K_scr_perp(1:nscr)  
+        rbuff(nn+1      :nn+  nscr) = sigmap_scr(1:nscr)
     
     end if
 
@@ -131,16 +124,14 @@ subroutine init_streamingcr
         nscr            = ibuff(1) 
 
         floorescr       = rbuff(1)   
-        floorfc         = rbuff(2)        
+        vm              = rbuff(2)        
         gamma_scr       = rbuff(3) 
 
         use_floorescr   = lbuff(1) 
-        use_floorfc     = lbuff(2) 
 
         nn                  = ibuff(ubound(ibuff, 1)    )    ! this must match the last rbuff() index above
         nl                  = ibuff(ubound(ibuff, 1) - 1)    ! this must match the last lbuff() index above  
-        K_scr_paral(1:nscr) = rbuff(nn+1      :nn+  nscr)
-        K_scr_perp (1:nscr) = rbuff(nn+1+nscr:nn+2*nscr)
+        sigmap_scr(1:nscr)  = rbuff(nn+1      :nn+  nscr)
     end if
     gamma_scr_1 = gamma_scr - 1.0
 end subroutine init_streamingcr

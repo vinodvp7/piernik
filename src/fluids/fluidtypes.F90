@@ -34,7 +34,7 @@ module fluidtypes
    implicit none
 
    private
-   public :: component, component_fluid, phys_prop, var_numbers, component_stcosm
+   public :: component, component_fluid, phys_prop, var_numbers, component_scr
 
    type :: phys_prop
       type(value) :: dens_min
@@ -115,16 +115,16 @@ module fluidtypes
    end type fluid_arr
 
 
-   type, extends(component) :: component_stcosm
-      integer(kind=4) :: iescr   = -1        !< index denoting position of the streaming cr energy density in array arrays::u 
-      integer(kind=4) :: ifcx    = -1        !< index denoting position of the x-streaming cr flux density in array arrays::u 
-      integer(kind=4) :: ifcy    = -1        !< index denoting position of the y-streaming cr flux density in array arrays::u 
-      integer(kind=4) :: ifcz    = -1        !< index denoting position of the z-streaming cr flux density in array arrays::u 
-      integer(kind=4), allocatable, dimension(:)   :: iarr        
-      integer(kind=4), allocatable, dimension(:,:) :: iarr_swp
+   type, extends(component) :: component_scr
+      integer(kind=4) :: iescr     = -1          !< index denoting position of the streaming cr energy density in array arrays::u 
+      integer(kind=4) :: ifscrx    = -1        !< index denoting position of the x-streaming cr flux density in array arrays::u 
+      integer(kind=4) :: ifscry    = -1        !< index denoting position of the y-streaming cr flux density in array arrays::u 
+      integer(kind=4) :: ifscrz    = -1        !< index denoting position of the z-streaming cr flux density in array arrays::u 
+      integer(kind=4), allocatable, dimension(:)   :: iarr_scr        
+      integer(kind=4), allocatable, dimension(:,:) :: iarr_scr_swp
    contains
       procedure, pass :: set_scr_index
-   end type component_stcosm
+   end type component_scr
 
 
    type :: var_numbers
@@ -145,7 +145,7 @@ module fluidtypes
       type(component) :: crs         !< numbers of variables in all cosmic ray components
       type(component) :: crn         !< numbers of variables in cosmic ray nuclear components
       type(component) :: cre         !< numbers of variables in cosmic ray electron components
-      class(component_stcosm), allocatable, dimension(:) :: scr
+      class(component_scr), allocatable, dimension(:) :: scr
    contains
       procedure :: any_fluid_is_selfgrav
    end type var_numbers
@@ -387,7 +387,7 @@ contains
       use constants,   only: xdim, ydim, zdim, ndims, I_ONE, I_FOUR
       implicit none
 
-      class(component_stcosm), intent(inout) :: this
+      class(component_scr), intent(inout) :: this
       class(var_numbers), intent(inout)      :: flind
 
       integer(kind=4), save                 :: iscr=0
@@ -401,10 +401,10 @@ contains
       this%beg = flind%all + I_ONE                      ! the begining index of the component is 5 + 1 = 6 . flind%all is still not updated so it is still pointing to the last updated value (ionized fluid in this case and then to first CR at 9 )
       this%end = this%beg + this%all - I_ONE            ! End index . This should be 9 . Defined here <- 6 + 4 - 1 = 9
 
-      this%iescr  = this%beg                            ! index of the energy density for the first CR is 6 and the next one is 10                      
-      this%ifcx   = this%iescr + I_ONE                  ! Index of flux follows from above as  7 -> 8 -> 9 
-      this%ifcy   = this%ifcx  + I_ONE
-      this%ifcz   = this%ifcy  + I_ONE                  ! (this%end should match this value)
+      this%iescr    = this%beg                              ! index of the energy density for the first CR is 6 and the next one is 10                      
+      this%ifscrx   = this%iescr + I_ONE                    ! Index of flux follows from above as  7 -> 8 -> 9 
+      this%ifscry   = this%ifscrx  + I_ONE
+      this%ifscrz   = this%ifscry  + I_ONE                  ! (this%end should match this value)
 
       if (flind%stcosm < I_ONE) flind%components = flind%components + I_ONE     ! streaming CR is one more component and for the entire nscr species it is updated only once
       this%pos = flind%components + iscr
@@ -413,14 +413,13 @@ contains
       flind%all        = flind%all+ I_FOUR      ! 4 components (ec,fcx,fcy,fcz) for each cr species so total 4 * 2 = 8 and this will make flind%all = 5 + 8 = 13 . This should match the value of this%ifcz 
       
       ma1d = [this%all]
-      call my_allocate(this%iarr,     ma1d)
+      call my_allocate(this%iarr_scr,     ma1d)
       ma2d = [ndims, this%all]
-      call my_allocate(this%iarr_swp, ma2d)
-      ! chnage fcx -> fscrx self explanatory names everywhere
-      this%iarr(1:4)           = [this%iescr, this%ifcx, this%ifcy, this%ifcz]
-      this%iarr_swp(xdim, 1:4) = [this%iescr, this%ifcx, this%ifcy, this%ifcz]
-      this%iarr_swp(ydim, 1:4) = [this%iescr, this%ifcy, this%ifcx, this%ifcz]
-      this%iarr_swp(zdim, 1:4) = [this%iescr, this%ifcz, this%ifcy, this%ifcx]
+      call my_allocate(this%iarr_scr_swp, ma2d)
+      this%iarr_scr(1:4)           = [this%iescr, this%ifscrx, this%ifscry, this%ifscrz]
+      this%iarr_scr_swp(xdim, 1:4) = [this%iescr, this%ifscrx, this%ifscry, this%ifscrz]
+      this%iarr_scr_swp(ydim, 1:4) = [this%iescr, this%ifscry, this%ifscrx, this%ifscrz]
+      this%iarr_scr_swp(zdim, 1:4) = [this%iescr, this%ifscrz, this%ifscry, this%ifscrx]
    end subroutine set_scr_index
 !>
 !! \brief returns True value if any fluid is selfgravitating

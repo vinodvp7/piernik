@@ -107,7 +107,7 @@ contains
 
       use constants,      only: PIERNIK_INIT_GLOBAL
       use dataio_pub,     only: die, code_progress, warn
-      use fluidindex,     only: fluid_index, flind
+      use fluidindex,     only: fluid_index, flind,iarr_all_fscrx,iarr_all_escr,iarr_all_fscry,iarr_all_fscrz
       use fluids_pub,     only: has_dst, has_ion, has_neu, cs2_max
       use fluxes,         only: set_limiter
       use func,           only: operator(.notequals.)
@@ -158,7 +158,10 @@ contains
       call init_streamingcr                               ! 2.Added this line
 #endif /* STREAM */
       call fluid_index    ! flind has valid values afterwards
-
+      write(115,*) iarr_all_escr
+      write(115,*) iarr_all_fscrx
+      write(115,*) iarr_all_fscry
+      write(115,*) iarr_all_fscrz
       cs2_max = 0.0
       do ifl = lbound(flind%all_fluids, dim=1), ubound(flind%all_fluids, dim=1)
          cs2_max = max(cs2_max, flind%all_fluids(ifl)%fl%cs2)

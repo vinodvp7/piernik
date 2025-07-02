@@ -67,10 +67,10 @@ module fluidindex
    integer(kind=4), allocatable, dimension(:), target :: iarr_all_crs   !< array of indexes pointing to ener. densities of all CR-components
    integer(kind=4), allocatable, dimension(:), target :: iarr_all_trc   !< array of indexes pointing to tracers
    integer(kind=4), allocatable, dimension(:,:) :: iarr_all_swp         !< array (size = flind) of all fluid indexes in the order depending on sweeps direction
-   integer(kind=4), allocatable, dimension(:) :: iarr_all_escr   !< array of indexes pointing to mass densities of all fluids
-   integer(kind=4), allocatable, dimension(:) :: iarr_all_fcx   !< array of indexes pointing to mass densities of all fluids
-   integer(kind=4), allocatable, dimension(:) :: iarr_all_fcy   !< array of indexes pointing to mass densities of all fluids
-   integer(kind=4), allocatable, dimension(:) :: iarr_all_fcz   !< array of indexes pointing to mass densities of all fluids
+   integer(kind=4), allocatable, dimension(:) :: iarr_all_escr          !< array of indexes pointing to mass densities of all fluids
+   integer(kind=4), allocatable, dimension(:) :: iarr_all_fscrx         !< array of indexes pointing to mass densities of all fluids
+   integer(kind=4), allocatable, dimension(:) :: iarr_all_fscry         !< array of indexes pointing to mass densities of all fluids
+   integer(kind=4), allocatable, dimension(:) :: iarr_all_fscrz         !< array of indexes pointing to mass densities of all fluids
    integer(kind=4), allocatable, dimension(:,:) :: iarr_all_scr_swp         !< array (size = flind) of all fluid indexes in the order depending on sweeps direction
 
 
@@ -116,23 +116,23 @@ contains
 
    end subroutine set_fluidindex_arrays
 
-   subroutine set_stcosmindex_arrays(st)
+   subroutine set_scrindex_arrays(scr_fluid)
       use constants,  only: I_ONE,I_FOUR
-      use fluidtypes, only: component_stcosm
+      use fluidtypes, only: component_scr
 
       implicit none
        !use scr for streaming cosmic ray
-      class(component_stcosm), intent(inout) :: st
-      integer(kind=4),  save :: stcpos =1              ! Needed here because using st%pos goes out of bound !
+      class(component_scr), intent(inout) :: scr_fluid                
+      integer(kind=4),  save :: scrpos =1              ! Needed here because using scr_fluid%pos goes out of bound !
 
-      iarr_all_escr(stcpos) = st%iescr
-      iarr_all_fcx(stcpos) = st%ifcx
-      iarr_all_fcy(stcpos) = st%ifcy
-      iarr_all_fcz(stcpos) = st%ifcz
-      iarr_all_scr_swp(:,I_ONE + (stcpos-I_ONE)*I_FOUR:I_FOUR + (stcpos-I_ONE)*I_FOUR) = st%iarr_swp(:,:)
+      iarr_all_escr(scrpos) = scr_fluid%iescr
+      iarr_all_fscrx(scrpos) = scr_fluid%ifscrx
+      iarr_all_fscry(scrpos) = scr_fluid%ifscry
+      iarr_all_fscrz(scrpos) = scr_fluid%ifscrz
+      iarr_all_scr_swp(:,I_ONE + (scrpos-I_ONE)*I_FOUR:I_FOUR + (scrpos-I_ONE)*I_FOUR) = scr_fluid%iarr_scr_swp(:,:)
 
-      stcpos = stcpos + 1
-   end subroutine set_stcosmindex_arrays
+      scrpos = scrpos + 1
+   end subroutine set_scrindex_arrays
 
 !>
 !! \brief Subroutine fluid_index constructing all multi-fluid indexes used in other parts of PIERNIK code
@@ -151,7 +151,7 @@ contains
       use inittracer,     only: tracer_index, iarr_trc
 #endif /* TRACER */
 #ifdef STREAM_CR
-      use fluidtypes, only: component_stcosm
+      use fluidtypes, only: component_scr
       use initstreamingcr,   only: nscr
 #endif /* STREAM_CR */
       implicit none
@@ -219,10 +219,10 @@ contains
 
 #ifdef STREAM_CR
       allocate(iarr_all_scr_swp(xdim:zdim, 4*nscr))
-      allocate(iarr_all_escr(nscr),iarr_all_fcx(nscr),iarr_all_fcy(nscr),iarr_all_fcz(nscr))
+      allocate(iarr_all_escr(nscr),iarr_all_fscrx(nscr),iarr_all_fscry(nscr),iarr_all_fscrz(nscr))
 #else /* !STREAM_CR */
       allocate(iarr_all_scr_swp(0, 0))
-      allocate(iarr_all_escr(0),iarr_all_fcx(0),iarr_all_fcy(0),iarr_all_fcz(0))
+      allocate(iarr_all_escr(0),iarr_all_fscrx(0),iarr_all_fscry(0),iarr_all_fscrz(0))
 #endif /* !STREAM_CR */
 
 #ifdef TRACER
@@ -267,7 +267,7 @@ contains
 
 #ifdef STREAM_CR
       do i=I_ONE, nscr
-            call set_stcosmindex_arrays(flind%scr(i))
+            call set_scrindex_arrays(flind%scr(i))
       end do
 #endif /* STREAM_CR */
 
@@ -317,9 +317,9 @@ contains
       
       if ( flind%stcosm > 0 ) then
             if (allocated(iarr_all_escr   )) call my_deallocate(iarr_all_escr)
-            if (allocated(iarr_all_fcx    )) call my_deallocate(iarr_all_fcx)
-            if (allocated(iarr_all_fcy    )) call my_deallocate(iarr_all_fcy)
-            if (allocated(iarr_all_fcz    )) call my_deallocate(iarr_all_fcz)
+            if (allocated(iarr_all_fscrx    )) call my_deallocate(iarr_all_fscrx)
+            if (allocated(iarr_all_fscry    )) call my_deallocate(iarr_all_fscry)
+            if (allocated(iarr_all_fscrz    )) call my_deallocate(iarr_all_fscrz)
             if (allocated(iarr_all_scr_swp)) call my_deallocate(iarr_all_scr_swp)
       endif
 

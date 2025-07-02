@@ -339,12 +339,12 @@ contains
             do i=I_ONE,nscr
                write(var, '(a,i2.2)') "escr_", i
                call lst(wna%fi)%set_compname(flind%scr(i)%iescr, var)
-               write(var, '(a,i2.2)') "fcx_", i
-               call lst(wna%fi)%set_compname(flind%scr(i)%ifcx , var)
-               write(var, '(a,i2.2)') "fcy_", i
-               call lst(wna%fi)%set_compname(flind%scr(i)%ifcy , var)
-               write(var, '(a,i2.2)') "fcz_", i
-               call lst(wna%fi)%set_compname(flind%scr(i)%ifcz , var)
+               write(var, '(a,i2.2)') "fscrx_", i
+               call lst(wna%fi)%set_compname(flind%scr(i)%ifscrx , var)
+               write(var, '(a,i2.2)') "fscry_", i
+               call lst(wna%fi)%set_compname(flind%scr(i)%ifscry , var)
+               write(var, '(a,i2.2)') "fscrz_", i
+               call lst(wna%fi)%set_compname(flind%scr(i)%ifscrz , var)
             end do
             class default
                call die("[cg_list_global:set_streamingcr_names] Unknown list type")

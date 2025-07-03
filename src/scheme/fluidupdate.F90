@@ -94,10 +94,11 @@ contains
    subroutine fluid_update_full
 
       use dataio_pub,     only: halfstep
-      use global,         only: dt, dtm, t
+      use global,         only: dt, dtm, t, integration_order
       use hdc,            only: update_chspeed
       use mass_defect,    only: update_magic_mass
       use timestep_retry, only: repeat_fluidstep
+      use constants,      only: first_stage, last_stage
 #ifdef CRESP
       use cresp_grid,     only: cresp_update_grid, cresp_clean_grid
 #endif /* CRESP */
@@ -110,7 +111,7 @@ contains
       halfstep = .false.
       t = t + dt
 
-      call make_3sweeps(.true.) ! X -> Y -> Z
+      call make_3sweeps() ! X -> Y -> Z
 
 ! Sources should be hooked to problem_customize_solution with forward argument
 
@@ -118,11 +119,11 @@ contains
       call cresp_update_grid     ! updating number density and energy density of cosmic ray electrons via CRESP module
 #endif /* CRESP */
 
-      halfstep = .true.
-      t = t + dt
-      dtm = dt
+      !halfstep = .true.
+      !t = t + dt
+      !dtm = dt
 
-      call make_3sweeps(.false.) ! Z -> Y -> X
+     ! call make_3sweeps(.false.) ! Z -> Y -> X
       call update_magic_mass
 #ifdef CRESP
       call cresp_clean_grid ! BEWARE: due to diffusion some junk remains in the grid - this nullifies all inactive bins.
@@ -133,12 +134,12 @@ contains
 !>
 !! \brief Perform sweeps in all three directions plus sources that are calculated every timestep
 !<
-   subroutine make_3sweeps(forward)
+   subroutine make_3sweeps()
 
       use cg_list_dataop,      only: expanded_domain
-      use constants,           only: xdim, ydim, zdim, I_ONE
+      use constants,           only: first_stage, last_stage,xdim, ydim, zdim, I_ONE
       use fargo,               only: make_fargosweep
-      use global,              only: skip_sweep, use_fargo
+      use global,              only: skip_sweep, use_fargo, integration_order
       use hdc,                 only: glmdamping, eglm
       use ppp,                 only: ppp_main
       use sources,             only: external_sources
@@ -164,66 +165,68 @@ contains
 
       implicit none
 
-      logical, intent(in) :: forward  !< If .true. then do X->Y->Z sweeps, if .false. then reverse that order
+      logical                               :: forward = .false.  !< If .true. then do X->Y->Z sweeps, if .false. then reverse that order
+      integer                               :: istep     ! stage in the time integration scheme
 
       integer(kind=4) :: s, sFRST, sLAST, sCHNG
       character(len=*), parameter :: sw3_label = "sweeps"
+      do istep = first_stage(integration_order), last_stage(integration_order)
+            if (istep==first_stage(integration_order)) forward = .true.
+            if (forward) then
+                  sFRST = xdim ; sLAST = zdim ; sCHNG = I_ONE
+            else
+                  sFRST = zdim ; sLAST = xdim ; sCHNG = -I_ONE
+            endif
 
-      if (forward) then
-         sFRST = xdim ; sLAST = zdim ; sCHNG = I_ONE
-      else
-         sFRST = zdim ; sLAST = xdim ; sCHNG = -I_ONE
-      endif
+      #ifdef SHEAR
+            call shear_3sweeps
+      #endif /* SHEAR */
 
-#ifdef SHEAR
-      call shear_3sweeps
-#endif /* SHEAR */
+      #ifdef GRAV
+            call compute_h_gpot
+      #endif /* GRAV */
 
-#ifdef GRAV
-      call compute_h_gpot
-#endif /* GRAV */
+      #ifdef COSM_RAYS
+      #ifdef MULTIGRID
+            if (inworth_mg_diff()) then
+      #else /* !MULTIGRID */
+            if (use_CRdiff) then
+      #endif /* !MULTIGRID */
+            call make_diff_sweeps(forward)
+            endif
+      #endif /* COSM_RAYS */
 
-#ifdef COSM_RAYS
-#ifdef MULTIGRID
-      if (inworth_mg_diff()) then
-#else /* !MULTIGRID */
-      if (use_CRdiff) then
-#endif /* !MULTIGRID */
-         call make_diff_sweeps(forward)
-      endif
-#endif /* COSM_RAYS */
+            ! At this point everything should be initialized after domain expansion and we no longer need this list.
+            call expanded_domain%delete
 
-      ! At this point everything should be initialized after domain expansion and we no longer need this list.
-      call expanded_domain%delete
+            ! The following block of code may be treated as a 3D (M)HD solver.
+            ! Don't put anything inside unless you're sure it should belong to the (M)HD solver.
+            call ppp_main%start(sw3_label)
+            if (use_fargo) then
+            if (.not.skip_sweep(zdim)) call make_adv_sweep(zdim,istep, forward)
+            if (.not.skip_sweep(xdim)) call make_adv_sweep(xdim, istep,forward)
+            if (.not.skip_sweep(ydim)) call make_fargosweep
+            else
+            do s = sFRST, sLAST, sCHNG
+                  if (.not.skip_sweep(s)) call make_adv_sweep(s,istep, forward)
+            enddo
+            endif
+            call ppp_main%stop(sw3_label)
 
-      ! The following block of code may be treated as a 3D (M)HD solver.
-      ! Don't put anything inside unless you're sure it should belong to the (M)HD solver.
-      call ppp_main%start(sw3_label)
-      if (use_fargo) then
-         if (.not.skip_sweep(zdim)) call make_adv_sweep(zdim, forward)
-         if (.not.skip_sweep(xdim)) call make_adv_sweep(xdim, forward)
-         if (.not.skip_sweep(ydim)) call make_fargosweep
-      else
-         do s = sFRST, sLAST, sCHNG
-            if (.not.skip_sweep(s)) call make_adv_sweep(s, forward)
-         enddo
-      endif
-      call ppp_main%stop(sw3_label)
+      #ifdef GRAV
+            need_update = .true.
+      #ifdef NBODY
+            if (associated(psolver)) call psolver(forward)  ! this will clear need_update it it would call source_terms_grav
+      #endif /* NBODY */
+            if (need_update) call source_terms_grav
+      #endif /* GRAV */
 
-#ifdef GRAV
-      need_update = .true.
-#ifdef NBODY
-      if (associated(psolver)) call psolver(forward)  ! this will clear need_update it it would call source_terms_grav
-#endif /* NBODY */
-      if (need_update) call source_terms_grav
-#endif /* GRAV */
+            call external_sources(forward)
+            if (associated(problem_customize_solution)) call problem_customize_solution(forward)
 
-      call external_sources(forward)
-      if (associated(problem_customize_solution)) call problem_customize_solution(forward)
-
-      call eglm
-      call glmdamping
-
+            call eglm
+            call glmdamping
+      end do
    end subroutine make_3sweeps
 
 !>
@@ -231,7 +234,7 @@ contains
 !!
 !! \details Effectively this is a 3D (M)HD solver that applies only terms related to the direction dir/
 !<
-   subroutine make_adv_sweep(dir, forward)
+   subroutine make_adv_sweep(dir,istep forward)
 
       use dataio_pub,     only: die
       use domain,         only: dom
@@ -250,6 +253,7 @@ contains
 
       integer(kind=4), intent(in) :: dir      !< direction, one of xdim, ydim, zdim
       logical,         intent(in) :: forward  !< if .false. then reverse operation order in the sweep
+      integer,                   intent(in) :: istep     ! stage in the time integration scheme
 
 #ifdef MAGNETIC
       if ((which_solver == RTVD_SPLIT) .and. (divB_0_method /= DIVB_CT)) call die("[fluidupdate:make_sweep] only CT is implemented in RTVD")
@@ -259,19 +263,19 @@ contains
       ! cost or allow for reduction of required guardcells
 
       if (dom%has_dir(dir)) then
-         if (.not. forward) then
-#ifdef MAGNETIC
-            if (divB_0_method == DIVB_CT) call magfield(dir)
-#endif /* MAGNETIC */
-         endif
+!         if (.not. forward) then
+!#ifdef MAGNETIC
+!            if (divB_0_method == DIVB_CT) call magfield(dir)
+!#endif /* MAGNETIC */
+!         endif
 
          call sweep(dir)
 
-         if (forward) then
+!         if (forward) then
 #ifdef MAGNETIC
             if (divB_0_method == DIVB_CT) call magfield(dir)
 #endif /* MAGNETIC */
-         endif
+!         endif
       else
          if (geometry25D) call sweep(dir)
       endif

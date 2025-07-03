@@ -111,7 +111,7 @@ contains
 !! Update boundaries. Perform Runge-Kutta substeps.
 !<
 
-   subroutine sweep(cdim, fargo_vel)
+   subroutine sweep(cdim, istep,fargo_vel)
 
       use cg_cost_data,     only: I_MHD, I_REFINE
       use cg_leaves,        only: leaves
@@ -154,8 +154,9 @@ contains
 
       integer(kind=4),           intent(in) :: cdim
       integer(kind=4), optional, intent(in) :: fargo_vel
+      integer,                   intent(in) :: istep     ! stage in the time integration scheme
 
-      integer                          :: istep
+
       type(cg_list_element), pointer   :: cgl
       type(grid_container),  pointer   :: cg
       type(cg_list_dataop_t), pointer  :: sl
@@ -214,62 +215,62 @@ contains
       call ppp_main%stop(init_src_label)
 
       ! This is the loop over Runge-Kutta stages
-      do istep = first_stage(integration_order), last_stage(integration_order)
+   !   do istep = first_stage(integration_order), last_stage(integration_order)
 
-         call initiate_flx_recv(req, cdim)
-         n_recv = req%n
-         all_processed = .false.
+      call initiate_flx_recv(req, cdim)
+      n_recv = req%n
+      all_processed = .false.
 
-         do while (.not. all_processed)
-            all_processed = .true.
-            blocks_done = 0
-            ! OPT this loop should probably go from finest to coarsest for better compute-communicate overlap.
-            cgl => sl%first
+      do while (.not. all_processed)
+         all_processed = .true.
+         blocks_done = 0
+         ! OPT this loop should probably go from finest to coarsest for better compute-communicate overlap.
+         cgl => sl%first
 
-            call ppp_main%start(solve_cgs_label)
-            do while (associated(cgl))
-               cg => cgl%cg
-               call cg%costs%start
+         call ppp_main%start(solve_cgs_label)
+         do while (associated(cgl))
+            cg => cgl%cg
+            call cg%costs%start
 
-               if (.not. cg%processed) then
-                  call recv_cg_finebnd(req, cdim, cg, all_received)
+            if (.not. cg%processed) then
+               call recv_cg_finebnd(req, cdim, cg, all_received)
 
-                  if (all_received) then
-                     call ppp_main%start(cg_label, PPP_CG)
-                     call cg%costs%stop(I_REFINE)
-                     ! The recv_cg_finebnd and send_cg_coarsebnd aren't MHD, so we should count them separately.
-                     ! The tricky part is that we need to fit all the switching inside the conditional part
-                     ! and don't mess pairing and don't let them to nest.
+               if (all_received) then
+                  call ppp_main%start(cg_label, PPP_CG)
+                  call cg%costs%stop(I_REFINE)
+                  ! The recv_cg_finebnd and send_cg_coarsebnd aren't MHD, so we should count them separately.
+                  ! The tricky part is that we need to fit all the switching inside the conditional part
+                  ! and don't mess pairing and don't let them to nest.
 
-                     call cg%costs%start
-                     call solve_cg(cg, cdim, istep, fargo_vel)
-                     call cg%costs%stop(I_MHD)
+                  call cg%costs%start
+                  call solve_cg(cg, cdim, istep, fargo_vel)
+                  call cg%costs%stop(I_MHD)
 
-                     call ppp_main%stop(cg_label, PPP_CG)
+                  call ppp_main%stop(cg_label, PPP_CG)
 
-                     call cg%costs%start
-                     call send_cg_coarsebnd(req, cdim, cg)
-                     blocks_done = blocks_done + 1
-                  else
-                     all_processed = .false.
-                  endif
+                  call cg%costs%start
+                  call send_cg_coarsebnd(req, cdim, cg)
+                  blocks_done = blocks_done + 1
+               else
+                  all_processed = .false.
                endif
-
-               call cg%costs%stop(I_REFINE)
-               cgl => cgl%nxt
-            enddo
-            call ppp_main%stop(solve_cgs_label)
-
-            if (.not. all_processed .and. blocks_done == 0) then
-               if (n_recv > 0) call MPI_Waitany(n_recv, req%r(:n_recv), g, MPI_STATUS_IGNORE, err_mpi)
-               ! g is the number of completed operations
             endif
+
+            call cg%costs%stop(I_REFINE)
+            cgl => cgl%nxt
          enddo
+         call ppp_main%stop(solve_cgs_label)
 
-         call req%waitall("sweeps")
-
-         call update_boundaries(cdim, istep)
+         if (.not. all_processed .and. blocks_done == 0) then
+            if (n_recv > 0) call MPI_Waitany(n_recv, req%r(:n_recv), g, MPI_STATUS_IGNORE, err_mpi)
+            ! g is the number of completed operations
+         endif
       enddo
+
+      call req%waitall("sweeps")
+
+      call update_boundaries(cdim, istep)
+!      enddo
 
       call sl%delete
       deallocate(sl)

@@ -108,27 +108,25 @@ contains
       call repeat_fluidstep
       call update_chspeed
       halfstep = .false.
+      t = t + dt
       do istep = first_stage(integration_order), last_stage(integration_order)
-      if (istep==last_stage(integration_order)) then
-            halfstep = .true.
-            dtm = dt
-      end if
-      t = t + dt/2.0
-
-      call make_3sweeps(.true.,istep) ! X -> Y -> Z
-
+            if (istep==first_stage(integration_order)) then
+                  call make_3sweeps(.true.,istep) ! X -> Y -> Z
+            else
+                  call make_3sweeps(.false.,istep) ! Z -> Y -> X
+            end if
+      end do
 ! Sources should be hooked to problem_customize_solution with forward argument
 
 #ifdef CRESP
       call cresp_update_grid     ! updating number density and energy density of cosmic ray electrons via CRESP module
 #endif /* CRESP */
 
-      call make_3sweeps(.false.,istep) ! Z -> Y -> X
       call update_magic_mass
 #ifdef CRESP
       call cresp_clean_grid ! BEWARE: due to diffusion some junk remains in the grid - this nullifies all inactive bins.
 #endif /* CRESP */
-end do
+
    end subroutine fluid_update_full
 
 !>

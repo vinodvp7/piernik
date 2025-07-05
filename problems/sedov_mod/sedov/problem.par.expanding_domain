@@ -1,0 +1,90 @@
+ $BASE_DOMAIN
+    n_d = 2*32, 1
+    bnd_xl = 'out'
+    bnd_xr = 'out'
+    bnd_yl = 'out'
+    bnd_yr = 'out'
+    bnd_zl = 'out'
+    bnd_zr = 'out'
+    xmin   =-0.5
+    xmax   = 0.5
+    ymin   =-0.5
+    ymax   = 0.5
+    zmin   =-1.0
+    zmax   = 1.0
+ /
+
+ $MPI_BLOCKS
+ /
+
+ $UNITS
+ /
+
+ $RESTART_CONTROL
+    restart  = 'last'
+    res_id   = ''
+    nrestart = 0
+ /
+
+ $END_CONTROL
+    tend   = 0.0002
+    nend   = 1000
+ /
+
+ $OUTPUT_CONTROL
+    problem_name = 'sedov'
+    run_id =  'tst'
+    dt_hdf  = 0.00002
+    dt_res  = 0.0
+    dt_log  = 0.00001
+    dt_tsl  = 1.e-10
+    vars(1:) = 'ener', 'dens', 'level', 'velx', 'vely', 'velz'
+ /
+
+ $FLUID_IONIZED
+    gamma  = 1.666666666
+ /
+
+ $FLUID_NEUTRAL
+    gamma = 1.666666666
+ /
+
+ $NUMERICAL_SETUP
+    cfl    = 0.7
+    smalld = 1.e-3
+    smallei= 1.e-5
+    limiter= 'vanleer'
+    cflcontrol = "auto"
+ /
+
+ $GRAVITY
+ /
+
+ $PROBLEM_CONTROL
+    d0     = 1.0
+    p0     = 1.0
+    Eexpl  = 1.e6
+    bx0    = 1.0
+    by0    = 1.0
+    bz0    = 1.0
+    x0     = 0.1
+    y0     = 0.2
+    z0     = 0.0
+    r0     = 0.25
+    dtrig  = 1.5
+ /
+
+ $MULTIGRID_SOLVER
+ /
+
+ $INTERACTIONS
+ /
+
+ $FLUID_TRACER
+ /
+
+ $AMR
+    bsize = 3*16
+    level_max = 2
+    n_updAMR = 3
+ /

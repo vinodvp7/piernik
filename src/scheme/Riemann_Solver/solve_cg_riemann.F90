@@ -210,13 +210,13 @@ contains
                b0(:, psidim) = ppsi0(:)
                b1(:, psidim) = ppsi(:)
 
-               call solve(u0, b0, u1, b1, cs2, rk_coef(istep) * dt/cg%dl(ddim), eflx)
+               call solve(u0, b0, u1, b1, cs2, rk_coef(istep) * 0.5*dt/cg%dl(ddim), eflx)
 
             else
-               call solve(u0, b0(:, xdim:zdim), u1, b1(:, xdim:zdim), cs2, rk_coef(istep) * dt/cg%dl(ddim), eflx)
+               call solve(u0, b0(:, xdim:zdim), u1, b1(:, xdim:zdim), cs2, rk_coef(istep) *0.5* dt/cg%dl(ddim), eflx)
             endif
 
-            call internal_sources(size(u, 1, kind=4), u, u1, b, cg, istep, ddim, i1, i2, rk_coef(istep) * dt, vx)
+            call internal_sources(size(u, 1, kind=4), u, u1, b, cg, istep, ddim, i1, i2, rk_coef(istep) *0.5* dt, vx)
             ! See the results of Jeans test with RTVD and RIEMANN for estimate of accuracy.
 
             call care_for_positives(size(u, 1, kind=4), u1, b1, cg, ddim, i1, i2)
@@ -290,9 +290,9 @@ contains
             u1 = u
             vx = u(:, iarr_all_mx) / u(:, iarr_all_dn) ! this may also be useful for gravitational acceleration
 
-            call solve_u(u0, u1, cs2, rk_coef(istep) * dt/cg%dl(ddim), eflx)
+            call solve_u(u0, u1, cs2, rk_coef(istep) * 0.5*dt/cg%dl(ddim), eflx)
 
-            call internal_sources(size(u, 1, kind=4), u, u1, b, cg, istep, ddim, i1, i2, rk_coef(istep) * dt, vx)
+            call internal_sources(size(u, 1, kind=4), u, u1, b, cg, istep, ddim, i1, i2, rk_coef(istep) *0.5* dt, vx)
             ! See the results of Jeans test with RTVD and RIEMANN for estimate of accuracy.
 
             call care_for_positives(size(u, 1, kind=4), u1, b, cg, ddim, i1, i2)

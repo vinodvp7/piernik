@@ -94,7 +94,7 @@ contains
    subroutine fluid_update_full
 
       use dataio_pub,     only: halfstep
-      use global,         only: dt, dtm, t
+      use global,         only: dt, dtm, t,nstep
       use hdc,            only: update_chspeed
       use mass_defect,    only: update_magic_mass
       use timestep_retry, only: repeat_fluidstep
@@ -103,15 +103,19 @@ contains
 #endif /* CRESP */
 
       implicit none
-
+      real :: dddt
       call repeat_fluidstep
       call update_chspeed
-
+      dddt = t
+      write(115,*) "nstep :",nstep, " t : ",t, "dt:", dt 
       halfstep = .false.
       t = t + 0.5*dt
+      write(115,*) "nstep :",nstep, " t : ",t
 
       call make_3sweeps(.true.) ! X -> Y -> Z
       t = t + 0.5*dt
+      write(115,*) "nstep :",nstep, " t : ",t
+
       call make_3sweeps(.false.) ! X -> Y -> Z
 
 ! Sources should be hooked to problem_customize_solution with forward argument
@@ -122,10 +126,12 @@ contains
 
       halfstep = .true.
       t = t + 0.5*dt
+      write(115,*) "nstep :",nstep, " t : ",t
       dtm = dt
 
       call make_3sweeps(.true.) ! Z -> Y -> X
       t = t + 0.5*dt
+      write(115,*) "nstep :",nstep, " t : ",t, "diff:",(dddt - t)/(2*dt)
 
       call make_3sweeps(.false.) ! Z -> Y -> X
       call update_magic_mass

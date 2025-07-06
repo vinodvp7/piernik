@@ -108,9 +108,11 @@ contains
       call update_chspeed
 
       halfstep = .false.
-      t = t + dt
+      t = t + 0.5*dt
 
       call make_3sweeps(.true.) ! X -> Y -> Z
+      t = t + 0.5*dt
+      call make_3sweeps(.false.) ! X -> Y -> Z
 
 ! Sources should be hooked to problem_customize_solution with forward argument
 
@@ -119,8 +121,11 @@ contains
 #endif /* CRESP */
 
       halfstep = .true.
-      t = t + dt
+      t = t + 0.5*dt
       dtm = dt
+
+      call make_3sweeps(.true.) ! Z -> Y -> X
+      t = t + 0.5*dt
 
       call make_3sweeps(.false.) ! Z -> Y -> X
       call update_magic_mass

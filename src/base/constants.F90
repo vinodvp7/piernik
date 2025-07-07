@@ -248,6 +248,10 @@ module constants
    character(len=dsetnamelen), parameter :: sgpm_n  = "sgpm"    !< previous field from self-gravity
    character(len=dsetnamelen), parameter :: gpot_n  = "gpot"    !< current sum of fields
    character(len=dsetnamelen), parameter :: hgpot_n = "hgpot"   !< sum of fields for half-step values
+#ifdef STREAM_CR
+   character(len=dsetnamelen), parameter :: scr_n = "scr"   !< array of streaming CR
+
+#endif /* STREAM_CR */
 #ifdef NBODY
 #ifdef NBODY_GRIDDIRECT
    character(len=dsetnamelen), parameter :: nbgp_n  = "nbgp"    !< current gravity field from nbody

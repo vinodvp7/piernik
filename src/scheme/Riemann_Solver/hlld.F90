@@ -59,7 +59,7 @@ contains
 !! OPT: check if passing pointers here will improve performance
 !<
 
-   subroutine riemann_wrap(ql, qr, b_cc_l, b_cc_r, cs2, flx, mag_cc)
+   subroutine riemann_wrap(ql, qr, b_cc_l, b_cc_r, cs2, flx, mag_cc,dxl)
 
       use constants,  only: I_ONE
       use fluidindex, only: flind
@@ -73,6 +73,7 @@ contains
       real, dimension(:,:), target,  intent(in)    :: b_cc_l, b_cc_r  !< left and right magnetic field states (relevant only for IONIZED fluid)
       real, dimension(:),   pointer, intent(in)    :: cs2             !< square of local isothermal sound speed
       real, dimension(:,:), target,  intent(inout) :: flx, mag_cc     !< output fluxes: fluid, magnetic field and psi
+      real,                        intent(in)      :: dxl    !< grid size for calculating streaming cosmic ray v_plus and v_minus
 
       integer :: i
       class(component_fluid), pointer :: fl
@@ -110,7 +111,7 @@ contains
                p_ct_flx => flx(:, iend + I_ONE:)         
                p_ctl => ql(:, iend + I_ONE:)
                p_ctr => qr(:, iend + I_ONE:)
-               call reimann_scr_hlle(p_ct_flx, p_ctl, p_ctr)
+               call reimann_scr_hlle(p_ct_flx, p_ctl, p_ctr,dxl,sigma_c)
                call riemann_hlld(p_flx, p_ql, p_qr, p_bcc, p_bccl, p_bccr, cs2, fl%gam)
             else
                call riemann_hlld(p_flx, p_ql, p_qr, p_bcc, p_bccl, p_bccr, cs2, fl%gam)

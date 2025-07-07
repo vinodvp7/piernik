@@ -84,7 +84,7 @@ contains
       integer                                 :: p
       class(component_fluid), pointer         :: fl
    #ifdef STREAM_CR
-      class(component_scr), pointer           :: fl_scr
+      class(component_scr)                    :: fl_scr
    #endif /* STREAM_CR */
       do p = 1, flind%fluids
          fl => flind%all_fluids(p)%fl
@@ -103,7 +103,7 @@ contains
       enddo
    #ifdef STREAM_CR
       do p = I_ONE, flind%stcosm
-         fl_scr => flind%scr(i)
+         fl_scr => flind%scr(p)
          q(:,fl_scr%iescr) = I_THREE * u(:,fl_scr%iescr) !(Pc =Ec/3 and divergence term of ifscr{x,y,z} = Pc)
          q(:,fl_scr%ifscrx) =  u(:,fl_scr%iescr) / (vm*vm)
          q(:,fl_scr%ifscry) =  u(:,fl_scr%ifscry) / (vm*vm)

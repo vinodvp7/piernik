@@ -41,11 +41,27 @@ module scr_helpers
     implicit none
 
 contains
-    subroutine reimann_scr_hlle(f,ul,ur)
+    subroutine reimann_scr_hlle(f,ul,ur,dxl,sigma_c)
+      use initstreamingcr, only: vm
+
+      implicit none
 
 
       real, dimension(:,:),           intent(inout) :: f             !< streaming CR energy and flux fluxes
       real, dimension(:,:),           intent(in)    :: ul, ur        !< left and right states of Escr, fscrx,fscry,fscrz
+      real,                           intent(in)    :: sigma_c
+      real,                           intent(in)    :: dxl    !< grid size for calculating streaming cosmic ray v_plus and v_minus
+
+      real :: vplus,vminus,R,tau
+      real, dimension(size(f, 2)) :: fl, fr
+            
+      write(*,*) size(f)
+      stop
+      tau = dxl*sigma_c/vm 
+      R = sqrt((1-exp(-tau*tau))/(tau*tau))
+
+      vplus = min(vm,R*vm/(sqrt(3)))
+      vminus = - vplus
 
 
         

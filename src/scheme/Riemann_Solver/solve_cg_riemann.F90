@@ -171,7 +171,7 @@ contains
          do i1 = cg%ijkse(pdims(ddim, ORTHO1), LO), cg%ijkse(pdims(ddim, ORTHO1), HI)
 
             ! transposition for compatibility with RTVD-based routines
-            pu0 => cg%w(uhi)%get_sweep(ddim,i1,i2)
+            pu0 => cg%w(uhi)%get_sweep(ddim,i1,i2)                               ! 2D array (shape would be (nvar,Nx/Ny/Nz+boundaries)) of of the form [[all density along ddim at i1,i2] , [all momentum x ... ] 
             pu => cg%w(wna%fi)%get_sweep(ddim,i1,i2)
             if (istep == first_stage(integration_order)) pu0 = pu
             ! such copy is a bit faster than whole copy of u and we don't have to modify all the source routines
@@ -217,12 +217,14 @@ contains
             endif
 
             call internal_sources(size(u, 1, kind=4), u, u1, b, cg, istep, ddim, i1, i2, rk_coef(istep) * dt, vx)
-            ! See the results of Jeans test with RTVD and RIEMANN for estimate of accuracy.
+            ! See the results of Je1ans test with RTVD and RIEMANN for estimate of accuracy.
 
             call care_for_positives(size(u, 1, kind=4), u1, b1, cg, ddim, i1, i2)
 
             call cg%save_outfluxes(ddim, i1, i2, eflx)
+
             pu(:,:) = transpose(u1(:, iarr_all_swp(ddim,:)))
+            
             if (cc_mag) pb(:,:) = transpose(b1(:, iarr_mag_swp(ddim,:))) ! ToDo figure out how to manage CT energy fixup without extra storage
             if (psii /= INVALID) ppsi = b1(:, psidim)
          enddo

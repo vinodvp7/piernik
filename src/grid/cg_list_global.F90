@@ -229,7 +229,7 @@ contains
 
    subroutine register_fluids(this)
 
-      use constants,  only: wa_n, fluid_n, uh_n, AT_NO_B, PIERNIK_INIT_FLUIDS, xflx_n, yflx_n, zflx_n
+      use constants,  only: wa_n, fluid_n, uh_n, AT_NO_B, PIERNIK_INIT_FLUIDS, I_ONE, xflx_n, yflx_n, zflx_n, xbflx_n, ybflx_n, zbflx_n
       use dataio_pub, only: die, code_progress
       use fluidindex, only: flind
       use global,     only: ord_fluid_prolong
@@ -271,8 +271,16 @@ contains
 #endif /* CRESP */
 
 #ifdef MAGNETIC
-      call this%reg_var(mag_n,  vital = .true.,  dim4 = ndims, ord_prolong = ord_mag_prolong, restart_mode = AT_OUT_B, position=pia)  !! Main array of magnetic field's components, "b"
-      call this%reg_var(magh_n, vital = .false., dim4 = ndims) !! Array for copy of magnetic field's components, "b" used in half-timestep in RK2
+      call this%reg_var(mag_n,    vital = .true.,  dim4 = ndims, ord_prolong = ord_mag_prolong, restart_mode = AT_OUT_B, position=pia)  !! Main array of magnetic field's components, "b"
+      call this%reg_var(magh_n,   vital = .false., dim4 = ndims) !! Array for copy of magnetic field's components, "b" used in half-timestep in RK2
+      
+      ! we need three arrays each with its first index having size 3. The logic is this. For example xbflx_n here denotes the
+      ! x faced flux i.e. flux moving along the x faces that will affect the values of Bx xbflx(1) , By xbflx(2) , Bz xbflx(3)
+      ! Similarly you want two more for y faced flux and z faced flux. This can also be thought of as similar to the 
+      ! 3 momentum density components that exist in the simple HD case.Currently we do not consider the array for psi
+      call this%reg_var(xbflx_n,  vital = .true.,  dim4 = ndims + I_ONE, ord_prolong = ord_mag_prolong, restart_mode = AT_OUT_B)  !! Main array of magnetic field's components, "b"
+      call this%reg_var(ybflx_n,  vital = .true.,  dim4 = ndims + I_ONE, ord_prolong = ord_mag_prolong, restart_mode = AT_OUT_B)  !! Main array of magnetic field's components, "b"
+      call this%reg_var(zbflx_n,  vital = .true.,  dim4 = ndims + I_ONE, ord_prolong = ord_mag_prolong, restart_mode = AT_OUT_B)  !! Main array of magnetic field's components, "b"
       call set_magnetic_names
 
       if (cc_mag) then
@@ -391,17 +399,32 @@ contains
 #ifdef MAGNETIC
       subroutine set_magnetic_names
 
-         use constants,        only: xdim, ydim, zdim
+         use constants,        only: xdim, ydim, zdim,psidim
          use named_array_list, only: wna, na_var_4d
 
          implicit none
 
          select type (lst => wna%lst)
             type is (na_var_4d)
-
                call lst(wna%bi)%set_compname(xdim, "magx")
                call lst(wna%bi)%set_compname(ydim, "magy")
                call lst(wna%bi)%set_compname(zdim, "magz")
+
+               call lst(wna%xbflx)%set_compname(xdim,   "bxxflx")
+               call lst(wna%xbflx)%set_compname(ydim,   "byxflx")
+               call lst(wna%xbflx)%set_compname(zdim,   "bzxflx")
+               call lst(wna%xbflx)%set_compname(psidim, "psixflx")
+
+               call lst(wna%ybflx)%set_compname(xdim,   "bxyflx")
+               call lst(wna%ybflx)%set_compname(ydim,   "byyflx")
+               call lst(wna%ybflx)%set_compname(zdim,   "bzyflx")
+               call lst(wna%ybflx)%set_compname(psidim, "psiyflx")
+
+               call lst(wna%zbflx)%set_compname(xdim,   "bxzflx")
+               call lst(wna%zbflx)%set_compname(ydim,   "byzflx")
+               call lst(wna%zbflx)%set_compname(zdim,   "bzzflx")
+               call lst(wna%zbflx)%set_compname(psidim, "psizflx")
+
          end select
 
       end subroutine set_magnetic_names

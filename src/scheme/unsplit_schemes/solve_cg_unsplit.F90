@@ -26,32 +26,6 @@
 !
 #include "piernik.h"
 
-!>
-!! \brief HLLD Riemann solver for ideal magnetohydrodynamics
-!!
-!! Varadarajan Parthasarathy, CAMK, Warszawa. 2015.
-!! Dr. Artur Gawryszczak, CAMK, Warszawa.
-!!
-!! RK(N) with N .GE. 3 could be helpful for WENO3 ( this statement to be tested )
-!!
-!! Reference:Relativistic Hydrodynamics, L. Rezzolla, O. Zanotti
-!! ---------------------------------------------------------------------------
-!! L (or dtodx)--> discretization of spatial differential operator (Eq. 9.135)
-!! ---------------------------------------------------------------------------
-!! RK2 (Eq. 9.140)
-!! u^(1)   = u^(n) + \Delta t L(u^(n))
-!! u^(n+1) = 1/2 ( u^(n) + u^(1) + \Delta t L(u^(1)  )
-!! ---------------------------------------------------------------------------
-!! RK3 (Eq. 9.141)
-!! u^(1)   = u(n) + \Delta t L(u^(n))
-!! u^(2)   = 1/4 ( 3 u^(n) + u^(1) + \Delta t L(u^(1) ) )
-!! u^(n+1) = 1/3 u^(n) + 2/3 u^(2) + 2/3 \Delta t (u^(2))
-!! ---------------------------------------------------------------------------
-!!
-!! Energy fix up routines for CT and its related comments are not used in the current version.
-!! The algorithm is simply present for experimental purposes.
-!<
-
 module solvecg_unsplit
 
 ! pulled by ANY
@@ -67,14 +41,15 @@ contains
 
    subroutine solve_cg_unsplit(cg,istep)
 
-      use constants,        only: mag_n, GEO_XYZ
-      use dataio_pub,       only: die
-      use domain,           only: dom
-      use fluidindex,       only: flind
-      use grid_cont,        only: grid_container
-      use global,           only: use_fargo
-      use named_array_list, only: wna
-      use sources,          only: prepare_sources
+      use constants,           only: mag_n, GEO_XYZ
+      use dataio_pub,          only: die
+      use domain,              only: dom
+      use fluidindex,          only: flind
+      use grid_cont,           only: grid_container
+      use global,              only: use_fargo
+      use named_array_list,    only: wna
+      use sources,             only: prepare_sources
+      use unsplit_mag_modules, only: solve_cg_ub
        
       implicit none
 
@@ -87,13 +62,13 @@ contains
       call prepare_sources(cg)
 
       if (wna%exists(mag_n)) then
-         call die("[solve_cg_unsplit:solve_cg_unsplit] Magnetic field is still unsafe for the flux named arrays")
+         !call die("[solve_cg_unsplit:solve_cg_unsplit] Magnetic field is still unsafe for the flux named arrays")
          nmag = 0
          do i = 1, flind%fluids
             if (flind%all_fluids(i)%fl%is_magnetized) nmag = nmag + 1
          enddo
          if (nmag > 1) call die("[solve_cg_riemann:solve_cg_riemann] At most one magnetized fluid is implemented")
-         !call solve_cg_ub(cg, ddim, istep)
+         call solve_cg_ub(cg, istep)
       else
          call solve_cg_u(cg,istep)
       endif
@@ -135,28 +110,14 @@ contains
       endif
       cs2 => null()
       do ddim=xdim,zdim
-         if (.not. dom%has_dir(ddim)) cycle
-         if (.not. allocated(u)) then
-            allocate(u(cg%n_(ddim), size(cg%u,1)))
-         else
-            deallocate(u)
-            allocate(u(cg%n_(ddim), size(cg%u,1)))
-         endif
+         !if (.not. dom%has_dir(ddim)) cycle                ! Not needed
 
-         if (.not. allocated(flux)) then
-            allocate(flux(size(u, 1)-1,size(u, 2)))
-         else
-            deallocate(flux)
-            allocate(flux(size(u, 1)-1,size(u, 2)))
-         endif    
-         if (.not. allocated(tflux)) then
-            allocate(tflux(size(u, 2),size(u, 1)))
-         else
-            deallocate(tflux)
-            allocate(tflux(size(u, 2),size(u, 1)))
-         endif  
+         allocate(u(cg%n_(ddim), size(cg%u,1)))
+         allocate(flux(size(u, 1)-1,size(u, 2)),tflux(size(u, 2),size(u, 1)))
+
          do i2 = cg%ijkse(pdims(ddim, ORTHO2), LO), cg%ijkse(pdims(ddim, ORTHO2), HI)
             do i1 = cg%ijkse(pdims(ddim, ORTHO1), LO), cg%ijkse(pdims(ddim, ORTHO1), HI)  
+
                if (ddim==xdim) then
                   pflux => cg%w(wna%xflx)%get_sweep(xdim,i1,i2)
                else if (ddim==ydim) then
@@ -164,7 +125,6 @@ contains
                else if (ddim==zdim) then 
                   pflux => cg%w(wna%zflx)%get_sweep(zdim,i1,i2)
                endif
-
 
                pu => cg%w(uhi)%get_sweep(ddim,i1,i2)
                if (istep == first_stage(integration_order) .or. integration_order < 2 ) pu => cg%w(wna%fi)%get_sweep(ddim,i1,i2)
@@ -187,10 +147,10 @@ contains
                pflux(:,:) = tflux
             end do
          end do
+         deallocate(u,flux,tflux)
       end do
       call apply_flux(cg,istep)
       call apply_source(cg,istep)
-      deallocate(u,flux,tflux)
       nullify(cs2)
 
    end subroutine solve_cg_u
@@ -270,7 +230,7 @@ contains
       endif
 
       do afdim = xdim, zdim
-         if (.not. active(afdim)) cycle
+         !if (.not. active(afdim)) cycle                   ! Not needed automatically taken care 
 
          call bounds_for_flux(L0,U0,active,afdim,L,U)
 

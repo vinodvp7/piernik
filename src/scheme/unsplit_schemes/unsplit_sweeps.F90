@@ -137,6 +137,7 @@ contains
             call req%waitall("sweeps")
 
             call update_boundaries(istep)
+            
         end do
         call sl%delete
         deallocate(sl)

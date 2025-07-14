@@ -47,6 +47,7 @@ contains
       use fluidindex,       only: flind, iarr_all_dn, iarr_all_mx, iarr_all_swp, iarr_mag_swp
       use fluxtypes,        only: ext_fluxes
       use unsplit_source,   only: apply_source
+      use hdc,              only: glmdamping
       implicit none
 
       type(grid_container), pointer, intent(in) :: cg
@@ -59,7 +60,8 @@ contains
       real, dimension(:,:),allocatable           :: b_psi                ! This will carry both b and psi so it will have one extra size in dim=2
       real, dimension(:,:), pointer              :: pu, pb
       real, dimension(:), pointer                :: ppsi
-      real, dimension(:,:), pointer              :: pflux, pbflux
+      real, dimension(:,:), pointer              :: pflux, pbflux,apsiflux
+      real, dimension(:), pointer                :: ppsiflux
       real, dimension(:),   pointer              :: cs2
       real, dimension(:,:),allocatable           :: flux
       real, dimension(:,:),allocatable           :: bflux
@@ -94,14 +96,19 @@ contains
                if (ddim==xdim) then
                   pflux => cg%w(wna%xflx)%get_sweep(xdim,i1,i2)
                   pbflux => cg%w(wna%xbflx)%get_sweep(xdim,i1,i2)
+                  apsiflux => cg%w(wna%psiflx)%get_sweep(xdim,i1,i2)
+                  ppsiflux => apsiflux(xdim,:)
                else if (ddim==ydim) then
                   pflux => cg%w(wna%yflx)%get_sweep(ydim,i1,i2)
                   pbflux => cg%w(wna%ybflx)%get_sweep(ydim,i1,i2)
+                  apsiflux => cg%w(wna%psiflx)%get_sweep(ydim,i1,i2)
+                   ppsiflux => apsiflux(ydim,:)
                else if (ddim==zdim) then 
                   pflux => cg%w(wna%zflx)%get_sweep(zdim,i1,i2)
                   pbflux => cg%w(wna%zbflx)%get_sweep(zdim,i1,i2)
+                  apsiflux => cg%w(wna%psiflx)%get_sweep(zdim,i1,i2)
+                  ppsiflux => apsiflux(zdim,:)
                endif
-
                pu   => cg%w(uhi)%get_sweep(ddim,i1,i2)
                pb   => cg%w(bhi)%get_sweep(ddim,i1,i2)
                ppsi => cg%q(psihi)%get_sweep(ddim,i1,i2)
@@ -131,11 +138,12 @@ contains
                tflux(:,1) = 0.0
                pflux(:,:) = tflux
 
-               tbflux(:,2:) = transpose(bflux(:,:))
-               tbflux(:,1) = 0.0
-               pbflux(:,:) = tbflux(:,:)
-               !pbflux(psidim,1) = 0.0
-               !pbflux(psidim,2:) = bflux(:, psidim)
+               tbflux(:,2:) = transpose(bflux(:, iarr_mag_swp(ddim,:)))
+               tbflux(:,1) = 0
+               tbflux(psidim,2:) = bflux(:,psidim)
+               pbflux(:,:) = tbflux(xdim:zdim,:)
+               ppsiflux(:) =  tbflux(psidim,:)
+
             end do
          end do
          deallocate(u, flux, tflux, b, b_psi, tbflux, bflux)
@@ -143,6 +151,7 @@ contains
       call apply_flux(cg,istep,.false.)
       call apply_flux(cg,istep,.true.)
       call apply_source(cg,istep)
+      !call glmdamping
       nullify(cs2)
 
    end subroutine solve_cg_ub
@@ -247,8 +256,8 @@ contains
         else if (istep==last_stage(integration_order) .or. integration_order==I_ONE) then
             T => cg%w(wna%bi)%arr
         endif
-        lo = xdim
-        hi = zdim
+        !lo = xdim
+        !hi = zdim
       else
         F(xdim)%flx => cg%fx   ;  F(ydim)%flx => cg%gy   ;  F(zdim)%flx => cg%hz
 
@@ -262,8 +271,8 @@ contains
         else if (istep==last_stage(integration_order) .or. integration_order==I_ONE) then
             T => cg%w(wna%fi)%arr
         endif
-        lo = I_ONE
-        hi = flind%all
+        !lo = I_ONE
+        !hi = flind%all
       endif
       do afdim = xdim, zdim
          !if (.not. active(afdim)) cycle                   ! Not needed automatically taken care 
@@ -274,8 +283,8 @@ contains
 
          T(:, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) = T(:, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) &
             + dt / cg%dl(afdim) * rk_coef(istep) * ( &
-               F(afdim)%flx(lo:hi, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) - &
-               F(afdim)%flx(lo:hi, L(xdim)+shift(xdim):U(xdim)+shift(xdim), &
+               F(afdim)%flx(:, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) - &
+               F(afdim)%flx(:, L(xdim)+shift(xdim):U(xdim)+shift(xdim), &
                            L(ydim)+shift(ydim):U(ydim)+shift(ydim), &
                            L(zdim)+shift(zdim):U(zdim)+shift(zdim)) )
       end do
@@ -286,7 +295,7 @@ contains
       use domain,             only : dom
       use grid_cont,          only : grid_container
       use global,             only : integration_order, dt
-      use named_array_list,   only : qna,wna
+      use named_array_list,   only : qna
       use constants,          only : xdim, ydim, zdim, first_stage, last_stage, rk_coef, &
                                      I_ONE, ndims, psi_n,psidim,psih_n
 
@@ -304,11 +313,12 @@ contains
       integer                     :: L0(ndims), U0(ndims), L(ndims), U(ndims), shift(ndims)
       integer                     :: d, afdim, psihi, psii
       real, pointer               :: T(:,:,:)
-      type(fxptr)                 :: F(ndims)
+      type(fxptr)                 :: F
 
       
       active = [ dom%has_dir(xdim), dom%has_dir(ydim), dom%has_dir(zdim) ]
-      F(xdim)%flx => cg%bfx   ;  F(ydim)%flx => cg%bgy   ;  F(zdim)%flx => cg%bhz
+      F%flx => cg%psiflx
+
       psii = qna%ind(psi_n)
       psihi = qna%ind(psih_n)
       L0 = [ lbound(cg%q(psii)%arr,1), lbound(cg%q(psii)%arr,2), lbound(cg%q(psii)%arr,3) ]
@@ -325,13 +335,11 @@ contains
          !if (.not. active(afdim)) cycle                   ! Not needed automatically taken care 
 
          call bounds_for_flux(L0,U0,active,afdim,L,U)
-
          shift = 0 ;  shift(afdim) = I_ONE    
-
          T(L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) = T(L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) &
             + dt / cg%dl(afdim) * rk_coef(istep) * ( &
-               F(afdim)%flx(psidim,L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) - &
-               F(afdim)%flx(psidim,L(xdim)+shift(xdim):U(xdim)+shift(xdim), &
+               F%flx(afdim,L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) - &
+               F%flx(afdim,L(xdim)+shift(xdim):U(xdim)+shift(xdim), &
                            L(ydim)+shift(ydim):U(ydim)+shift(ydim), &
                            L(zdim)+shift(zdim):U(zdim)+shift(zdim)) )
       end do

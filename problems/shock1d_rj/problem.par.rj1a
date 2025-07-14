@@ -28,18 +28,18 @@
  /
 
  $END_CONTROL
-    tend   = 0.08
-    nend   = 90000
+    tend   = 0.1
+    nend   = 5000
  /
 
  $OUTPUT_CONTROL
     problem_name ='shock1d'
-    run_id  =  'r1b'
-    dt_hdf  = 0.1
+    run_id  =  'spl'
+    dt_hdf  = 0.01
     dt_res  = 0.0
-    dt_log  = 0.1
+    dt_log  = 1e-5
     dt_tsl  = 0.1
-    vars(1:) = 'magx', 'dens', 'magy', 'magz', 'ener', 'velx', 'vely', 'velz'
+    vars(1:) = 'magx', 'dens', 'magy', 'magz', 'ener', 'velx', 'vely', 'velz', 'psi'
  /
 
  $FLUID_IONIZED
@@ -51,7 +51,10 @@
     smalld = 1.e-3
     smallei= 1.e-5
     limiter= 'vanleer'
-    solver_str ='unsplit '
+    PRINT_DIVB = 10
+    solver_str ='riemann'
+    !cfl_glm = 0.8
+    glm_alpha = 0.6
  /
 
  $RESISTIVITY

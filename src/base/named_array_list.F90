@@ -101,7 +101,9 @@ module named_array_list
       integer(kind=4) :: zflx  = INVALID                            !< Z face-flux field      : cg%w(wna%zflx)
       integer(kind=4) :: xbflx = INVALID                            !< X face-flux field      : cg%w(wna%xbflx)      
       integer(kind=4) :: ybflx = INVALID                            !< Y face-flux field      : cg%w(wna%ybflx)   
-      integer(kind=4) :: zbflx = INVALID                            !< Z face-flux field      : cg%w(wna%zbflx)        
+      integer(kind=4) :: zbflx = INVALID                            !< Z face-flux field      : cg%w(wna%zbflx)       
+      integer(kind=4) :: psiflx = INVALID                           !< psi flux field         : cg%w(wna%psiflx)        
+ 
    contains
       procedure :: add2lst => add2lst_w                          !< Add a 4D array to the list
       procedure :: get_dim4                                      !< Get dim4 value for given array index
@@ -233,7 +235,7 @@ contains
    end subroutine add2lst_q
 
    subroutine add2lst_w(this, element)
-      use constants,  only: fluid_n, mag_n, xflx_n, yflx_n, zflx_n, xbflx_n, ybflx_n, zbflx_n
+      use constants,  only: fluid_n, mag_n, xflx_n, yflx_n, zflx_n, xbflx_n, ybflx_n, zbflx_n, psiflx_n
       use dataio_pub, only: die, msg
 
       implicit none
@@ -279,6 +281,7 @@ contains
       if (element%name == xbflx_n)  this%xbflx = ubound(this%lst(:), dim=1, kind=4)
       if (element%name == ybflx_n)  this%ybflx = ubound(this%lst(:), dim=1, kind=4)
       if (element%name == zbflx_n)  this%zbflx = ubound(this%lst(:), dim=1, kind=4)
+      if (element%name == psiflx_n)  this%psiflx = ubound(this%lst(:), dim=1, kind=4)
 
       if (element%dim4 <= 0) then
          write(msg,'(3a,i0)')"[named_array_list:add2lst_w] Invalid dim4 for array '", trim(element%name), "': ", element%dim4

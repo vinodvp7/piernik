@@ -282,7 +282,7 @@ contains
 !!
 !! dedner A. Mignone et al. / Journal of Computational Physics 229 (2010) 5896–5920, eq. 9
 !<
-   subroutine glmdamping
+   subroutine glmdamping(half)
 
       use allreduce,        only: piernik_MPI_Allreduce
       use cg_cost_data,     only: I_MHD
@@ -295,7 +295,7 @@ contains
       use named_array_list, only: qna
 
       implicit none
-
+      logical,optional,           intent(in) :: half
       type(cg_list_element), pointer :: cgl
 
       real :: fac
@@ -311,16 +311,17 @@ contains
             cgl => leaves%first
             do while (associated(cgl))
                call cgl%cg%costs%start
-
-               fac = max(fac, glm_alpha*chspeed/(minval(cgl%cg%dl, mask=dom%has_dir)/dt))
-
+               if (half) then
+                  fac = max(fac, glm_alpha*chspeed/(minval(cgl%cg%dl, mask=dom%has_dir)/(dt/2.0)))
+               else
+                  fac = max(fac, glm_alpha*chspeed/(minval(cgl%cg%dl, mask=dom%has_dir)/dt))
+               endif
                call cgl%cg%costs%stop(I_MHD)
                cgl => cgl%nxt
             enddo
          endif
          fac = exp(-fac)
          call piernik_MPI_Allreduce(fac, pMIN)
-
          cgl => leaves%first
          do while (associated(cgl))
             call cgl%cg%costs%start

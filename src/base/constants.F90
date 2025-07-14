@@ -250,6 +250,8 @@ module constants
    character(len=dsetnamelen), parameter :: xbflx_n   = "xbflx"   !< main X face-flux array
    character(len=dsetnamelen), parameter :: ybflx_n   = "ybflx"   !< main Y face-flux array
    character(len=dsetnamelen), parameter :: zbflx_n   = "zbflx"   !< main Z face-flux array
+   character(len=dsetnamelen), parameter :: psiflx_n   = "psiflx"   !< main X face-flux array
+
    ! gravitational potential
    character(len=dsetnamelen), parameter :: gp_n    = "gp"      !< static, external field, must be explicitly set to 0. if no external fields are applied
    character(len=dsetnamelen), parameter :: sgp_n   = "sgp"     !< current field from self-gravity

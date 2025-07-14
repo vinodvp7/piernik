@@ -72,6 +72,9 @@ module grid_cont_na
       real, dimension(:,:,:,:), pointer :: bfx     => null()  !< Main array of X-faced flux field components
       real, dimension(:,:,:,:), pointer :: bgy     => null()  !< Main array of Y-faced flux field components
       real, dimension(:,:,:,:), pointer :: bhz     => null()  !< Main array of Z-faced flux field components
+      real, dimension(:,:,:,:), pointer :: psiflx  => null()  !< Main array of psi flux field components
+
+
    contains
 
       procedure :: cleanup_na            !< Deallocate all internals
@@ -154,7 +157,9 @@ contains
       if (wna%xbflx > INVALID)  this%bfx  => this%w(wna%xbflx)%arr
       if (wna%ybflx > INVALID)  this%bgy  => this%w(wna%ybflx)%arr
       if (wna%zbflx > INVALID)  this%bhz  => this%w(wna%zbflx)%arr
+      if (wna%psiflx > INVALID)  this%psiflx  => this%w(wna%psiflx)%arr
       if (qna%wai   > INVALID)  this%wa   => this%q(qna%wai)%arr
+
 
 #ifdef ISO
       this%cs_iso2 => this%q(qna%ind(cs_i2_n))%arr

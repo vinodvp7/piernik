@@ -1,0 +1,21 @@
+-[ ] Add solver_type in global.F90 to consider split vs unsplit
+-[ ] Add 7 constants for the fluxes in constant.F90
+-[ ] Add flux array in named_array_list.F90 but only added if unsplit solver is called
+-[ ] Add flux array shortcut call to grid_container_na.F90 but only if unsplit solver is called. Also add a subroutine to cleanup/initlaize flux array to 0.0 
+-[ ] Register the arrays in the cg_list_global.F90 but only if unsplit solver is called.
+-[ ] Create a new folder for unsplit solver methods
+-[ ] Create unsplit_fluid_update.F90 that contains the calls for all sources at the  S stage of the S A S stages and glm damping if magnetic is present.
+-[ ] Push the unsplit_sweep to unplit_fluid_update.F90.
+-[ ] Modification of recv_bnd and other ANR related functions. Instead of modifying the source code. Just create a wrapper and make a new module inside unsplit_methods folder.
+-[ ] Create a new module called solve_cg_unsplit that does MHD update for simple HD case.
+-[ ] Create another module that does the same as above for magnetic fluid.
+-[ ] Create a wrapper for calling sources in unsplit fashion
+-[ ] Modify the default value of cfl_glm so that it is 0.3 if solver_type = "unsplit" and 0.6 otherwise
+-[ ] Modify the default value of cfl so that it is 0.3 if solver_type = "unsplit" and 0.8 otherwise
+-[ ] Modify hdc so that its subroutine glmdamping accepts an argument to make a half timestep damping or no . Check if eglm needs similar thing.
+-[ ] Modify timestep.F90 to have a condition of the dt at tend to not make it go by half if unsplit solver is chosen
+-[ ] Add necessary comments for proper documentation
+-[ ] Document each step as a set of instructions 
+-[ ] Run each test in the problems folder and plot a comparision graph with split solver with following diagnostics : 
+primitive variable evolution + comparision, L1/L2 error, time and nstep comparision, memory_usage, div B/psi comparision, Resolution effects, AMR, single core efficiency
+################### END OF UNSPLIT SOLVER IMPLEMENTATION 

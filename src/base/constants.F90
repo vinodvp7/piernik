@@ -217,11 +217,15 @@ module constants
    enum, bind(C)
       enumerator :: RTVD_SPLIT    !! MHD RTVD, as it was implemented from the beginning of Piernik
       enumerator :: HLLC_SPLIT    !! non-magnetic (pure HD) HLLC as first attempt of something more precise than RTVD, lacks many features an ma be removed at some point
-      enumerator :: RIEMANN_SPLIT !! MHD Riemann, implementations by Varadarajan Parthasarathy; HD variant is slower than HLLC_SPLIT
+      enumerator :: RIEMANN       !! MHD Riemann, implementations by Varadarajan Parthasarathy; HD variant is slower than HLLC_SPLIT
    end enum
    ! Perhaps it may make sense to create compatibility matrix for solvers.
    ! AMR, magnetic, FARGO, resistivity, ...
 
+   enum, bind(C)
+      enumerator :: SPLIT        !! Dimensionally split version of Riemann solver that sweeps each direction one at a time
+      enumerator :: UNSPLIT      !! Dimensionally unsplit version of Riemann solver that calculates flux in each direction and then updates simultaneously
+   end enum
 
    ! enumerate stages of Runge-Kutta method in an unique way, so istep will contain information both about stage and method
    enum, bind(C)
@@ -237,11 +241,20 @@ module constants
 
    ! 3D and 4D array names
    ! fluids
-   character(len=dsetnamelen), parameter :: fluid_n = "fluid"   !< main fluid array
-   character(len=dsetnamelen), parameter :: uh_n    = "uh"      !< auxiliary array for half-step values
+   character(len=dsetnamelen), parameter :: fluid_n  = "fluid"   !< main fluid array
+   character(len=dsetnamelen), parameter :: uh_n     = "uh"      !< auxiliary array for half-step values
+   character(len=dsetnamelen), parameter :: xflx_n   = "xflx"   !< main X face-flux array
+   character(len=dsetnamelen), parameter :: yflx_n   = "yflx"   !< main Y face-flux array
+   character(len=dsetnamelen), parameter :: zflx_n   = "zflx"   !< main Z face-flux array
+
    ! magnetic field
-   character(len=dsetnamelen), parameter :: mag_n   = "mag"     !< main magnetic field array
-   character(len=dsetnamelen), parameter :: magh_n  = "magh"    !< auxiliary array for half-step values
+   character(len=dsetnamelen), parameter :: mag_n      = "mag"      !< main magnetic field array
+   character(len=dsetnamelen), parameter :: magh_n     = "magh"     !< auxiliary array for half-step values
+   character(len=dsetnamelen), parameter :: xbflx_n    = "xbflx"    !< main X face-flux array of magnetic field
+   character(len=dsetnamelen), parameter :: ybflx_n    = "ybflx"    !< main Y face-flux array of magnetic field
+   character(len=dsetnamelen), parameter :: zbflx_n    = "zbflx"    !< main Z face-flux array of magnetic field
+   character(len=dsetnamelen), parameter :: psiflx_n   = "psiflx"   !< main array carrying the flux of the scalar field psi in all 3 faces 
+
    ! gravitational potential
    character(len=dsetnamelen), parameter :: gp_n    = "gp"      !< static, external field, must be explicitly set to 0. if no external fields are applied
    character(len=dsetnamelen), parameter :: sgp_n   = "sgp"     !< current field from self-gravity

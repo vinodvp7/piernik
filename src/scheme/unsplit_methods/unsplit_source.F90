@@ -62,8 +62,9 @@ contains
         real, dimension(:,:),allocatable                            :: u1
 
         uhi = wna%ind(uh_n)
+#ifdef MAGNETIC
         bhi = wna%ind(magh_n)
-
+#endif /* MAGNETIC */
         do ddim=xdim,zdim
 
             if (.not. allocated(u)) then
@@ -73,6 +74,8 @@ contains
                 allocate(u(cg%n_(ddim), size(cg%u,1)))
 
             endif
+#ifdef MAGNETIC
+
             if (.not. allocated(b)) then
                 allocate(b(cg%n_(ddim), size(cg%b,1)))
             else
@@ -80,6 +83,8 @@ contains
                 allocate(b(cg%n_(ddim), size(cg%b,1)))
 
             endif
+#endif /* MAGNETIC */
+
             if (.not. allocated(vx)) then
                 allocate(vx(size(u,1), flind%fluids))
             else
@@ -97,18 +102,20 @@ contains
                 do i1 = cg%ijkse(pdims(ddim, ORTHO1), LO), cg%ijkse(pdims(ddim, ORTHO1), HI)  
 
                     pu => cg%w(uhi)%get_sweep(ddim,i1,i2)
+#ifdef MAGNETIC
                     pb => cg%w(bhi)%get_sweep(ddim,i1,i2)
+#endif /* MAGNETIC */
                     if (istep == first_stage(integration_order) .or. integration_order < 2 ) then
                             pu => cg%w(wna%fi)%get_sweep(ddim,i1,i2)
+#ifdef MAGNETIC
                             pb => cg%w(wna%bi)%get_sweep(ddim,i1,i2)
+#endif /* MAGNETIC */
                     endif
-                    
-
                     u(:, iarr_all_swp(ddim,:)) = transpose(pu(:,:))
+#ifdef MAGNETIC
                     b(:, iarr_mag_swp(ddim,:)) = transpose(pb(:,:))
-
+#endif /* MAGNETIC */
                     u1 = u
-
                     vx = u(:, iarr_all_mx) / u(:, iarr_all_dn) ! this may also be useful for gravitational acceleration
 #ifdef MAGNETIC
                     call internal_sources(size(u, 1, kind=4), u, u1, b, cg, istep, ddim, i1, i2, rk_coef(istep) * dt, vx)
@@ -122,9 +129,10 @@ contains
                     pu(:,:) = transpose(u1(:, iarr_all_swp(ddim,:)))
                 end do        
             end do
-
-            deallocate(vx,u1,u,b)
-            
+            deallocate(vx,u1,u)
+#ifdef MAGNETIC
+            deallocate(b)
+#endif /* MAGNETIC */           
         end do
     end subroutine apply_source
 end module unsplit_source 

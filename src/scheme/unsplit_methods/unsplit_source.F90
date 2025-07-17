@@ -66,37 +66,11 @@ contains
         bhi = wna%ind(magh_n)
 #endif /* MAGNETIC */
         do ddim=xdim,zdim
-
-            if (.not. allocated(u)) then
-                allocate(u(cg%n_(ddim), size(cg%u,1)))
-            else
-                deallocate(u)
-                allocate(u(cg%n_(ddim), size(cg%u,1)))
-
-            endif
+            allocate(u(cg%n_(ddim), size(cg%u,1)))
+            allocate(vx(size(u,1), flind%fluids), u1(size(u, 1),size(u, 2)))
 #ifdef MAGNETIC
-
-            if (.not. allocated(b)) then
-                allocate(b(cg%n_(ddim), size(cg%b,1)))
-            else
-                deallocate(b)
-                allocate(b(cg%n_(ddim), size(cg%b,1)))
-
-            endif
+            allocate(b(cg%n_(ddim), size(cg%b,1)))
 #endif /* MAGNETIC */
-
-            if (.not. allocated(vx)) then
-                allocate(vx(size(u,1), flind%fluids))
-            else
-                deallocate(vx)
-                allocate(vx(size(u,1), flind%fluids))
-            endif
-            if (.not. allocated(u1)) then
-                allocate(u1(size(u, 1),size(u, 2)))
-            else
-                deallocate(u1)
-                allocate(u1(size(u, 1),size(u, 2)))
-            endif
             if (.not. dom%has_dir(ddim)) cycle
             do i2 = cg%ijkse(pdims(ddim, ORTHO2), LO), cg%ijkse(pdims(ddim, ORTHO2), HI)
                 do i1 = cg%ijkse(pdims(ddim, ORTHO1), LO), cg%ijkse(pdims(ddim, ORTHO1), HI)  

@@ -44,14 +44,17 @@ contains
 
     subroutine fluid_update_unsplit
 
-      use dataio_pub,          only: halfstep, die
+      use dataio_pub,          only: halfstep
       use global,              only: dt, dtm, t, use_fargo
       use hdc,                 only: update_chspeed,glmdamping, eglm
       use mass_defect,         only: update_magic_mass
       use timestep_retry,      only: repeat_fluidstep
-      use cg_list_dataop,      only: expanded_domain
+      use unsplit_sweeps,      only: unsplit_sweep
       use sources,             only: external_sources
+      use cg_list_dataop,      only: expanded_domain
+      use mass_defect,         only: update_magic_mass
       use user_hooks,          only: problem_customize_solution
+
 #ifdef CRESP
       use cresp_grid,          only: cresp_update_grid, cresp_clean_grid
 #endif /* CRESP */
@@ -72,6 +75,9 @@ contains
 #ifdef SHEAR
       use shear,               only: shear_3sweeps
 #endif /* SHEAR */
+#ifdef DEBUG
+      use piernikiodebug, only: force_dumps
+#endif /* DEBUG */
 
       implicit none
 
@@ -79,8 +85,8 @@ contains
       call update_chspeed
 
 
-      call eglm
-      call glmdamping(.true.)                        
+      !call eglm
+      !call glmdamping(.true.)
       t = t + dt
 
 #ifdef SHEAR
@@ -100,20 +106,17 @@ contains
          call make_diff_sweeps(.true.)
       endif
 #endif /* COSM_RAYS */
-
-      ! At this point everything should be initialized after domain expansion and we no longer need this list.
       call expanded_domain%delete
 
       if (use_fargo) call die("[unsplit_fluidupdate:fluid_update_unsplit] FARGO not yet compatible with unsplit solver")
 
-      call unsplit_sweep         ! This calls the update of MHD 
 
+      call unsplit_sweep                                 ! This is where unsplit MHD update happens
+
+#ifdef DEBUG
+      call force_dumps
+#endif /* DEBUG */
       dtm = dt
-
-      call update_chspeed
-      call eglm
-      call glmdamping(.true.)
-
 
 #ifdef GRAV
       need_update = .true.
@@ -125,17 +128,21 @@ contains
 
       call external_sources(.true.)
       if (associated(problem_customize_solution)) call problem_customize_solution(.true.)
-! CRESP update needs to be broken into 1/2 and 1/2
+
+      call eglm
+      call glmdamping(.false.)
+      
 #ifdef CRESP
       call cresp_update_grid     ! updating number density and energy density of cosmic ray electrons via CRESP module
 #endif /* CRESP */
-
       call update_magic_mass
 #ifdef CRESP
       call cresp_clean_grid ! BEWARE: due to diffusion some junk remains in the grid - this nullifies all inactive bins.
 #endif /* CRESP */
 
     end subroutine fluid_update_unsplit
+
+end module unsplit_fluidupdate
 
     subroutine unsplit_sweep
         use cg_list,                            only: cg_list_element

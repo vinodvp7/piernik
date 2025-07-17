@@ -42,7 +42,7 @@ contains
     subroutine apply_source(cg,istep)
         use grid_cont,          only: grid_container
         use named_array_list,   only: wna, qna
-        use constants,          only: pdims, ORTHO1, ORTHO2, LO, HI, magh_n, uh_n, rk_coef, cs_i2_n, first_stage, last_stage, xdim, ydim, zdim
+        use constants,          only: pdims, ORTHO1, ORTHO2, LO, HI, magh_n, uh_n, rk_coef, first_stage, last_stage, xdim, ydim, zdim
         use global,             only: dt, integration_order, nstep
         use domain,             only: dom
         use fluidindex,         only: flind, iarr_all_dn, iarr_all_mx, iarr_all_swp, iarr_mag_swp
@@ -53,13 +53,16 @@ contains
         type(grid_container), pointer,     intent(in) :: cg
         integer,                           intent(in) :: istep
 
-        integer                                                     :: ddim, i1, i2, uhi, bhi
+        integer                                                     :: ddim, i1, i2, uhi
         real, dimension(:,:),allocatable                            :: u
         real, dimension(:,:), pointer                               :: pu,pb
         real, allocatable, target                                   :: vx(:,:)
         real, dimension(1, 1)                                       :: b_ugly ! ugly
-        real, dimension(:,:),allocatable                            :: b
         real, dimension(:,:),allocatable                            :: u1
+#ifdef MAGNETIC
+        real, dimension(:,:),allocatable                            :: b
+        integer                                                     :: bhi
+#endif /* MAGNETIC */
 
         uhi = wna%ind(uh_n)
 #ifdef MAGNETIC

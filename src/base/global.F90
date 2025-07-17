@@ -115,7 +115,7 @@ module global
 
    namelist /NUMERICAL_SETUP/ cfl, cflcontrol, disallow_negatives, disallow_CRnegatives, cfl_max, use_smalld, use_smallei, smalld, smallei, smallc, smallp, dt_initial, dt_max_grow, dt_shrink, dt_min, dt_max, &
         &                     max_redostep_attempts, limiter, limiter_b, relax_time, integration_order, cfr_smooth, skip_sweep, geometry25D, sweeps_mgu, print_divB, &
-        &                     use_fargo, divB_0, glm_alpha, use_eglm, cfl_glm, ch_grid, interpol_str, w_epsilon, psi_bnd_str, ord_mag_prolong, ord_fluid_prolong, do_external_corners, solver_str
+        &                     use_fargo, divB_0, glm_alpha, use_eglm, cfl_glm, ch_grid, interpol_str, w_epsilon, psi_bnd_str, ord_mag_prolong, ord_fluid_prolong, do_external_corners, solver_str, solver_type
 
    logical :: prefer_merged_MPI  !< prefer internal_boundaries_MPI_merged over internal_boundaries_MPI_1by1
    real :: waitall_timeout       !< when > 0. then replace MPI_Waitall with MPI_Test* calls and print some diagnostics it the timeout is reached
@@ -456,7 +456,7 @@ contains
             call die("[global:init_global] no solvers defined")
       end select
 
-      if (.not. which_solver_type==SPLIT .or. .not. which_solver_type==UNSPLIT) call die("[global:init_global] solver_type has to be either split or unplit")
+      if (which_solver_type/=SPLIT .and. which_solver_type/=UNSPLIT) call die("[global:init_global] solver_type has to be either split or unplit")
       if (which_solver==RTVD_SPLIT .or. which_solver==HLLC_SPLIT) then
          if (which_solver_type==UNSPLIT) call die("[global:init_global] unsplit solver is only implemented for riemann solver")
       endif

@@ -44,12 +44,11 @@ contains
 
     subroutine fluid_update_unsplit
 
-      use dataio_pub,          only: halfstep
+      use dataio_pub,          only: halfstep, die
       use global,              only: dt, dtm, t, use_fargo
       use hdc,                 only: update_chspeed,glmdamping, eglm
       use mass_defect,         only: update_magic_mass
       use timestep_retry,      only: repeat_fluidstep
-      use unsplit_sweeps,      only: unsplit_sweep
       use sources,             only: external_sources
       use cg_list_dataop,      only: expanded_domain
       use mass_defect,         only: update_magic_mass
@@ -142,7 +141,6 @@ contains
 
     end subroutine fluid_update_unsplit
 
-end module unsplit_fluidupdate
 
     subroutine unsplit_sweep
         use cg_list,                            only: cg_list_element

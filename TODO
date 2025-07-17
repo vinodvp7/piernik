@@ -18,4 +18,14 @@
 -[ ] Document each step as a set of instructions 
 -[ ] Run each test in the problems folder and plot a comparision graph with split solver with following diagnostics : 
 primitive variable evolution + comparision, L1/L2 error, time and nstep comparision, memory_usage, div B/psi comparision, Resolution effects, AMR, single core efficiency
+
 ################### END OF UNSPLIT SOLVER IMPLEMENTATION 
+
+-[ ] Modify the fluidtypes.F90 to add extend the type component_fluid to consider a streaming CR fluid. Also modify var_numbers so that it counts in streaming CR species and set scr index.
+-[ ] Modify fluidindex to add subroutine set SCR fluid index 
+-[ ] Create a new folder streamingcr and add a new module intistreamingcr.F90 to read parameters from the namelist
+-[ ] Modify cg_list_global.F90 to register this array (Need to think how separate or tag it along with fluid ? )
+-[ ] Create a subroutine called scr_reimann_solver.F90 that implements both HLLE and HLLC solver for streaming cosmic rays
+-[ ] Create a subroutine that does the streamingcr stuff so it takes cg does rotation operation. Add CR source terms implicitly 
+-[ ] Modify the call prepare_sources so that ifdef STREAM_CR then it should also calculate sigma_scr using the present values of Bn , v and so on 
+-[ ] Create a test problem similar to Jiang and Oh paper 

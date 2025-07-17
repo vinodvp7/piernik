@@ -487,7 +487,7 @@ contains
                call lst(wna%bi)%set_compname(xdim, "magx")
                call lst(wna%bi)%set_compname(ydim, "magy")
                call lst(wna%bi)%set_compname(zdim, "magz")
-               if (which_solver_type==UNPLIT) then
+               if (which_solver_type==UNSPLIT) then
 
                   call lst(wna%xbflx)%set_compname(xdim,   "bxxflx")
                   call lst(wna%xbflx)%set_compname(ydim,   "byxflx")

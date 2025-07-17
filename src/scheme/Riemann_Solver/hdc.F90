@@ -282,26 +282,28 @@ contains
 !!
 !! dedner A. Mignone et al. / Journal of Computational Physics 229 (2010) 5896–5920, eq. 9
 !<
-   subroutine glmdamping
+  subroutine glmdamping(half)
 
       use allreduce,        only: piernik_MPI_Allreduce
       use cg_cost_data,     only: I_MHD
       use cg_leaves,        only: leaves
       use cg_list,          only: cg_list_element
-      use constants,        only: psi_n, DIVB_HDC, pMIN, RIEMANN
+      use constants,        only: psi_n, DIVB_HDC, pMIN, RIEMANN_SPLIT, UNSPLIT
       use dataio_pub,       only: die
       use domain,           only: dom
       use global,           only: glm_alpha, dt, divB_0_method, which_solver
       use named_array_list, only: qna
 
       implicit none
+      
+      logical,optional,           intent(in) :: half
 
       type(cg_list_element), pointer :: cgl
 
       real :: fac
 
       if (divB_0_method /= DIVB_HDC) return ! I think it is equivalent to if (.not. qna%exists(psi_n))
-      if (which_solver /= RIEMANN) call die("[hdc:glmdamping] Only Riemann solver has DIVB_HDC implemented")
+      if (which_solver /= RIEMANN_SPLIT .and. which_solver /= UNSPLIT ) call die("[hdc:glmdamping] Only Riemann solver has DIVB_HDC implemented")
 
       if (qna%exists(psi_n)) then
 
@@ -312,8 +314,11 @@ contains
             do while (associated(cgl))
                call cgl%cg%costs%start
 
-               fac = max(fac, glm_alpha*chspeed/(minval(cgl%cg%dl, mask=dom%has_dir)/dt))
-
+               if (present(half) .and. half) then
+                  fac = max(fac, glm_alpha*chspeed/(minval(cgl%cg%dl, mask=dom%has_dir)/(dt/2.0)))
+               else if (.not. present(half) .or. .not. half) then
+                  fac = max(fac, glm_alpha*chspeed/(minval(cgl%cg%dl, mask=dom%has_dir)/dt))
+               endif
                call cgl%cg%costs%stop(I_MHD)
                cgl => cgl%nxt
             enddo
@@ -338,11 +343,6 @@ contains
 
    end subroutine glmdamping
 
-!--------------------------------------------------------------------------------------------
-   !>
-   !! Eq.(38) Dedner et al. to be implemented
-   !<
-   subroutine eglm
 
       use all_boundaries, only: all_fluid_boundaries
 #ifdef MAGNETIC

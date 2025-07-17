@@ -463,7 +463,7 @@ contains
       if (which_solver_type == UNSPLIT .and. cfl_glm > 0.6) then
          if (master) call warn("[global::init_global] cfl_glm for unsplit riemann solver high. May cause unexpected behaviour. Ideal value = 0.3")
       endif
-      #ifndef MAGNETIC
+#ifndef MAGNETIC
       if (print_divB > 0) call warn("[global:init_global] No magnetic field: printing div(B) will be ignored.")
 #endif /* !MAGNETIC */
 
@@ -528,7 +528,7 @@ contains
          end select
       endif
       if (master) then
-         select case (solver_type)
+         select case (which_solver_type)
             case (SPLIT)
                call printinfo("    (M)HD solver type: SPLIT RIEMANN.", V_INFO)
             case (UNSPLIT)

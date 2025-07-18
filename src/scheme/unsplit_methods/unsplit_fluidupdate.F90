@@ -84,8 +84,8 @@ contains
       call update_chspeed
 
 
-      !call eglm
-      !call glmdamping(.true.)
+      call eglm
+      call glmdamping(.true.)
       t = t + dt
 
 #ifdef SHEAR
@@ -128,8 +128,11 @@ contains
       call external_sources(.true.)
       if (associated(problem_customize_solution)) call problem_customize_solution(.true.)
 
+      call update_chspeed
+
+
       call eglm
-      call glmdamping(.false.)
+      call glmdamping(.true.)
       
 #ifdef CRESP
       call cresp_update_grid     ! updating number density and energy density of cosmic ray electrons via CRESP module

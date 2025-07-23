@@ -445,6 +445,11 @@ contains
             call die("[global:init_global] unrecognized solver type: '" // trim(solver_type) // "'")
       end select
 
+      if (which_solver /=RIEMANN) then
+         if (which_solver_type /= SPLIT) then
+            call die("[global:init_global] Unsplit solver type only works with Riemann solver")
+         endif
+      endif
       select case (which_solver)
          case (RTVD_SPLIT)
             divB_0 = "CT"  ! no other option

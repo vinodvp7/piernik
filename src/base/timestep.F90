@@ -116,12 +116,13 @@ contains
       use cg_leaves,          only: leaves
       use cg_list,            only: cg_list_element
       use cmp_1D_mpi,         only: compare_array1D
-      use constants,          only: one, two, zero, half, pMIN, pMAX
+      use constants,          only: one, two, zero, half, pMIN, pMAX, UNSPLIT, SPLIT
       use dataio,             only: write_crashed
-      use dataio_pub,         only: tend, msg, warn
+      use dataio_pub,         only: tend, msg, warn, die
       use fargo,              only: timestep_fargo
       use fluidtypes,         only: var_numbers
-      use global,             only: t, dt_old, dt_full, dt_max_grow, dt_initial, dt_min, dt_max, nstep, repetitive_steps
+      use global,             only: t, dt_old, dt_full, dt_max_grow, dt_initial, dt_min, dt_max, nstep,&
+                                    repetitive_steps, which_solver_type
       use grid_cont,          only: grid_container
       use mpisetup,           only: master
       use ppp,                only: ppp_main
@@ -216,8 +217,15 @@ contains
          endif
          call write_crashed("[timestep:time_step] dt < dt_min")
       endif
+      select case (which_solver_type)
+         case(SPLIT)
+            dt = min(min(dt, dt_max), (half*(tend-t)) + (two*epsilon(one)*((tend-t))))
+         case(UNSPLIT)
+            dt = min(min(dt, dt_max), ((tend-t)) + (two*epsilon(one)*((tend-t))))
+         case default
+            call die("[timestep:time_step] Unknown solver type")
+      end select
 
-      dt = min(min(dt, dt_max), ((tend-t)) + (two*epsilon(one)*((tend-t))))
 #ifdef DEBUG
       ! We still need all above for c_all
       if (has_const_dt) then

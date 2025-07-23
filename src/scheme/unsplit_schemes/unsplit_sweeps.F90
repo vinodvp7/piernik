@@ -55,7 +55,7 @@ contains
         use mpisetup,                           only: err_mpi
         use solvecg_unsplit,                    only: solve_cg_unsplit
         use sources,                            only: prepare_sources
-        use global,                             only: integration_order, which_solver 
+        use global,                             only: integration_order, which_solver_type 
         use constants,                          only: first_stage, last_stage, UNSPLIT, PPP_CG
         use unsplit_update_boundary,            only: update_boundaries
         use cg_list_dataop,                     only: cg_list_dataop_t
@@ -78,7 +78,7 @@ contains
         integer                          :: istep
         character(len=*), parameter :: solve_cgs_label = "solve_bunch_of_cg", cg_label = "solve_cg", init_src_label = "init_src"
 
-        if (which_solver /= UNSPLIT) call die("[unsplit_sweeps:unsplit_sweep] Only compatible with UNSPLIT solver")
+        if (which_solver_type /= UNSPLIT) call die("[unsplit_sweeps:unsplit_sweep] Only compatible with unsplit riemann solver")
         sl => leaves%prioritized_cg(-1, covered_too = .true.)
 
 

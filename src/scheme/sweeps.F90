@@ -118,10 +118,10 @@ contains
       use cg_list,          only: cg_list_element
       use cg_list_dataop,   only: cg_list_dataop_t
       use constants,        only: ydim, ndims, first_stage, last_stage, uh_n, magh_n, psih_n, psi_n, INVALID, &
-           &                      RTVD_SPLIT, RIEMANN_SPLIT, PPP_CG
+           &                      RTVD_SPLIT, RIEMANN, PPP_CG, SPLIT
       use dataio_pub,       only: die
       use fc_fluxes,        only: initiate_flx_recv, recv_cg_finebnd, send_cg_coarsebnd
-      use global,           only: integration_order, use_fargo, which_solver
+      use global,           only: integration_order, use_fargo, which_solver, which_solver_type
       use grid_cont,        only: grid_container
       use MPIF,             only: MPI_STATUS_IGNORE
       use MPIFUN,           only: MPI_Waitany
@@ -173,8 +173,12 @@ contains
       select case (which_solver)
          case (RTVD_SPLIT)
             solve_cg => solve_cg_rtvd
-         case (RIEMANN_SPLIT)
-            solve_cg => solve_cg_riemann
+         case (RIEMANN)
+            if (which_solver_type==SPLIT) then
+               solve_cg => solve_cg_riemann
+            else
+               call die("[sweeps:sweep] Split Riemann solver not chosen. So shouldnt be here")
+            endif
          case default
             call die("[sweeps:sweep] unsupported solver")
       end select

@@ -67,8 +67,10 @@ contains
 		real, dimension(1, 1)                                       :: b_ugly ! ugly
 		real, dimension(:,:),allocatable                            :: b
 		real, dimension(:,:),allocatable                            :: u1
-
-		uhi = wna%ind(uh_n)
+      
+      b_ugly = 0.0
+		
+      uhi = wna%ind(uh_n)
 #ifdef MAGNETIC
 		bhi = wna%ind(magh_n)
 #endif /* MAGNETIC */

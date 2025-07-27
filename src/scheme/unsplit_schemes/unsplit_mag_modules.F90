@@ -153,6 +153,7 @@ contains
       call apply_flux(cg,istep,.false.)
       call update_psi(cg,istep)
       call apply_source(cg,istep)
+
       nullify(cs2)
 
    end subroutine solve_cg_ub

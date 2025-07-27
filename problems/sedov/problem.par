@@ -31,7 +31,7 @@
  $OUTPUT_CONTROL
     colormode = .false.
     problem_name = 'sedov'
-    run_id =  'tst'
+    run_id =  'uns'
     dt_hdf  = 2.0e-4
     dt_res  = 0.0
     dt_log  = 1.0e-4
@@ -51,8 +51,9 @@
     cfl    = 0.2
     smalld = 1.e-3
     smallei= 1.e-5
-    solver_str ='unsplit'
-    integration_order = 1
+    solver_str ='riemann'
+    solver_type = 'unsplit'
+    integration_order = 2
  /
 
  $GRAVITY

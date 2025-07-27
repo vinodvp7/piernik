@@ -165,7 +165,7 @@ contains
          end do
       end do
       call apply_flux(cg,istep)
-      call apply_source(cg,istep)
+      !call apply_source(cg,istep)
       deallocate(u,flux,tflux)
       nullify(cs2)
 

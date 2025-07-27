@@ -28,3 +28,25 @@ primitive variable evolution + comparision, L1/L2 error, time and nstep comparis
 -[ ] Create a subroutine that does the streamingcr stuff so it takes cg does rotation operation. Add CR source terms implicitly 
 -[ ] Modify the call prepare_sources so that ifdef STREAM_CR then it should also calculate sigma_scr using the present values of Bn , v and so on 
 -[ ] Create a test problem similar to Jiang and Oh paper 
+
+
+########################## NEW TODO #############################################
+
+-[ ] Check why the new unsplit_source  differs from the old unsplit if any ? 
+-[ ] Check fcfluxes so that all functions have helper function to un- sphagettify the code 
+-[ ] Check At this point compare sedov/sod2d/sod1d/jeans/magnetic_rotor/orszag_tang/field_loop/advection_test/MHD_blast_wave
+-[ ] Beautify unsplit_mag_modules.F90 
+-[ ] Beautify solve_cg_unsplit.F90 with correct sensible names to the subroutines and everything
+-[ ] Remove fluidupdate_unsplit and push the unsplit_sweep call inside fluid_update_full when solver_type is unsplit
+-[ ] Beautify unsplit_sweep
+-[ ] Beautify unsplit_boundaries or similar to split_sweep push it inside unsplit_sweep
+-[ ] Beautify unsplit_source
+-[ ] make CI 
+-[ ] make -j CI
+-[ ] make help
+-[ ] Add sod2d and sod3d problem and circular alfven wave propagation following Mignone et.al.
+-[ ] Check also magnetic rotor and etc.
+-[ ] Document "How to add a new solver"
+-[ ] Pull request
+
+

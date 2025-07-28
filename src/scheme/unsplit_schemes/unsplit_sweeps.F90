@@ -62,7 +62,7 @@ contains
         use pppmpi,                             only: req_ppp
         use MPIF,                               only: MPI_STATUS_IGNORE
         use MPIFUN,                             only: MPI_Waitany
-        use fc_fluxes,                          only: initiate_flx_recv, recv_cg_finebnd, send_cg_coarsebnd
+        use unsplit_amr_helpers,                only: initiate_flx_recv_unsplit, recv_cg_finebnd_unsplit, send_cg_coarsebnd_unsplit
 
 
         implicit none
@@ -98,7 +98,7 @@ contains
         
         do istep = first_stage(integration_order), last_stage(integration_order)
             
-            call initiate_flx_recv(req, -1)
+            call initiate_flx_recv_unsplit(req)
             n_recv = req%n
             all_processed = .false.
             do while (.not. all_processed)
@@ -112,14 +112,14 @@ contains
                     cg => cgl%cg
 
                     if (.not. cg%processed) then
-                        call recv_cg_finebnd(req,-1, cg, all_received)
+                        call recv_cg_finebnd_unsplit(req, cg, all_received)
                         if (all_received) then
 
                             call cg%cleanup_flux()
 
                             call solve_cg_unsplit(cg,istep)
 
-                            call send_cg_coarsebnd(req, -1, cg)
+                            call send_cg_coarsebnd_unsplit(req, cg)
                             blocks_done = blocks_done + 1
                         else
                             all_processed = .false.

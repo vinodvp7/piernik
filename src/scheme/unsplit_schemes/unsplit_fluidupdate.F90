@@ -61,7 +61,7 @@ contains
       halfstep = .false.
       t = t + dt
 
-      call make_3sweeps(.true.) ! X -> Y -> Z
+      call make_unsplit_sweep(.true.) ! X -> Y -> Z
 
 ! Sources should be hooked to problem_customize_solution with forward argument
 
@@ -73,14 +73,14 @@ contains
       t = t + dt
       dtm = dt
 
-      call make_3sweeps(.true.) ! X -> Y -> Z     
+      call make_unsplit_sweep(.false.) ! X -> Y -> Z     
       call update_magic_mass
 #ifdef CRESP
       call cresp_clean_grid ! BEWARE: due to diffusion some junk remains in the grid - this nullifies all inactive bins.
 #endif /* CRESP */
     end subroutine fluid_update_unsplit
 
-   subroutine make_3sweeps(forward)
+   subroutine make_unsplit_sweep(forward)
 
       use cg_list_dataop,      only: expanded_domain
       use constants,           only: xdim, ydim, zdim, I_ONE
@@ -153,6 +153,6 @@ contains
       call eglm
       call glmdamping
 
-   end subroutine make_3sweeps  
+   end subroutine make_unsplit_sweep  
 
 end module unsplit_fluidupdate

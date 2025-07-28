@@ -202,7 +202,7 @@ contains
 
       ! Begin processing of namelist parameters
 
-      which_solver      = RIEMANN  ! \todo: change the default to RIEMANN
+      which_solver      = RTVD_SPLIT  ! \todo: change the default to RIEMANN
       which_solver_type = SPLIT
       divB_0            = "HDC"  ! This is the default for the Riemann solver, for RTVD it will be changed to "CT" anyway
 

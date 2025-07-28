@@ -41,8 +41,8 @@ primitive variable evolution + comparision, L1/L2 error, time and nstep comparis
 -[X] Beautify unsplit_sweep
 -[X] Beautify unsplit_boundaries or similar to split_sweep push it inside unsplit_sweep
 -[X] Beautify unsplit_source
--[ ] make CI 
--[ ] make -j CI
+-[X] make CI 
+-[ ] make -j CI                       ! Serious trouble for AMR + MPI 
 -[ ] make help
 -[ ] Add sod2d and sod3d problem and circular alfven wave propagation following Mignone et.al.
 -[ ] Check also magnetic rotor and etc.

@@ -230,7 +230,7 @@ contains
    subroutine register_fluids(this)
 
       use constants,  only: wa_n, fluid_n, uh_n, AT_NO_B, PIERNIK_INIT_FLUIDS, xflx_n, yflx_n, zflx_n, &
-                             xbflx_n, ybflx_n, zbflx_n, psiflx_n, UNSPLIT 
+                             xbflx_n, ybflx_n, zbflx_n, psiflx_n, UNSPLIT
       use dataio_pub, only: die, code_progress
       use fluidindex, only: flind
       use global,     only: ord_fluid_prolong, which_solver_type
@@ -276,7 +276,7 @@ contains
 #ifdef MAGNETIC
       call this%reg_var(mag_n,  vital = .true.,  dim4 = ndims, ord_prolong = ord_mag_prolong, restart_mode = AT_OUT_B, position=pia)  !! Main array of magnetic field's components, "b"
       call this%reg_var(magh_n, vital = .false., dim4 = ndims) !! Array for copy of magnetic field's components, "b" used in half-timestep in RK2
-      
+
       if (which_solver_type==UNSPLIT) then
          call this%reg_var(xbflx_n,   vital = .false.,  dim4 = ndims, ord_prolong = ord_mag_prolong, restart_mode = AT_OUT_B)  !! Main array of magnetic field's components, "b"
          call this%reg_var(ybflx_n,   vital = .false.,  dim4 = ndims, ord_prolong = ord_mag_prolong, restart_mode = AT_OUT_B)  !! Main array of magnetic field's components, "b"
@@ -433,7 +433,7 @@ contains
                   call lst(wna%psiflx)%set_compname(zdim,   "psizflx")
 
                endif
-               
+
          end select
 
       end subroutine set_magnetic_names
@@ -627,7 +627,7 @@ contains
                   call lst(wna%zflx)%set_compname(flind%ion%imy, "zfmomyi")
                   call lst(wna%zflx)%set_compname(flind%ion%imz, "zfmomzi")
                   if (flind%ion%has_energy) call lst(wna%zflx)%set_compname(flind%ion%ien, "zfenei")
-                  
+
                endif
 
                if (has_neu) then
@@ -641,7 +641,7 @@ contains
                   call lst(wna%yflx)%set_compname(flind%neu%imx, "yfmomxn")
                   call lst(wna%yflx)%set_compname(flind%neu%imy, "yfmomyn")
                   call lst(wna%yflx)%set_compname(flind%neu%imz, "yfmomzn")
-                  if (flind%neu%has_energy) call lst(wna%yflx)%set_compname(flind%neu%ien, "yfenen")     
+                  if (flind%neu%has_energy) call lst(wna%yflx)%set_compname(flind%neu%ien, "yfenen")
 
                   call lst(wna%zflx)%set_compname(flind%neu%idn, "zfdenn")
                   call lst(wna%zflx)%set_compname(flind%neu%imx, "zfmomxn")

@@ -26,14 +26,14 @@
 !
 #include "piernik.h"
 
-module unsplit_source 
+module unsplit_source
 
 ! pulled by ANY
 
    implicit none
 
    private
-   public  :: apply_source 
+   public  :: apply_source
 
 contains
 
@@ -58,7 +58,8 @@ contains
         type(grid_container), pointer,     intent(in) :: cg
         integer,                           intent(in) :: istep
 
-        integer                                                     :: ddim, i1, i2, uhi
+        integer(kind=4)                                             :: uhi, ddim
+        integer                                                     :: i1, i2
         real, dimension(:,:),allocatable                            :: u
         real, dimension(:,:), pointer                               :: pu,pb
         real, allocatable, target                                   :: vx(:,:)
@@ -74,14 +75,14 @@ contains
         uhi = wna%ind(uh_n)
         do ddim=xdim,zdim
             if (.not. dom%has_dir(ddim)) cycle
-            call my_allocate(u,[cg%n_(ddim), size(cg%u,1)])
-            call my_allocate(vx,[size(u,1), flind%fluids])
-            call my_allocate(u1,[size(u, 1),size(u, 2)])
+            call my_allocate(u,[cg%n_(ddim), size(cg%u,1,kind=4)])
+            call my_allocate(vx,[size(u,1,kind=4), flind%fluids])
+            call my_allocate(u1,[size(u, 1,kind=4),size(u, 2,kind=4)])
 #ifdef MAGNETIC
-            call my_allocate(b,[cg%n_(ddim), size(cg%b,1)])
+            call my_allocate(b,[cg%n_(ddim), size(cg%b,1,kind=4)])
 #endif /* MAGNETIC */
             do i2 = cg%ijkse(pdims(ddim, ORTHO2), LO), cg%ijkse(pdims(ddim, ORTHO2), HI)
-                do i1 = cg%ijkse(pdims(ddim, ORTHO1), LO), cg%ijkse(pdims(ddim, ORTHO1), HI)  
+                do i1 = cg%ijkse(pdims(ddim, ORTHO1), LO), cg%ijkse(pdims(ddim, ORTHO1), HI)
                     pu => cg%w(wna%fi)%get_sweep(ddim,i1,i2)
 #ifdef MAGNETIC
                     pb => cg%w(wna%bi)%get_sweep(ddim,i1,i2)
@@ -108,12 +109,12 @@ contains
                     call care_for_positives(size(u, 1, kind=4), u1, b_ugly, cg, ddim, i1, i2)
 #endif /* MAGNETIC */
                     pu(:,:) = transpose(u1(:, iarr_all_swp(ddim,:)))
-                end do        
-            end do
+                enddo
+            enddo
             call my_deallocate(vx); call my_deallocate(u1); call my_deallocate(u)
 #ifdef MAGNETIC
             call my_deallocate(b)
 #endif /* MAGNETIC */
-        end do
+        enddo
     end subroutine apply_source
-end module unsplit_source 
+end module unsplit_source

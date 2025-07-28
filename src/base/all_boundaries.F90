@@ -148,7 +148,7 @@ contains
       character(len=*), parameter :: abm_label = "all_mag_boundaries"
 
       call ppp_main%start(abm_label, PPP_MAG)
-      
+
 
       do dir = xdim, zdim
          if (dom%has_dir(dir)) call leaves%bnd_b(dir)

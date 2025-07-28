@@ -218,9 +218,9 @@ contains
          call write_crashed("[timestep:time_step] dt < dt_min")
       endif
       select case (which_solver_type)
-         case(SPLIT)
+         case (SPLIT)
             dt = min(min(dt, dt_max), (half*(tend-t)) + (two*epsilon(one)*((tend-t))))
-         case(UNSPLIT)
+         case (UNSPLIT)
             dt = min(min(dt, dt_max), ((tend-t)) + (two*epsilon(one)*((tend-t))))
          case default
             call die("[timestep:time_step] Unknown solver type")

@@ -204,7 +204,7 @@ contains
 
       if (which_solver_type==UNSPLIT) then
          if (use_fargo) call die("[fluidupdate:make_3sweeps] FARGO not implemented for unsplit Riemann Solver")
-         call unsplit_sweep                    
+         call unsplit_sweep
       else
          if (use_fargo) then
             if (.not.skip_sweep(zdim)) call make_adv_sweep(zdim, forward)

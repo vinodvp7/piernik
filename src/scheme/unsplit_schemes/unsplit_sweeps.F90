@@ -29,7 +29,7 @@
 !>
 !! \brief The job of this module is simple : Pass a  block of cg to solve to do a unsplit update of the state
 !! Currently we dont not add AMR support or ppp monitoring. Sister module sweeps is used for directional sweep update and is called by
-!! fluid update module. We will call this module from fluid_unsplit_update which is in turn mentioned in fluid_update to keep this line of 
+!! fluid update module. We will call this module from fluid_unsplit_update which is in turn mentioned in fluid_update to keep this line of
 !! additions away from the main code and merger it later. We are not adding fargo support either. This will be the first update after this works
 !<
 
@@ -55,13 +55,12 @@ contains
 #endif /* MAGNETIC */
 
       implicit none
-      
+
       integer,                  intent(in) :: istep
 
+      integer(kind=4)                      :: ub_i
 
-      integer                              :: ub_i
-
-      do ub_i=xdim,zdim 
+      do ub_i=xdim,zdim
             if (dom%has_dir(ub_i)) then
                if (sweeps_mgu) then
                   if (istep == first_stage(integration_order)) then
@@ -80,7 +79,7 @@ contains
                   ! endif
                endif
             endif
-         end do
+         enddo
       if (divB_0_method == DIVB_HDC) then
 #ifdef MAGNETIC
          if (which_solver_type==UNSPLIT) then
@@ -103,8 +102,8 @@ contains
         use mpisetup,                           only: err_mpi
         use solvecg_unsplit,                    only: solve_cg_unsplit
         use sources,                            only: prepare_sources
-        use global,                             only: integration_order, which_solver_type 
-        use constants,                          only: first_stage, last_stage, UNSPLIT
+        use global,                             only: integration_order, which_solver_type
+        use constants,                          only: first_stage, last_stage, UNSPLIT, INVALID
         use cg_list_dataop,                     only: cg_list_dataop_t
         use pppmpi,                             only: req_ppp
         use MPIF,                               only: MPI_STATUS_IGNORE
@@ -125,7 +124,7 @@ contains
         integer                          :: istep
 
         if (which_solver_type /= UNSPLIT) call die("[unsplit_sweeps:unsplit_sweep] Only compatible with unsplit riemann solver")
-        sl => leaves%prioritized_cg(-1, covered_too = .true.)
+        sl => leaves%prioritized_cg(INVALID, covered_too = .true.)
 
 
         cgl => leaves%first
@@ -135,7 +134,7 @@ contains
         enddo
 
         do istep = first_stage(integration_order), last_stage(integration_order)
-            
+
             call initiate_flx_recv_unsplit(req)
             n_recv = req%n
             all_processed = .false.
@@ -164,7 +163,7 @@ contains
                     endif
 
                     cgl => cgl%nxt
-                end do
+                enddo
                 if (.not. all_processed .and. blocks_done == 0) then
                 if (n_recv > 0) call MPI_Waitany(n_recv, req%r(:n_recv), g, MPI_STATUS_IGNORE, err_mpi)
                 ! g is the number of completed operations
@@ -174,11 +173,11 @@ contains
             call req%waitall("sweeps")
 
             call update_boundaries(istep)
-        end do
+        enddo
         call sl%delete
         deallocate(sl)
 
 
-    end subroutine unsplit_sweep   
+    end subroutine unsplit_sweep
 
 end module unsplit_sweeps

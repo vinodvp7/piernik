@@ -51,10 +51,10 @@ contains
       implicit none
 
       type(grid_container), pointer, intent(in) :: cg
-      integer,                       intent(in) :: istep    
+      integer,                       intent(in) :: istep
 
-      integer                                    :: i1, i2, ddim
-      integer(kind=4)                            :: uhi, bhi, psii, psihi
+      integer                                    :: i1, i2
+      integer(kind=4)                            :: uhi, bhi, psii, psihi, ddim
       real, dimension(:,:),allocatable           :: u
       real, dimension(:,:),allocatable           :: b
       real, dimension(:,:),allocatable           :: b_psi                ! This will carry both b and psi so it will have one extra size in dim=2
@@ -65,11 +65,11 @@ contains
       real, dimension(:),   pointer              :: cs2
       real, dimension(:,:),allocatable           :: flux
       real, dimension(:,:),allocatable           :: bflux
-      real, dimension(:,:),allocatable           :: tflux                 ! to temporarily store transpose of flux 
-      real, dimension(:,:),allocatable           :: tbflux                ! to temporarily store transpose of bflux 
+      real, dimension(:,:),allocatable           :: tflux                 ! to temporarily store transpose of flux
+      real, dimension(:,:),allocatable           :: tbflux                ! to temporarily store transpose of bflux
       type(ext_fluxes)                           :: eflx
       integer                                    :: i_cs_iso2
-      
+
       uhi = wna%ind(uh_n)
       bhi = wna%ind(magh_n)
 
@@ -85,14 +85,14 @@ contains
 
       do ddim=xdim,zdim
         if (.not. dom%has_dir(ddim)) cycle
-         allocate(u(cg%n_(ddim), size(cg%u,1)), b(cg%n_(ddim), size(cg%b,1)))
-         allocate(b_psi(size(b,1), size(b,2) + I_ONE ))                           ! one more for psi.We wont use it now though
-         allocate(flux(size(u, 1)-1,size(u, 2)),tflux(size(u, 2),size(u, 1)))
-         allocate(bflux(size(b, 1)-1,size(b_psi, 2)),tbflux(size(b_psi, 2),size(b, 1))) 
+         allocate(u(cg%n_(ddim), size(cg%u,1,kind=4)), b(cg%n_(ddim), size(cg%b,1,kind=4)))
+         allocate(b_psi(size(b,1,kind=4), size(b,2,kind=4) + I_ONE ))                           ! one more for psi.We wont use it now though
+         allocate(flux(size(u, 1,kind=4)-1,size(u, 2,kind=4)),tflux(size(u, 2,kind=4),size(u, 1,kind=4)))
+         allocate(bflux(size(b, 1,kind=4)-1,size(b_psi, 2,kind=4)),tbflux(size(b_psi, 2,kind=4),size(b, 1,kind=4)))
 
          do i2 = cg%ijkse(pdims(ddim, ORTHO2), LO), cg%ijkse(pdims(ddim, ORTHO2), HI)
-            do i1 = cg%ijkse(pdims(ddim, ORTHO1), LO), cg%ijkse(pdims(ddim, ORTHO1), HI)  
-               
+            do i1 = cg%ijkse(pdims(ddim, ORTHO1), LO), cg%ijkse(pdims(ddim, ORTHO1), HI)
+
                if (ddim==xdim) then
                   pflux => cg%w(wna%xflx)%get_sweep(xdim,i1,i2)
                   pbflux => cg%w(wna%xbflx)%get_sweep(xdim,i1,i2)
@@ -103,7 +103,7 @@ contains
                   pbflux => cg%w(wna%ybflx)%get_sweep(ydim,i1,i2)
                   apsiflux => cg%w(wna%psiflx)%get_sweep(ydim,i1,i2)
                    ppsiflux => apsiflux(ydim,:)
-               else if (ddim==zdim) then 
+               else if (ddim==zdim) then
                   pflux => cg%w(wna%zflx)%get_sweep(zdim,i1,i2)
                   pbflux => cg%w(wna%zbflx)%get_sweep(zdim,i1,i2)
                   apsiflux => cg%w(wna%psiflx)%get_sweep(zdim,i1,i2)
@@ -117,18 +117,18 @@ contains
                     pb   => cg%w(wna%bi)%get_sweep(ddim,i1,i2)
                     ppsi => cg%q(psii)%get_sweep(ddim,i1,i2)
                endif
-            
+
 
                u(:, iarr_all_swp(ddim,:)) = transpose(pu(:,:))
                b(:, iarr_mag_swp(ddim,:)) = transpose(pb(:,:))
-   
+
                b_psi(:, xdim:zdim) = b(:,:) ; b_psi(:,psidim) = ppsi(:)
-               
+
                if (i_cs_iso2 > 0) cs2 => cg%q(i_cs_iso2)%get_sweep(ddim,i1,i2)
 
-               
+
                call cg%set_fluxpointers(ddim, i1, i2, eflx)
-             
+
                call solve(u, b_psi ,cs2, eflx, flux, bflux)
 
 
@@ -145,10 +145,10 @@ contains
                pbflux(:,:) = tbflux(xdim:zdim,:)
                ppsiflux(:) =  tbflux(psidim,:)
 
-            end do
-         end do
+            enddo
+         enddo
          deallocate(u, flux, tflux, b, b_psi, tbflux, bflux)
-      end do
+      enddo
       call apply_flux(cg,istep,.true.)
       call apply_flux(cg,istep,.false.)
       call update_psi(cg,istep)
@@ -204,11 +204,11 @@ contains
    end subroutine solve
 
    subroutine apply_flux(cg, istep, mag)
-      use domain,             only : dom
-      use grid_cont,          only : grid_container
-      use global,             only : integration_order, dt
-      use named_array_list,   only : wna
-      use constants,          only : xdim, ydim, zdim, first_stage, last_stage, rk_coef, &
+      use domain,             only: dom
+      use grid_cont,          only: grid_container
+      use global,             only: integration_order, dt
+      use named_array_list,   only: wna
+      use constants,          only: xdim, ydim, zdim, first_stage, last_stage, rk_coef, &
                                      uh_n, I_ONE, ndims, magh_n
 
       implicit none
@@ -261,27 +261,27 @@ contains
       endif
       if (associated(T)) then
          do afdim = xdim, zdim
-            if (.not. active(afdim)) cycle                   
+            if (.not. active(afdim)) cycle
 
             call bounds_for_flux(L0,U0,active,afdim,L,U)
 
-            shift = 0 ;  shift(afdim) = I_ONE 
+            shift = 0 ;  shift(afdim) = I_ONE
             T(:, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) = T(:, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) &
                + dt / cg%dl(afdim) * rk_coef(istep) * ( &
                   F(afdim)%flx(:, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) - &
                   F(afdim)%flx(:, L(xdim)+shift(xdim):U(xdim)+shift(xdim), &
                               L(ydim)+shift(ydim):U(ydim)+shift(ydim), &
                               L(zdim)+shift(zdim):U(zdim)+shift(zdim)) )
-         end do
+         enddo
       endif
    end subroutine apply_flux
 
    subroutine update_psi(cg,istep)
-      use domain,             only : dom
-      use grid_cont,          only : grid_container
-      use global,             only : integration_order, dt
-      use named_array_list,   only : qna
-      use constants,          only : xdim, ydim, zdim, first_stage, last_stage, rk_coef, &
+      use domain,             only: dom
+      use grid_cont,          only: grid_container
+      use global,             only: integration_order, dt
+      use named_array_list,   only: qna
+      use constants,          only: xdim, ydim, zdim, first_stage, last_stage, rk_coef, &
                                      I_ONE, ndims, psi_n,psih_n
 
       implicit none
@@ -302,7 +302,7 @@ contains
       psihi = qna%ind(psih_n)
       L0 = [ lbound(cg%q(psii)%arr,1), lbound(cg%q(psii)%arr,2), lbound(cg%q(psii)%arr,3) ]
       U0 = [ ubound(cg%q(psii)%arr,1), ubound(cg%q(psii)%arr,2), ubound(cg%q(psii)%arr,3) ]
-      
+
       if (istep==first_stage(integration_order) .and. integration_order>I_ONE) then
         cg%q(psihi)%arr(:,:,:) = cg%q(psii)%arr(:,:,:)
         TP => cg%q(psihi)%arr
@@ -312,16 +312,16 @@ contains
 
       if (associated(TP)) then
          do afdim = xdim, zdim
-            if (.not. active(afdim)) cycle                    
+            if (.not. active(afdim)) cycle
             call bounds_for_flux(L0,U0,active,afdim,L,U)
-            shift = 0 ;  shift(afdim) = I_ONE    
+            shift = 0 ;  shift(afdim) = I_ONE
             TP(L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) = TP(L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) &
                + dt / cg%dl(afdim) * rk_coef(istep) * ( &
                   cg%psiflx(afdim,L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) - &
                   cg%psiflx(afdim,L(xdim)+shift(xdim):U(xdim)+shift(xdim), &
                               L(ydim)+shift(ydim):U(ydim)+shift(ydim), &
                               L(zdim)+shift(zdim):U(zdim)+shift(zdim)) )
-         end do
+         enddo
       endif
    end subroutine update_psi
 
@@ -348,9 +348,9 @@ contains
             if (d /= afdim) then           ! shrink transverse dirs by 3 extra
                L(d) = L(d) + nb_1
                U(d) = U(d) - nb_1
-            end if
-         end if
-      end do
+            endif
+         endif
+      enddo
    end subroutine bounds_for_flux
 
 end module unsplit_mag_modules

@@ -528,10 +528,15 @@ contains
                call die("[global:init_global] unrecognized hydro solver")
          end select
       endif
-      
+
       if (which_solver_type == UNSPLIT) then
          if (cfl> 0.5) call warn("[global:init_global] Unsplit MHD solver chosen. CFL > 0.5 may lead to unexpected result.")
       endif
+#ifdef MAGNETIC
+      if (which_solver_type == UNSPLIT) then
+         if (cfl_glm /= 0.3) call warn("[global:init_global] Unsplit MHD solver chosen. Ideal CFL_GLM = 0.3. Anything else may lead to unexpected result.")
+      endif
+#endif /* MAGNETIC */
 #ifdef MAGNETIC
       if (master) then
          select case (divB_0_method)

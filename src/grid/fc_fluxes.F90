@@ -75,7 +75,7 @@ contains
 
       type(cg_list_element), pointer :: cgl
       integer :: g
-      
+
       if (present(unsplit) .and. unsplit) then
          if (cdim==xdim)     call req%init(owncomm = .true., label = "fc_flx")
       else

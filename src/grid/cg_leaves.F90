@@ -366,7 +366,7 @@ contains
       integer(kind=4),optional,   intent(in) :: dir
       logical, optional,          intent(in) :: covered_too
 
-      integer                                :: pr_cg_i
+      integer(kind=4)                        :: pr_cg_i
 
       type(cg_list_dataop_t), pointer :: sorted_leaves
       type(cg_list_element),  pointer :: cgl
@@ -381,7 +381,7 @@ contains
                      call sorted_leaves%add(cgl%cg)
                      cgl%cg%processed = .true.
                   endif
-               end do
+               enddo
                cgl => cgl%nxt
             enddo
 
@@ -393,7 +393,7 @@ contains
                            call sorted_leaves%add(cgl%cg)
                            cgl%cg%processed = .true.
                         endif
-                     end do
+                     enddo
                   endif
                cgl => cgl%nxt
             enddo
@@ -418,7 +418,7 @@ contains
                   endif
                cgl => cgl%nxt
             enddo
-      end if
+      endif
       cgl => this%first
       do while (associated(cgl))
          if (.not. cgl%cg%processed) then

@@ -49,7 +49,7 @@ contains
 !! Returns number of requests in `nr`
 !<
    subroutine initiate_flx_recv_unsplit(req, max_level)
-      use fc_fluxes,    only: initiate_flx_recv 
+      use fc_fluxes,    only: initiate_flx_recv
       use domain,       only: dom
       use pppmpi,       only: req_ppp
       use constants,    only: xdim,zdim
@@ -58,12 +58,12 @@ contains
       type(req_ppp),             intent(inout) :: req
       integer(kind=4), optional, intent(in)    :: max_level
 
-      integer                                  :: cdim
+      integer(kind=4)                          :: cdim
 
       do cdim = xdim, zdim
          if (.not. dom%has_dir(cdim)) cycle
          call initiate_flx_recv(req,cdim,max_level,.true.)
-      end do 
+      enddo
    end subroutine initiate_flx_recv_unsplit
 
    subroutine recv_cg_finebnd_unsplit(req, cg, all_received)
@@ -79,12 +79,12 @@ contains
       type(grid_container), pointer, intent(inout) :: cg
       logical, optional,             intent(out)   :: all_received
 
-      integer                                      :: cdim
+      integer(kind=4)                              :: cdim
 
       do cdim = xdim, zdim
          if (.not. dom%has_dir(cdim)) cycle
          call recv_cg_finebnd(req, cdim, cg, all_received)
-      end do 
+      enddo
    end subroutine recv_cg_finebnd_unsplit
 
    subroutine send_cg_coarsebnd_unsplit(req, cg)
@@ -99,11 +99,11 @@ contains
       type(req_ppp),                 intent(inout) :: req
       type(grid_container), pointer, intent(inout) :: cg
 
-      integer                                      :: cdim
+      integer(kind=4)                              :: cdim
 
       do cdim = xdim, zdim
          if (.not. dom%has_dir(cdim)) cycle
          call send_cg_coarsebnd(req, cdim, cg)
-      end do 
+      enddo
    end subroutine send_cg_coarsebnd_unsplit
 end module unsplit_amr_helpers

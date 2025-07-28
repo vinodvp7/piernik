@@ -41,9 +41,9 @@ contains
 
     subroutine apply_source(cg,istep)
         use grid_cont,          only: grid_container
-        use named_array_list,   only: wna, qna
-        use constants,          only: pdims, ORTHO1, ORTHO2, LO, HI, uh_n, rk_coef, first_stage, last_stage, xdim, ydim, zdim
-        use global,             only: dt, integration_order, nstep
+        use named_array_list,   only: wna
+        use constants,          only: pdims, ORTHO1, ORTHO2, LO, HI, uh_n, rk_coef, first_stage, xdim, zdim
+        use global,             only: dt, integration_order
         use domain,             only: dom
         use fluidindex,         only: flind, iarr_all_dn, iarr_all_mx, iarr_all_swp
         use sources,            only: internal_sources, care_for_positives
@@ -62,13 +62,15 @@ contains
         real, dimension(:,:),allocatable                            :: u
         real, dimension(:,:), pointer                               :: pu,pb
         real, allocatable, target                                   :: vx(:,:)
-        real, dimension(1, 1)                                       :: b_ugly ! ugly
         real, dimension(:,:),allocatable                            :: u1
 #ifdef MAGNETIC
         real, dimension(:,:),allocatable                            :: b
         integer                                                     :: bhi
         bhi = wna%ind(magh_n)
-#endif /* MAGNETIC */
+#else /* !MAGNETIC */
+         real, dimension(1, 1)                                       :: b_ugly ! ugly
+         b_ugly = 0.0
+#endif /* !MAGNETIC */
         uhi = wna%ind(uh_n)
         do ddim=xdim,zdim
             if (.not. dom%has_dir(ddim)) cycle

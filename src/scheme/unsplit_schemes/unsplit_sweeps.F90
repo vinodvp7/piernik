@@ -43,10 +43,58 @@ module unsplit_sweeps
    public :: unsplit_sweep
 
 contains
+   subroutine update_boundaries(istep)
+
+      use all_boundaries, only: all_fluid_boundaries
+!      use cg_leaves,      only: leaves
+      use constants,      only: first_stage, DIVB_HDC,xdim,zdim, UNSPLIT
+      use domain,         only: dom
+      use global,         only: sweeps_mgu, integration_order, divB_0_method, which_solver_type
+#ifdef MAGNETIC
+      use all_boundaries, only: all_mag_boundaries
+#endif /* MAGNETIC */
+
+      implicit none
+      
+      integer,                  intent(in) :: istep
+
+
+      integer                              :: ub_i
+
+      do ub_i=xdim,zdim 
+            if (dom%has_dir(ub_i)) then
+               if (sweeps_mgu) then
+                  if (istep == first_stage(integration_order)) then
+                     call all_fluid_boundaries(nocorners = .true., dir = ub_i)
+                  else
+                     call all_fluid_boundaries(nocorners = .true.)
+                  endif
+               else
+                  ! nocorners and dir = cdim can be used safely only when ord_fluid_prolong == 0 .and. cc_mag
+                  ! essential speedups here are possible but it requires c/f boundary prolongation that does not require corners
+
+                  ! if (istep == first_stage(integration_order)) then
+                  !    call all_fluid_boundaries(nocorners = .true.)
+                  ! else
+                     call all_fluid_boundaries(istep=istep) !(nocorners = .true., dir = cdim)
+                  ! endif
+               endif
+            endif
+         end do
+      if (divB_0_method == DIVB_HDC) then
+#ifdef MAGNETIC
+         if (which_solver_type==UNSPLIT) then
+            call all_mag_boundaries(istep) ! ToDo: take care of psi boundaries
+         else
+            call all_mag_boundaries ! ToDo: take care of psi boundaries
+         endif
+#endif /* MAGNETIC */
+      endif
+
+   end subroutine update_boundaries
 
     subroutine unsplit_sweep()
         use cg_list,                            only: cg_list_element
-        use cg_cost_data,                       only: I_MHD, I_REFINE
         use grid_cont,                          only: grid_container
         use cg_leaves,                          only: leaves
         use dataio_pub,                         only: die
@@ -56,8 +104,7 @@ contains
         use solvecg_unsplit,                    only: solve_cg_unsplit
         use sources,                            only: prepare_sources
         use global,                             only: integration_order, which_solver_type 
-        use constants,                          only: first_stage, last_stage, UNSPLIT, PPP_CG
-        use unsplit_update_boundary,            only: update_boundaries
+        use constants,                          only: first_stage, last_stage, UNSPLIT
         use cg_list_dataop,                     only: cg_list_dataop_t
         use pppmpi,                             only: req_ppp
         use MPIF,                               only: MPI_STATUS_IGNORE
@@ -76,7 +123,6 @@ contains
         type(cg_list_element), pointer   :: cgl
         type(grid_container),  pointer   :: cg
         integer                          :: istep
-        character(len=*), parameter :: solve_cgs_label = "solve_bunch_of_cg", cg_label = "solve_cg", init_src_label = "init_src"
 
         if (which_solver_type /= UNSPLIT) call die("[unsplit_sweeps:unsplit_sweep] Only compatible with unsplit riemann solver")
         sl => leaves%prioritized_cg(-1, covered_too = .true.)
@@ -84,18 +130,10 @@ contains
 
         cgl => leaves%first
         do while (associated(cgl))
-            !cgl%cg%f(:,:,:,:) = 0.0                         ! This looks unsafe. Might come back to bite your ass later. Careful 
-            !cgl%cg%g(:,:,:,:) = 0.0
-            !cgl%cg%h(:,:,:,:) = 0.0
             call prepare_sources(cgl%cg)
             cgl => cgl%nxt
         enddo
 
-
-
-        !all_processed = .false.
-        !blocks_done = 0
-        
         do istep = first_stage(integration_order), last_stage(integration_order)
             
             call initiate_flx_recv_unsplit(req)
@@ -106,7 +144,6 @@ contains
                 blocks_done = 0
                 ! OPT this loop should probably go from finest to coarsest for better compute-communicate overlap.
                 cgl => sl%first
-            !cgl => leaves%first    ! This should be modified to point to the first leaf of prioritized leaves . Maybe important only in AMR ? 
 
                 do while (associated(cgl))
                     cg => cgl%cg

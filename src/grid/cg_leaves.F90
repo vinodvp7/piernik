@@ -359,13 +359,14 @@ contains
 
       use cg_list,        only: cg_list_element
       use cg_list_dataop, only: cg_list_dataop_t
-      use constants,      only: ndims,xdim,zdim
+      use constants,      only: xdim,zdim
       implicit none
 
       class(cg_leaves_t),         intent(in) :: this  !< object invoking type-bound procedure
       integer(kind=4),optional,   intent(in) :: dir
       logical, optional,          intent(in) :: covered_too
-      integer                         :: pr_cg_i
+
+      integer                                :: pr_cg_i
 
       type(cg_list_dataop_t), pointer :: sorted_leaves
       type(cg_list_element),  pointer :: cgl

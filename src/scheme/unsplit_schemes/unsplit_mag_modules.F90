@@ -40,11 +40,11 @@ contains
    subroutine solve_cg_ub(cg,istep)
       use grid_cont,        only: grid_container
       use named_array_list, only: wna, qna
-      use constants,        only: pdims, ORTHO1, ORTHO2, I_ONE, LO, HI, magh_n, uh_n, rk_coef,&
-                                  psi_n,psih_n,psidim, cs_i2_n, first_stage, last_stage, xdim, ydim, zdim
-      use global,           only: dt, integration_order, nstep
+      use constants,        only: pdims, ORTHO1, ORTHO2, I_ONE, LO, HI, magh_n, uh_n, &
+                                  psi_n,psih_n,psidim, cs_i2_n, first_stage, xdim, ydim, zdim
+      use global,           only: integration_order
       use domain,           only: dom
-      use fluidindex,       only: flind, iarr_all_dn, iarr_all_mx, iarr_all_swp, iarr_mag_swp
+      use fluidindex,       only: iarr_all_swp, iarr_mag_swp
       use fluxtypes,        only: ext_fluxes
       use unsplit_source,   only: apply_source
 
@@ -160,7 +160,7 @@ contains
 
    subroutine solve(ui, bi, cs2, eflx, flx, bflx)
 
-      use constants,      only: DIVB_HDC, xdim, ydim, zdim
+      use constants,      only: DIVB_HDC
       use fluxtypes,      only: ext_fluxes
       use global,         only: divB_0_method
       use hlld,           only: riemann_wrap
@@ -181,8 +181,6 @@ contains
       real, dimension(size(bi, 1)-1, size(bi, 2)), target :: bl, br
 
       ! updates required for higher order of integration will likely have shorter length
-
-      integer, parameter :: in = 1  ! index for cells
 
       bflx = huge(1.)
 
@@ -208,9 +206,8 @@ contains
    subroutine apply_flux(cg, istep, mag)
       use domain,             only : dom
       use grid_cont,          only : grid_container
-      use global,             only : integration_order, dt, nstep
+      use global,             only : integration_order, dt
       use named_array_list,   only : wna
-      use fluidindex,         only : flind 
       use constants,          only : xdim, ydim, zdim, first_stage, last_stage, rk_coef, &
                                      uh_n, I_ONE, ndims, magh_n
 
@@ -226,10 +223,11 @@ contains
 
       logical                     :: active(ndims)
       integer                     :: L0(ndims), U0(ndims), L(ndims), U(ndims), shift(ndims)
-      integer                     :: d, afdim, uhi, bhi, lo, hi
+      integer                     :: afdim, uhi, bhi
       real, pointer               :: T(:,:,:,:)
       type(fxptr)                 :: F(ndims)
 
+      nullify(T)
       active = [ dom%has_dir(xdim), dom%has_dir(ydim), dom%has_dir(zdim) ]
 
       if (mag) then
@@ -261,28 +259,30 @@ contains
         endif
 
       endif
-      do afdim = xdim, zdim
-         if (.not. active(afdim)) cycle                   
+      if (associated(T)) then
+         do afdim = xdim, zdim
+            if (.not. active(afdim)) cycle                   
 
-         call bounds_for_flux(L0,U0,active,afdim,L,U)
+            call bounds_for_flux(L0,U0,active,afdim,L,U)
 
-         shift = 0 ;  shift(afdim) = I_ONE 
-         T(:, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) = T(:, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) &
-            + dt / cg%dl(afdim) * rk_coef(istep) * ( &
-               F(afdim)%flx(:, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) - &
-               F(afdim)%flx(:, L(xdim)+shift(xdim):U(xdim)+shift(xdim), &
-                           L(ydim)+shift(ydim):U(ydim)+shift(ydim), &
-                           L(zdim)+shift(zdim):U(zdim)+shift(zdim)) )
-      end do
+            shift = 0 ;  shift(afdim) = I_ONE 
+            T(:, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) = T(:, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) &
+               + dt / cg%dl(afdim) * rk_coef(istep) * ( &
+                  F(afdim)%flx(:, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) - &
+                  F(afdim)%flx(:, L(xdim)+shift(xdim):U(xdim)+shift(xdim), &
+                              L(ydim)+shift(ydim):U(ydim)+shift(ydim), &
+                              L(zdim)+shift(zdim):U(zdim)+shift(zdim)) )
+         end do
+      endif
    end subroutine apply_flux
 
    subroutine update_psi(cg,istep)
       use domain,             only : dom
       use grid_cont,          only : grid_container
-      use global,             only : integration_order, dt, nstep
+      use global,             only : integration_order, dt
       use named_array_list,   only : qna
       use constants,          only : xdim, ydim, zdim, first_stage, last_stage, rk_coef, &
-                                     I_ONE, ndims, psi_n,psidim,psih_n
+                                     I_ONE, ndims, psi_n,psih_n
 
       implicit none
 
@@ -292,17 +292,17 @@ contains
 
       logical                     :: active(ndims)
       integer                     :: L0(ndims), U0(ndims), L(ndims), U(ndims), shift(ndims)
-      integer                     :: d, afdim, psihi, psii
+      integer                     :: afdim, psihi, psii
       real, pointer               :: TP(:,:,:)
 
-
-      
+      nullify(TP)
       active = [ dom%has_dir(xdim), dom%has_dir(ydim), dom%has_dir(zdim) ]
 
       psii = qna%ind(psi_n)
       psihi = qna%ind(psih_n)
       L0 = [ lbound(cg%q(psii)%arr,1), lbound(cg%q(psii)%arr,2), lbound(cg%q(psii)%arr,3) ]
       U0 = [ ubound(cg%q(psii)%arr,1), ubound(cg%q(psii)%arr,2), ubound(cg%q(psii)%arr,3) ]
+      
       if (istep==first_stage(integration_order) .and. integration_order>I_ONE) then
         cg%q(psihi)%arr(:,:,:) = cg%q(psii)%arr(:,:,:)
         TP => cg%q(psihi)%arr
@@ -310,17 +310,19 @@ contains
         TP => cg%q(psii)%arr
       endif
 
-      do afdim = xdim, zdim
-         if (.not. active(afdim)) cycle                    
-         call bounds_for_flux(L0,U0,active,afdim,L,U)
-         shift = 0 ;  shift(afdim) = I_ONE    
-         TP(L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) = TP(L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) &
-            + dt / cg%dl(afdim) * rk_coef(istep) * ( &
-               cg%psiflx(afdim,L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) - &
-               cg%psiflx(afdim,L(xdim)+shift(xdim):U(xdim)+shift(xdim), &
-                           L(ydim)+shift(ydim):U(ydim)+shift(ydim), &
-                           L(zdim)+shift(zdim):U(zdim)+shift(zdim)) )
-      end do
+      if (associated(TP)) then
+         do afdim = xdim, zdim
+            if (.not. active(afdim)) cycle                    
+            call bounds_for_flux(L0,U0,active,afdim,L,U)
+            shift = 0 ;  shift(afdim) = I_ONE    
+            TP(L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) = TP(L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) &
+               + dt / cg%dl(afdim) * rk_coef(istep) * ( &
+                  cg%psiflx(afdim,L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) - &
+                  cg%psiflx(afdim,L(xdim)+shift(xdim):U(xdim)+shift(xdim), &
+                              L(ydim)+shift(ydim):U(ydim)+shift(ydim), &
+                              L(zdim)+shift(zdim):U(zdim)+shift(zdim)) )
+         end do
+      endif
    end subroutine update_psi
 
    subroutine bounds_for_flux(L0,U0,active,afdim,L,U)

@@ -62,7 +62,6 @@ contains
       call prepare_sources(cg)
 
       if (wna%exists(mag_n)) then
-         !call die("[solve_cg_unsplit:solve_cg_unsplit] Magnetic field is still unsafe for the flux named arrays")
          nmag = 0
          do i = 1, flind%fluids
             if (flind%all_fluids(i)%fl%is_magnetized) nmag = nmag + 1
@@ -80,12 +79,13 @@ contains
    subroutine solve_cg_u(cg,istep)
       use grid_cont,        only: grid_container
       use named_array_list, only: wna, qna
-      use constants,        only: pdims, ORTHO1, ORTHO2, I_ONE, LO, HI, uh_n, rk_coef, cs_i2_n, first_stage, last_stage, xdim, ydim, zdim
-      use global,           only: dt, integration_order, nstep
+      use constants,        only: pdims, ORTHO1, ORTHO2, LO, HI, uh_n, cs_i2_n, first_stage, xdim, ydim, zdim
+      use global,           only: integration_order
       use domain,           only: dom
-      use fluidindex,       only: flind, iarr_all_dn, iarr_all_mx, iarr_all_swp
+      use fluidindex,       only: iarr_all_swp
       use fluxtypes,        only: ext_fluxes
       use unsplit_source,   only: apply_source
+      use diagnostics,      only: my_allocate, my_deallocate
 
       implicit none
 
@@ -102,7 +102,7 @@ contains
       real, dimension(:,:),allocatable           :: tflux
       type(ext_fluxes)                           :: eflx
       integer                                    :: i_cs_iso2
-      integer :: dummy
+
       uhi = wna%ind(uh_n)
       if (qna%exists(cs_i2_n)) then
          i_cs_iso2 = qna%ind(cs_i2_n)
@@ -112,25 +112,11 @@ contains
       cs2 => null()
       do ddim=xdim,zdim
          if (.not. dom%has_dir(ddim)) cycle
-         if (.not. allocated(u)) then
-            allocate(u(cg%n_(ddim), size(cg%u,1)))
-         else
-            deallocate(u)
-            allocate(u(cg%n_(ddim), size(cg%u,1)))
-         endif
 
-         if (.not. allocated(flux)) then
-            allocate(flux(size(u, 1)-1,size(u, 2)))
-         else
-            deallocate(flux)
-            allocate(flux(size(u, 1)-1,size(u, 2)))
-         endif    
-         if (.not. allocated(tflux)) then
-            allocate(tflux(size(u, 2),size(u, 1)))
-         else
-            deallocate(tflux)
-            allocate(tflux(size(u, 2),size(u, 1)))
-         endif  
+         call my_allocate(u,[cg%n_(ddim), size(cg%u,1)])
+         call my_allocate(flux,[size(u, 1)-1,size(u, 2)])  
+         call my_allocate(tflux,[size(u, 2),size(u, 1)])
+
          do i2 = cg%ijkse(pdims(ddim, ORTHO2), LO), cg%ijkse(pdims(ddim, ORTHO2), HI)
             do i1 = cg%ijkse(pdims(ddim, ORTHO1), LO), cg%ijkse(pdims(ddim, ORTHO1), HI)  
                if (ddim==xdim) then
@@ -165,10 +151,9 @@ contains
          end do
       end do
       call apply_flux(cg,istep)
-      !call apply_source(cg,istep)
-      deallocate(u,flux,tflux)
+      call apply_source(cg,istep)
+      call my_deallocate(u); call my_deallocate(flux); call my_deallocate(tflux)
       nullify(cs2)
-
    end subroutine solve_cg_u
 
    subroutine solve_u(ui, cs2, eflx, flx)
@@ -187,9 +172,6 @@ contains
 
       ! left and right states at interfaces 1 .. n-1
       real, dimension(size(ui, 1)-1, size(ui, 2)), target :: ql, qr
-      integer, parameter :: in = 1  ! index for cells
-
-
 
       ! updates required for higher order of integration will likely have shorter length
       if (size(flx,dim=1) /= size(ui, 1)-1 .or. size(flx,dim=2) /= size(ui, 2)  ) then
@@ -226,10 +208,11 @@ contains
 
       logical                     :: active(ndims)
       integer                     :: L0(ndims), U0(ndims), L(ndims), U(ndims), shift(ndims)
-      integer                     :: d, afdim, uhi
+      integer                     :: afdim, uhi
       real, pointer               :: T(:,:,:,:)
       type(fxptr)                 :: F(ndims)
 
+      nullify(T)  
       active = [ dom%has_dir(xdim), dom%has_dir(ydim), dom%has_dir(zdim) ]
 
       F(xdim)%flx => cg%fx   ;  F(ydim)%flx => cg%gy   ;  F(zdim)%flx => cg%hz
@@ -245,20 +228,22 @@ contains
          T => cg%w(wna%fi)%arr
       endif
 
-      do afdim = xdim, zdim
-         if (.not. active(afdim)) cycle
+      if (associated(T)) then
+         do afdim = xdim, zdim
+            if (.not. active(afdim)) cycle
 
-         call bounds_for_flux(L0,U0,active,afdim,L,U)
+            call bounds_for_flux(L0,U0,active,afdim,L,U)
 
-         shift = 0 ;  shift(afdim) = I_ONE    
+            shift = 0 ;  shift(afdim) = I_ONE    
 
-         T(:, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) = T(:, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) &
-            + dt / cg%dl(afdim) * rk_coef(istep) * ( &
-               F(afdim)%flx(:, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) - &
-               F(afdim)%flx(:, L(xdim)+shift(xdim):U(xdim)+shift(xdim), &
-                           L(ydim)+shift(ydim):U(ydim)+shift(ydim), &
-                           L(zdim)+shift(zdim):U(zdim)+shift(zdim)) )
-      end do
+            T(:, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) = T(:, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) &
+               + dt / cg%dl(afdim) * rk_coef(istep) * ( &
+                  F(afdim)%flx(:, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) - &
+                  F(afdim)%flx(:, L(xdim)+shift(xdim):U(xdim)+shift(xdim), &
+                              L(ydim)+shift(ydim):U(ydim)+shift(ydim), &
+                              L(zdim)+shift(zdim):U(zdim)+shift(zdim)) )
+         end do
+      endif
    end subroutine apply_flux
 
    subroutine bounds_for_flux(L0,U0,active,afdim,L,U)

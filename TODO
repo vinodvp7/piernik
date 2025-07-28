@@ -33,8 +33,8 @@ primitive variable evolution + comparision, L1/L2 error, time and nstep comparis
 ########################## NEW TODO #############################################
 
 -[X] Check why the new unsplit_source  differs from the old unsplit if any ?         ! Its because of the way I call unsplit_sweep twice per nstep in the new solver (but compared to old this performs better)
--[ ] Check fcfluxes so that all functions have helper function to un- sphagettify the code 
--[ ] Check At this point compare sedov/sod2d/sod1d/jeans/magnetic_rotor/orszag_tang/field_loop/advection_test/MHD_blast_wave
+-[X] Check fcfluxes so that all functions have helper function to un- sphagettify the code  ! Didnt desphagetify prioritized_cg but rest all has been desphagetified with minimal cpde  change
+-[X] Check At this point compare sedov/sod2d/sod1d/jeans/magnetic_rotor/orszag_tang/field_loop/advection_test/MHD_blast_wave
 -[ ] Beautify unsplit_mag_modules.F90 
 -[ ] Beautify solve_cg_unsplit.F90 with correct sensible names to the subroutines and everything
 -[ ] Remove fluidupdate_unsplit and push the unsplit_sweep call inside fluid_update_full when solver_type is unsplit

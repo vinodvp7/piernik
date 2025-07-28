@@ -32,7 +32,7 @@ primitive variable evolution + comparision, L1/L2 error, time and nstep comparis
 
 ########################## NEW TODO #############################################
 
--[ ] Check why the new unsplit_source  differs from the old unsplit if any ? 
+-[X] Check why the new unsplit_source  differs from the old unsplit if any ?         ! Its because of the way I call unsplit_sweep twice per nstep in the new solver (but compared to old this performs better)
 -[ ] Check fcfluxes so that all functions have helper function to un- sphagettify the code 
 -[ ] Check At this point compare sedov/sod2d/sod1d/jeans/magnetic_rotor/orszag_tang/field_loop/advection_test/MHD_blast_wave
 -[ ] Beautify unsplit_mag_modules.F90 

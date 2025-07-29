@@ -27,10 +27,20 @@
 #include "piernik.h"
 
 !>
-!! \brief The job of this module is simple : Pass a  block of cg to solve to do a unsplit update of the state
-!! Currently we dont not add AMR support or ppp monitoring. Sister module sweeps is used for directional sweep update and is called by
-!! fluid update module. We will call this module from fluid_unsplit_update which is in turn mentioned in fluid_update to keep this line of
-!! additions away from the main code and merger it later. We are not adding fargo support either. This will be the first update after this works
+!! \brief Module that implements a single sweep
+!!
+!! \details Here we perform 1D-solves on all blocks including proper exchange of f/c fluxes.
+!!
+!! When a given block has any boundary with the coarse region, all flux data
+!! that has to be sent right after calculation is finished. When a given block
+!! has any boundary with the finer region, its calculation is delayed until all
+!! fine flux data is delivered. All communication is done quite asynchronously
+!! in hope that it will nicely overlap with calculations. In some pessimistic cases
+!! long stalls still may occur.
+!!
+!! This one is the most difficult to aggregate messages carrying flux data on fine/coarse interfaces as
+!! there are complicated dependencies between grids. It is possible to calculate which fine grids should be
+!! computed first in order to make critical fluxes available as early as possible.
 !<
 
 module unsplit_sweeps
@@ -43,6 +53,7 @@ module unsplit_sweeps
    public :: unsplit_sweep
 
 contains
+
    subroutine update_boundaries(istep)
 
       use all_boundaries, only: all_fluid_boundaries
@@ -92,92 +103,112 @@ contains
 
    end subroutine update_boundaries
 
-    subroutine unsplit_sweep()
-        use cg_list,                            only: cg_list_element
-        use grid_cont,                          only: grid_container
-        use cg_leaves,                          only: leaves
-        use dataio_pub,                         only: die
-        use MPIF,                               only: MPI_STATUS_IGNORE
-        use MPIFUN,                             only: MPI_Waitany
-        use mpisetup,                           only: err_mpi
-        use solvecg_unsplit,                    only: solve_cg_unsplit
-        use sources,                            only: prepare_sources
-        use global,                             only: integration_order, which_solver_type
-        use constants,                          only: first_stage, last_stage, UNSPLIT, INVALID
-        use cg_list_dataop,                     only: cg_list_dataop_t
-        use pppmpi,                             only: req_ppp
-        use MPIF,                               only: MPI_STATUS_IGNORE
-        use MPIFUN,                             only: MPI_Waitany
-        use unsplit_amr_helpers,                only: initiate_flx_recv_unsplit, recv_cg_finebnd_unsplit, send_cg_coarsebnd_unsplit
+   subroutine unsplit_sweep()
+
+      use cg_cost_data,             only: I_MHD, I_REFINE
+      use cg_leaves,                only: leaves
+      use cg_list,                  only: cg_list_element
+      use cg_list_dataop,           only: cg_list_dataop_t
+      use constants,                only: first_stage, last_stage, INVALID,PPP_CG
+      use fc_fluxes,                only: initiate_flx_recv, recv_cg_finebnd, send_cg_coarsebnd
+      use global,                   only: integration_order
+      use grid_cont,                only: grid_container
+      use MPIF,                     only: MPI_STATUS_IGNORE
+      use MPIFUN,                   only: MPI_Waitany
+      use mpisetup,                 only: err_mpi
+      use ppp,                      only: ppp_main
+      use pppmpi,                   only: req_ppp
+      use sources,                  only: prepare_sources
+      use solvecg_unsplit,          only: solve_cg_unsplit
+
+      implicit none
+
+      integer                          :: istep
+      type(cg_list_element), pointer   :: cgl
+      type(grid_container),  pointer   :: cg
+      type(cg_list_dataop_t), pointer  :: sl
+      type(req_ppp)                    :: req
+      logical                          :: all_processed, all_received
+      integer                          :: blocks_done
+      integer(kind=4)                  :: n_recv, g
+      character(len=*), parameter :: solve_cgs_label = "solve_bunch_of_cg", cg_label = "solve_cg", init_src_label = "init_src"
 
 
-        implicit none
+      sl => leaves%prioritized_cg(INVALID, covered_too = .true.)
+      ! We can't just skip the covered cg because it affects divvel (or
+      ! other things that rely on data computed on coarse cells and are not
+      ! restricted from fine blocks).
+!      sl => leaves%leaf_only_cg()
 
+      call ppp_main%start(init_src_label)
+      ! for use with GLM divergence cleaning we also make a copy of b and psi fields
+      cgl => leaves%first
+      do while (associated(cgl))
+         call prepare_sources(cgl%cg)
+         cgl => cgl%nxt
+      enddo
+      call ppp_main%stop(init_src_label)
 
-        type(cg_list_dataop_t), pointer  :: sl
-        type(req_ppp)                    :: req
-        logical                          :: all_processed, all_received
-        integer                          :: blocks_done
-        integer(kind=4)                  :: n_recv, g
-        type(cg_list_element), pointer   :: cgl
-        type(grid_container),  pointer   :: cg
-        integer                          :: istep
+      ! This is the loop over Runge-Kutta stages
+      do istep = first_stage(integration_order), last_stage(integration_order)
 
-        if (which_solver_type /= UNSPLIT) call die("[unsplit_sweeps:unsplit_sweep] Only compatible with unsplit riemann solver")
-        sl => leaves%prioritized_cg(INVALID, covered_too = .true.)
+         call initiate_flx_recv(req, INVALID)
+         n_recv = req%n
+         all_processed = .false.
 
+         do while (.not. all_processed)
+            all_processed = .true.
+            blocks_done = 0
+            ! OPT this loop should probably go from finest to coarsest for better compute-communicate overlap.
+            cgl => sl%first
 
-        cgl => leaves%first
-        do while (associated(cgl))
-            call prepare_sources(cgl%cg)
-            cgl => cgl%nxt
-        enddo
+            call ppp_main%start(solve_cgs_label)
+            do while (associated(cgl))
+               cg => cgl%cg
+               call cg%costs%start
 
-        do istep = first_stage(integration_order), last_stage(integration_order)
+               if (.not. cg%processed) then
+                  call recv_cg_finebnd(req, INVALID, cg, all_received)
+                  if (all_received) then
+                     call ppp_main%start(cg_label, PPP_CG)
+                     call cg%costs%stop(I_REFINE)
+                     ! The recv_cg_finebnd and send_cg_coarsebnd aren't MHD, so we should count them separately.
+                     ! The tricky part is that we need to fit all the switching inside the conditional part
+                     ! and don't mess pairing and don't let them to nest.
 
-            call initiate_flx_recv_unsplit(req)
-            n_recv = req%n
-            all_processed = .false.
-            do while (.not. all_processed)
-                all_processed = .true.
-                blocks_done = 0
-                ! OPT this loop should probably go from finest to coarsest for better compute-communicate overlap.
-                cgl => sl%first
+                     call cg%costs%start
+                     call solve_cg_unsplit(cg, istep)
+                     call cg%costs%stop(I_MHD)
 
-                do while (associated(cgl))
-                    cg => cgl%cg
+                     call ppp_main%stop(cg_label, PPP_CG)
 
-                    if (.not. cg%processed) then
-                        call recv_cg_finebnd_unsplit(req, cg, all_received)
-                        if (all_received) then
+                     call cg%costs%start
+                     call send_cg_coarsebnd(req, INVALID, cg)
+                     blocks_done = blocks_done + 1
+                  else
+                     all_processed = .false.
+                  endif
+               endif
 
-                            call cg%cleanup_flux()
-
-                            call solve_cg_unsplit(cg,istep)
-
-                            call send_cg_coarsebnd_unsplit(req, cg)
-                            blocks_done = blocks_done + 1
-                        else
-                            all_processed = .false.
-                        endif
-                    endif
-
-                    cgl => cgl%nxt
-                enddo
-                if (.not. all_processed .and. blocks_done == 0) then
-                if (n_recv > 0) call MPI_Waitany(n_recv, req%r(:n_recv), g, MPI_STATUS_IGNORE, err_mpi)
-                ! g is the number of completed operations
-                endif
+               call cg%costs%stop(I_REFINE)
+               cgl => cgl%nxt
             enddo
+            call ppp_main%stop(solve_cgs_label)
 
-            call req%waitall("sweeps")
+            if (.not. all_processed .and. blocks_done == 0) then
+               if (n_recv > 0) call MPI_Waitany(n_recv, req%r(:n_recv), g, MPI_STATUS_IGNORE, err_mpi)
+               ! g is the number of completed operations
+            endif
+         enddo
 
-            call update_boundaries(istep)
-        enddo
-        call sl%delete
-        deallocate(sl)
+         call req%waitall("unsplit_sweeps")
 
+         call update_boundaries(istep)
+      enddo
 
-    end subroutine unsplit_sweep
+      call sl%delete
+      deallocate(sl)
+
+   end subroutine unsplit_sweep
 
 end module unsplit_sweeps

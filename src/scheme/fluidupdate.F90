@@ -59,12 +59,13 @@ contains
 
    subroutine fluid_update
 
-      use constants,           only: RTVD_SPLIT, RIEMANN, HLLC_SPLIT, I_ONE, I_TWO
+      use constants,           only: RTVD_SPLIT, RIEMANN, HLLC_SPLIT,UNSPLIT, I_ONE, I_TWO, SPLIT, UNSPLIT
       use dataio_pub,          only: die
       use domain,              only: dom, is_refined
-      use global,              only: which_solver
+      use global,              only: which_solver, which_solver_type
       use fluidupdate_hllc,    only: fluid_update_simple
       use ppp,                 only: ppp_main
+      use unsplit_fluidupdate, only: fluid_update_unsplit
 
       implicit none
 
@@ -78,8 +79,11 @@ contains
       select case (which_solver)
          case (HLLC_SPLIT)
             call fluid_update_simple
-         case (RTVD_SPLIT, RIEMANN)
+         case (RTVD_SPLIT)
             call fluid_update_full
+         case (RIEMANN)
+            if (which_solver_type==SPLIT)   call fluid_update_full
+            if (which_solver_type==UNSPLIT) call fluid_update_unsplit
          case default
             call die("[fluidupdate:fluid_update] unknown solver")
       end select
@@ -136,15 +140,13 @@ contains
    subroutine make_3sweeps(forward)
 
       use cg_list_dataop,      only: expanded_domain
-      use dataio_pub,          only: die
-      use constants,           only: xdim, ydim, zdim, I_ONE, UNSPLIT
+      use constants,           only: xdim, ydim, zdim, I_ONE
       use fargo,               only: make_fargosweep
-      use global,              only: skip_sweep, use_fargo, which_solver_type
+      use global,              only: skip_sweep, use_fargo
       use hdc,                 only: glmdamping, eglm
       use ppp,                 only: ppp_main
       use sources,             only: external_sources
       use sweeps,              only: sweep
-      use unsplit_sweeps,      only: unsplit_sweep
       use user_hooks,          only: problem_customize_solution
 #ifdef GRAV
       use gravity,             only: source_terms_grav, compute_h_gpot, need_update
@@ -201,22 +203,15 @@ contains
       ! The following block of code may be treated as a 3D (M)HD solver.
       ! Don't put anything inside unless you're sure it should belong to the (M)HD solver.
       call ppp_main%start(sw3_label)
-
-      if (which_solver_type==UNSPLIT) then
-         if (use_fargo) call die("[fluidupdate:make_3sweeps] FARGO not implemented for unsplit Riemann Solver")
-         call unsplit_sweep
+      if (use_fargo) then
+         if (.not.skip_sweep(zdim)) call make_adv_sweep(zdim, forward)
+         if (.not.skip_sweep(xdim)) call make_adv_sweep(xdim, forward)
+         if (.not.skip_sweep(ydim)) call make_fargosweep
       else
-         if (use_fargo) then
-            if (.not.skip_sweep(zdim)) call make_adv_sweep(zdim, forward)
-            if (.not.skip_sweep(xdim)) call make_adv_sweep(xdim, forward)
-            if (.not.skip_sweep(ydim)) call make_fargosweep
-         else
-            do s = sFRST, sLAST, sCHNG
-               if (.not.skip_sweep(s)) call make_adv_sweep(s, forward)
-            enddo
-         endif
+         do s = sFRST, sLAST, sCHNG
+            if (.not.skip_sweep(s)) call make_adv_sweep(s, forward)
+         enddo
       endif
-
       call ppp_main%stop(sw3_label)
 
 #ifdef GRAV

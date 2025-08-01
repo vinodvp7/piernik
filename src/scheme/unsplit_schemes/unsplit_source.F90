@@ -101,12 +101,11 @@ contains
                     vx = u(:, iarr_all_mx) / u(:, iarr_all_dn) ! this may also be useful for gravitational acceleration
 #ifdef MAGNETIC
                     call internal_sources(size(u, 1, kind=4), u, u1, b, cg, istep, ddim, i1, i2, rk_coef(istep) * dt, vx)
-
                     call care_for_positives(size(u, 1, kind=4), u1, b, cg, ddim, i1, i2)
 #else
                     call internal_sources(size(u, 1, kind=4), u, u1, b_ugly, cg, istep, ddim, i1, i2, rk_coef(istep) * dt, vx)
 
-                    call care_for_positives(size(u, 1, kind=4), u1, b_ugly, cg, ddim, i1, i2)
+                   call care_for_positives(size(u, 1, kind=4), u1, b_ugly, cg, ddim, i1, i2)
 #endif /* MAGNETIC */
                     pu(:,:) = transpose(u1(:, iarr_all_swp(ddim,:)))
                 enddo

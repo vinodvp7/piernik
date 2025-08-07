@@ -242,7 +242,9 @@ contains
       &                     psi_n, psih_n, xbflx_n, ybflx_n, zbflx_n, psiflx_n
       use global,     only: cc_mag, ord_mag_prolong
 #endif /* MAGNETIC */
-
+#ifdef STREAM_CR
+      use constants,        only: scrn, scrh, xscrflx, yscrflx, zscrflx
+#endif /* STREAM_CR */
       implicit none
 
       class(cg_list_global_t), intent(inout)          :: this          !< object invoking type-bound procedure
@@ -267,7 +269,6 @@ contains
          call this%reg_var(zflx_n, vital = .false., restart_mode = AT_NO_B, dim4 = flind%all, ord_prolong = ord_fluid_prolong)   !! Z Face-Fluid flux array
          call set_flux_names
       endif
-
       call set_fluid_names
 #ifdef COSM_RAYS
       call set_cr_names
@@ -295,6 +296,15 @@ contains
       endif
 #endif /* MAGNETIC */
 
+#ifdef STREAM_CR
+      call this%reg_var(scrn,    vital = .true.,  dim4 = 4, ord_prolong = ord_fluid_prolong, restart_mode = AT_NO_B )  
+      call this%reg_var(scrh,    vital = .true.,  dim4 = 4, ord_prolong = ord_fluid_prolong, restart_mode = AT_NO_B )  
+      call this%reg_var(xscrflx, vital = .true.,  dim4 = 4, ord_prolong = ord_fluid_prolong, restart_mode = AT_NO_B )  
+      call this%reg_var(yscrflx, vital = .true.,  dim4 = 4, ord_prolong = ord_fluid_prolong, restart_mode = AT_NO_B )  
+      call this%reg_var(zscrflx, vital = .true.,  dim4 = 4, ord_prolong = ord_fluid_prolong, restart_mode = AT_NO_B ) 
+      
+      call set_scr_names
+#endif /* STREAM_CR */
 #ifdef ISO
       call all_cg%reg_var(cs_i2_n, vital = .true., restart_mode = AT_NO_B)
 #endif /* ISO */
@@ -672,4 +682,20 @@ contains
                endif
          end select
       end subroutine set_flux_names
+
+      subroutine set_scr_names
+         use fluidindex,       only: flind
+         use fluids_pub,       only: has_dst, has_ion, has_neu
+         use named_array_list, only: wna, na_var_4d
+
+         implicit none
+
+         select type (lst => wna%lst)
+            type is (na_var_4d)
+                  call lst(wna%scr)%set_compname(1, "escr")
+                  call lst(wna%scr)%set_compname(2, "fxscr")
+                  call lst(wna%scr)%set_compname(3, "fycr")
+                  call lst(wna%scr)%set_compname(4, "fzscr")
+         end select
+      end subroutine set_scr_names
 end module cg_list_global

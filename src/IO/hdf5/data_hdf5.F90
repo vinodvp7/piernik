@@ -127,7 +127,14 @@ contains
             f%fu= ""
          case ("magdir")
             f%fu = "\rm{radians}"
-         case ("xflux")
+#ifdef STREAM_CR
+         case ("escr")
+            f%fu = "\rm{erg}"
+            f%f2cgs = 1.0 / (erg)
+         case ("fxscr", "fyscr", "fzscr")
+            f%fu = "\rm{erg}\rm{cm}/\rm{s}"
+            f%f2cgs = 1.0 / (erg *  (cm/sek) )
+#endif /* STREAM_CR */
 #ifdef COSM_RAYS
          ! ToDo: Adopt for wider range
          case ("cr01" : "cr99")
@@ -539,6 +546,16 @@ contains
             if (associated(fl_dni) .and. fl_dni%ien /= INVALID) then
                if (associated(cg%hz)) tab(:,:,:) = cg%hz(fl_dni%ien, RNG)
             endif
+#ifdef STREAM_CR
+         case ("escr")
+            if (associated(cg%scr)) tab(:,:,:) = cg%scr(1, RNG)
+         case ("fxscr")
+            if (associated(cg%scr)) tab(:,:,:) = cg%scr(2, RNG)
+         case ("fyscr")
+            if (associated(cg%scr)) tab(:,:,:) = cg%scr(3, RNG)
+         case ("fzscr")
+            if (associated(cg%scr)) tab(:,:,:) = cg%scr(4, RNG)
+#endif /* STREAM_CR */
          case ("enen", "enei")
 #ifdef ISO
             if (associated(fl_dni)) tab(:,:,:) = ekin(cg%u(fl_dni%imx, RNG), cg%u(fl_dni%imy, RNG), cg%u(fl_dni%imz, RNG), cg%u(fl_dni%idn, RNG))

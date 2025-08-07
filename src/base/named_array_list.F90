@@ -103,7 +103,12 @@ module named_array_list
       integer(kind=4) :: ybflx  = INVALID                            !< Y face-flux field of magnetic field       : cg%w(wna%ybflx)
       integer(kind=4) :: zbflx  = INVALID                            !< Z face-flux field of magnetic field       : cg%w(wna%zbflx)
       integer(kind=4) :: psiflx = INVALID                            !< flux of the auxillary scalar psi          : cg%w(wna%psiflx)
-
+#ifdef STREAM_CR
+      integer(kind=4) :: scr       = INVALID                            !< magnetic field                            : cg%w(wna%bi)
+      integer(kind=4) :: scrxflx   = INVALID                            !< X face-flux field                         : cg%w(wna%xflx)
+      integer(kind=4) :: scryflx   = INVALID                            !< Y face-flux field                         : cg%w(wna%yflx)
+      integer(kind=4) :: scrzflx   = INVALID                            !< Z face-flux field                         : cg%w(wna%zflx)
+#endif /* STREAM_CR */
    contains
       procedure :: add2lst => add2lst_w                          !< Add a 4D array to the list
       procedure :: get_dim4                                      !< Get dim4 value for given array index
@@ -235,7 +240,8 @@ contains
    end subroutine add2lst_q
 
    subroutine add2lst_w(this, element)
-      use constants,  only: fluid_n, mag_n, xflx_n, yflx_n, zflx_n, xbflx_n, ybflx_n, zbflx_n, psiflx_n
+      use constants,  only: fluid_n, mag_n, xflx_n, yflx_n, zflx_n, xbflx_n, ybflx_n, zbflx_n, &
+      &                     psiflx_n, scrn, xscrflx, yscrflx, zscrflx  
       use dataio_pub, only: die, msg
 
       implicit none
@@ -282,7 +288,10 @@ contains
       if (element%name == ybflx_n)   this%ybflx   = ubound(this%lst(:), dim=1, kind=4)
       if (element%name == zbflx_n)   this%zbflx   = ubound(this%lst(:), dim=1, kind=4)
       if (element%name == psiflx_n)  this%psiflx  = ubound(this%lst(:), dim=1, kind=4)
-
+      if (element%name == scrn)      this%scr     = ubound(this%lst(:), dim=1, kind=4)
+      if (element%name == xscrflx)   this%scrxflx = ubound(this%lst(:), dim=1, kind=4)
+      if (element%name == yscrflx )  this%scryflx = ubound(this%lst(:), dim=1, kind=4)
+      if (element%name == zscrflx )  this%scrzflx = ubound(this%lst(:), dim=1, kind=4)
       if (element%dim4 <= 0) then
          write(msg,'(3a,i0)')"[named_array_list:add2lst_w] Invalid dim4 for array '", trim(element%name), "': ", element%dim4
          call die(msg)

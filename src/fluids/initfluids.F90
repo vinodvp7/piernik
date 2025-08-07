@@ -119,6 +119,9 @@ contains
 #ifdef COSM_RAYS
       use initcosmicrays, only: init_cosmicrays
 #endif /* COSM_RAYS */
+#ifdef STREAM_CR
+      use initstreamingcr, only: init_streamingcr
+#endif /* STREAM_CR */
 #ifdef CRESP
       use initcrspectrum, only: init_cresp
 #endif /* CRESP */
@@ -151,6 +154,9 @@ contains
 #ifdef TRACER
       call init_tracer
 #endif /* TRACER */
+#ifdef STREAM_CR
+      call init_streamingcr
+#endif /* STREAM_CR */
 
       call fluid_index    ! flind has valid values afterwards
 

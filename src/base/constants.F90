@@ -273,6 +273,15 @@ module constants
    character(len=dsetnamelen), parameter :: nbdn_n  = "nbdn"    !< density from particles
    character(len=dsetnamelen), parameter :: prth_n  = "prth"    !< histogram of particles on the grid
 #endif /* NBODY */
+
+#ifdef STREAM_CR
+   character(len=dsetnamelen), parameter :: scrn      = "scrn"      !< main fluid array
+   character(len=dsetnamelen), parameter :: scrh      = "scrh"      !< auxiliary array for half-step values
+   character(len=dsetnamelen), parameter :: xscrflx   = "xscrflx"   !< main X face-flux array
+   character(len=dsetnamelen), parameter :: yscrflx   = "yscrflx"   !< main Y face-flux array
+   character(len=dsetnamelen), parameter :: zscrflx   = "zscrflx"   !< main Z face-flux array
+#endif /* STREAM_CR */ 
+
    ! misc
    character(len=dsetnamelen), parameter :: wcu_n   = "wcu"     !< (resistivity) COMMENT ME
    character(len=dsetnamelen), parameter :: cs_i2_n = "cs_iso2" !< map of imposed isothermal sound speed

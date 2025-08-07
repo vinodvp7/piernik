@@ -73,7 +73,12 @@ module grid_cont_na
       real, dimension(:,:,:,:), pointer :: bgy     => null()  !< Main array of Y-faced flux field components
       real, dimension(:,:,:,:), pointer :: bhz     => null()  !< Main array of Z-faced flux field components
       real, dimension(:,:,:,:), pointer :: psiflx  => null()  !< Main array of Z-faced flux field components
-
+#ifdef STREAM_CR
+      real, dimension(:,:,:,:), pointer :: scr        => null()  !< Main array of magnetic field's components
+      real, dimension(:,:,:,:), pointer :: scrfx      => null()  !< Main array of X-faced flux field components
+      real, dimension(:,:,:,:), pointer :: scrgy      => null()  !< Main array of Y-faced flux field components
+      real, dimension(:,:,:,:), pointer :: scrhz      => null()  !< Main array of Z-faced flux field components
+#endif /* STREAM_CR */
    contains
 
       procedure :: cleanup_na            !< Deallocate all internals
@@ -157,7 +162,12 @@ contains
       if (wna%ybflx  > INVALID)  this%bgy     => this%w(wna%ybflx)%arr
       if (wna%zbflx  > INVALID)  this%bhz     => this%w(wna%zbflx)%arr
       if (wna%psiflx > INVALID)  this%psiflx  => this%w(wna%psiflx)%arr
-
+#ifdef STREAM_CR
+      if (wna%scr        > INVALID)  this%scr        => this%w(wna%scr)%arr
+      if (wna%scrxflx    > INVALID)  this%scrfx      => this%w(wna%scrxflx)%arr
+      if (wna%scryflx    > INVALID)  this%scrgy      => this%w(wna%scryflx)%arr
+      if (wna%scrzflx    > INVALID)  this%scrhz      => this%w(wna%scrzflx)%arr
+#endif /* STREAM_CR */
       if (qna%wai > INVALID) this%wa => this%q(qna%wai)%arr
 
 #ifdef ISO

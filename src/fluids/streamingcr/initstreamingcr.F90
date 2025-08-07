@@ -36,28 +36,34 @@
 !<
 module initstreamingcr                   
 ! pulled by STREAM_CR
-    use constants, only: cbuff_len
+    use constants, only: cbuff_len, ndims
+
     implicit none
 
     public ! QA_WARN no secrets are kept here
     private :: cbuff_len ! QA_WARN prevent reexport
     ! namelist parameters
-    integer(kind=4)                         :: nscr             !< number of non-spectral streaming CR components
-    real                                    :: floorescr        !< floor value of streaming CR energy density
-    real                                    :: vm               !< maximum speed in the simulation which controls the streaming CR timestepping
-    real                                    :: gamma_scr        !< adiabatic index of all streaming CR non-spectral component
-    real                                    :: gamma_scr_1      !< gamma_scr - 1.0
-    logical                                 :: use_floorescr    !< correct streaming CR energy density or not                              
-    real, dimension(120)                    :: sigma            !< \sigma'^{-1}_c 
+    integer(kind=4)                              :: nscr             !< number of non-spectral streaming CR components
+    real                                         :: floorescr        !< floor value of streaming CR energy density
+    real                                         :: vm               !< maximum speed in the simulation which controls the streaming CR timestepping
+    real                                         :: gamma_scr        !< adiabatic index of all streaming CR non-spectral component
+    real                                         :: gamma_scr_1      !< gamma_scr - 1.0
+    logical                                      :: use_floorescr    !< correct streaming CR energy density or not                              
+    real, dimension(120)                         :: sigma            !< \sigma'^{-1}_c 
+    integer(kind=4), allocatable, dimension(:,:) :: iarr_all_scr_swp !< array (size = flind) of all fluid indexes in the order depending on sweeps direction
 contains
 
    subroutine init_streamingcr
-      use bcast,       only: piernik_MPI_Bcast
-      use constants,   only: cbuff_len, I_ONE, I_TWO, half, big, O_I2, O_I3, base_level_id
-      use diagnostics, only: ma1d, my_allocate
-      use dataio_pub,  only: die, warn, nh
-      use func,        only: operator(.notequals.)
-      use mpisetup,    only: ibuff, rbuff, lbuff, cbuff, master, slave
+      use bcast,            only: piernik_MPI_Bcast
+      use constants,        only: cbuff_len, I_ONE, I_TWO, half, big, O_I2, O_I3, base_level_id, &
+      &                           grad_pscr, ndims, bdotpscr, mag_1d, stheta, rot_mat, xdim, ydim, zdim, int_coeff
+      use dataio_pub,       only: die, warn, nh
+      use func,             only: operator(.notequals.)
+      use mpisetup,         only: ibuff, rbuff, lbuff, cbuff, master, slave
+      use cg_list_global,   only: all_cg
+      use named_array_list, only: wna
+      use global,           only: ord_fluid_prolong, ord_mag_prolong
+      use diagnostics,      only: my_allocate, my_deallocate
 
       implicit none
       integer(kind=4) :: nl,nn,icr
@@ -134,7 +140,18 @@ contains
          sigma(1:nscr)  = rbuff(nn+1      :nn+  nscr)
       end if
       gamma_scr_1 = gamma_scr - 1.0
+
+      allocate(iarr_all_scr_swp(xdim:zdim, 4)) 
+
+      iarr_all_scr_swp(xdim,:) = [1,2,3,4]
+      iarr_all_scr_swp(ydim,:) = [1,3,2,4]
+      iarr_all_scr_swp(zdim,:) = [1,4,3,2]
+
+      call all_cg%reg_var(grad_pscr, dim4 = ndims, ord_prolong = ord_fluid_prolong) !! Main array of all fluids' components (for t += dt/2)
+      call all_cg%reg_var(bdotpscr,ord_prolong = ord_fluid_prolong)
+      call all_cg%reg_var(mag_1d,ord_prolong = ord_mag_prolong)
+      call all_cg%reg_var(rot_mat, dim4 = stheta, ord_prolong = ord_fluid_prolong) !! Main array of all fluids' components (for t += dt/2)
+      call all_cg%reg_var(int_coeff, dim4 = ndims, ord_prolong = ord_fluid_prolong) !! Main array of all fluids' components (for t += dt/2)
+
    end subroutine init_streamingcr
-
-
 end module initstreamingcr

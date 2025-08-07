@@ -39,7 +39,7 @@ module interpolations
    implicit none
 
    private
-   public :: set_interpolations, interpol
+   public :: set_interpolations, interpol, interpol_scr
 
    interface
 
@@ -130,6 +130,26 @@ contains
       if (present(bcc)) call interp(bcc, bccl, bccr, blimiter)
 
    end subroutine interpol
+
+
+   subroutine interpol_scr(u, ql, qr)
+
+      use fluxlimiters,    only: flimiter
+      use initstreamingcr, only: vm
+
+      implicit none
+
+      real, dimension(:,:), intent(in)     :: u
+      real, dimension(:,:), intent(out)    :: ql
+      real, dimension(:,:), intent(out)    :: qr
+
+      real, dimension(size(u, 1), size(u, 2)) :: q
+
+      q(: , 1)   = u(:, 1)
+      q(: , 2:4) = u(:, 2:4)/vm**2
+      call interp(q,   ql,   qr,   flimiter)
+
+   end subroutine interpol_scr
 
 !>
 !! \brief Interpret and set desired interpolation scheme.

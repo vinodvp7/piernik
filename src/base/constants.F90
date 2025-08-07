@@ -242,6 +242,15 @@ module constants
         &                                      last_stage  = [ EULER, RK2_2 ]
    real, dimension(EULER:RK2_2), parameter :: rk_coef = [ one, &      !! EULER
         &                                                 half, one ] !! RK2
+#ifdef STREAM_CR
+   ! enumerate the position of cos and sin angle of rotation matrix useful for streaming CR
+   enum, bind(C)
+      enumerator :: cphi = 1      ! cos phi   : Bx/sqrt(Bx^2 + By^2)
+      enumerator :: sphi          ! sin phi   : By/sqrt(Bx^2 + By^2)
+      enumerator :: ctheta        ! cos theta : Bz/sqrt(Bx^2 + By^2 + Bz^2)
+      enumerator :: stheta        ! sin theta : sqrt(Bx^2 + By^2)/sqrt(Bx^2 + By^2 + Bz^2)
+   end enum
+#endif /* STREAM_CR */
 
    ! 3D and 4D array names
    ! fluids
@@ -280,6 +289,11 @@ module constants
    character(len=dsetnamelen), parameter :: xscrflx   = "xscrflx"   !< main X face-flux array
    character(len=dsetnamelen), parameter :: yscrflx   = "yscrflx"   !< main Y face-flux array
    character(len=dsetnamelen), parameter :: zscrflx   = "zscrflx"   !< main Z face-flux array
+   character(len=dsetnamelen), parameter :: grad_pscr = "grad_pscr" !< main Z face-flux array
+   character(len=dsetnamelen), parameter :: bdotpscr  = "bdotpscr" !< main Z face-flux array
+   character(len=dsetnamelen), parameter :: mag_1d    = "mag_1d" !< main Z face-flux array
+   character(len=dsetnamelen), parameter :: rot_mat   = "rot_mat" !< main Z face-flux array
+   character(len=dsetnamelen), parameter :: int_coeff = "int_coeff" !< main Z face-flux array
 #endif /* STREAM_CR */ 
 
    ! misc

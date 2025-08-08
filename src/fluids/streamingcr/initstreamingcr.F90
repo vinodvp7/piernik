@@ -36,6 +36,7 @@
 !<
 module initstreamingcr                   
 ! pulled by STREAM_CR
+
     use constants, only: cbuff_len
     implicit none
 
@@ -45,29 +46,30 @@ module initstreamingcr
     integer(kind=4)                         :: nscr             !< number of non-spectral streaming CR components
     real                                    :: floorescr        !< floor value of streaming CR energy density
     real                                    :: vm               !< maximum speed in the simulation which controls the streaming CR timestepping
-    real                                    :: gamma_scr        !< adiabatic index of all streaming CR non-spectral component
-    real                                    :: gamma_scr_1      !< gamma_scr - 1.0
     logical                                 :: use_floorescr    !< correct streaming CR energy density or not                              
     real, dimension(120)                    :: sigma            !< \sigma'^{-1}_c 
 contains
 
    subroutine init_streamingcr
-      use bcast,       only: piernik_MPI_Bcast
-      use constants,   only: cbuff_len, I_ONE, I_TWO, half, big, O_I2, O_I3, base_level_id
-      use diagnostics, only: ma1d, my_allocate
-      use dataio_pub,  only: die, warn, nh
-      use func,        only: operator(.notequals.)
-      use mpisetup,    only: ibuff, rbuff, lbuff, cbuff, master, slave
+      use bcast,            only: piernik_MPI_Bcast
+      use constants,        only: cbuff_len, I_ONE, I_TWO, half, big, O_I2, O_I3, &
+      &                           base_level_id, int_coeff, grad_pscr, bdotpscr, ndims
+      use diagnostics,      only: ma1d, my_allocate
+      use dataio_pub,       only: die, warn, nh
+      use func,             only: operator(.notequals.)
+      use mpisetup,         only: ibuff, rbuff, lbuff, cbuff, master, slave
+      use cg_list_global,   only: all_cg
+      use named_array_list, only: wna
+      use global,           only: ord_fluid_prolong
 
       implicit none
       integer(kind=4) :: nl,nn,icr
 
-      namelist /STREAMING_CR/ nscr, floorescr, gamma_scr, use_floorescr, sigma,vm
+      namelist /STREAMING_CR/ nscr, floorescr, use_floorescr, sigma,vm
                               
 
       nscr                    = 1
       floorescr               = 0.0
-      gamma_scr               = 4./3.
       vm                      = 100.0
       use_floorescr           = .true.
       sigma(1:nscr)           = 0.0
@@ -98,7 +100,6 @@ contains
 
          rbuff(1) = floorescr   
          rbuff(2) = vm       
-         rbuff(3) = gamma_scr
          
          lbuff(1) = use_floorescr 
             
@@ -125,7 +126,6 @@ contains
 
          floorescr       = rbuff(1)   
          vm              = rbuff(2)        
-         gamma_scr       = rbuff(3) 
 
          use_floorescr   = lbuff(1) 
 
@@ -133,8 +133,13 @@ contains
          nl                  = ibuff(ubound(ibuff, 1) - 1)    ! this must match the last lbuff() index above  
          sigma(1:nscr)  = rbuff(nn+1      :nn+  nscr)
       end if
-      gamma_scr_1 = gamma_scr - 1.0
-   end subroutine init_streamingcr
 
+      call all_cg%reg_var(grad_pscr, dim4 = ndims, ord_prolong = ord_fluid_prolong)        !! Main array of grad.Pc
+      call all_cg%reg_var(bdotpscr,ord_prolong = ord_fluid_prolong)                        !! Main array to store (B.grad.Pc)
+      !call all_cg%reg_var(mag_1d,ord_prolong = ord_mag_prolong)
+      !call all_cg%reg_var(rot_mat, dim4 = stheta, ord_prolong = ord_fluid_prolong) 
+      call all_cg%reg_var(int_coeff, dim4 = ndims * nscr, ord_prolong = ord_fluid_prolong) !! Main array of interaction coefficient in the 3 dimensions
+
+   end subroutine init_streamingcr
 
 end module initstreamingcr

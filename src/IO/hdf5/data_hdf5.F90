@@ -129,11 +129,20 @@ contains
             f%fu = "\rm{radians}"
 #ifdef STREAM_CR
          case ("escr")
-            f%fu = "\rm{erg}"
-            f%f2cgs = 1.0 / (erg)
+            f%fu = "\rm{erg}/\rm{cm}^3"
+            f%f2cgs = 1.0 / (erg / cm**3)
          case ("fxscr", "fyscr", "fzscr")
             f%fu = "\rm{erg}\rm{cm}/\rm{s}"
-            f%f2cgs = 1.0 / (erg *  (cm/sek) )
+            f%f2cgs = 1.0 / (erg / (cm**2 * sek) )
+         case ("gradpcx","gradpcy","gradpcz")
+            f%fu = "\rm{erg}/\rm{cm}^4"
+            f%f2cgs = 1.0 / (erg / cm**4)
+         case ("sigma")
+            f%fu = "\rm{s}/\rm{cm}^2"
+            f%f2cgs = 1.0 /(sek/ cm**2)
+         case ("bdotgradpc")
+            f%fu = "\rm{Gs}\rm{erg}/\rm{cm}^4"
+            f%f2cgs = 1.0 / ((fpi * sqrt(cm / (miu0 * gram)) * sek)*(erg / cm**4))
 #endif /* STREAM_CR */
 #ifdef COSM_RAYS
          ! ToDo: Adopt for wider range
@@ -376,6 +385,10 @@ contains
 #ifndef ISO
       use units,            only: kboltz, mH
 #endif /* !ISO */
+#ifdef STREAM_CR
+      use named_array_list, only: wna, qna
+      use constants,        only: grad_pscr, bdotpscr, int_coeff 
+#endif /* STREAM_CR */
 
       implicit none
 
@@ -555,6 +568,16 @@ contains
             if (associated(cg%scr)) tab(:,:,:) = cg%scr(3, RNG)
          case ("fzscr")
             if (associated(cg%scr)) tab(:,:,:) = cg%scr(4, RNG)
+         case("gradpcx")
+            if (associated(cg%w(wna%ind(grad_pscr))%arr)) tab(:,:,:) = cg%w(wna%ind(grad_pscr))%arr(xdim, RNG)
+         case("gradpcy")
+            if (associated(cg%w(wna%ind(grad_pscr))%arr)) tab(:,:,:) = cg%w(wna%ind(grad_pscr))%arr(ydim, RNG)
+         case("gradpcz")
+            if (associated(cg%w(wna%ind(grad_pscr))%arr)) tab(:,:,:) = cg%w(wna%ind(grad_pscr))%arr(zdim, RNG)
+         case("bdotgradpc")
+            if (associated(cg%q(qna%ind(bdotpscr))%arr)) tab(:,:,:) = cg%q(qna%ind(bdotpscr))%arr(RNG)
+         case("sigma")
+            if (associated(cg%w(wna%ind(int_coeff))%arr)) tab(:,:,:) = cg%w(wna%ind(int_coeff))%arr(xdim, RNG)
 #endif /* STREAM_CR */
          case ("enen", "enei")
 #ifdef ISO

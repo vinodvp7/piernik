@@ -48,12 +48,14 @@ module initstreamingcr
     real                                    :: vm               !< maximum speed in the simulation which controls the streaming CR timestepping
     logical                                 :: use_floorescr    !< correct streaming CR energy density or not                              
     real, dimension(120)                    :: sigma            !< \sigma'^{-1}_c 
+    integer(kind=4), allocatable, dimension(:,:) :: iarr_all_scr_swp !< array (size = flind) of all fluid indexes in the order depending on sweeps direction
+
 contains
 
    subroutine init_streamingcr
       use bcast,            only: piernik_MPI_Bcast
       use constants,        only: cbuff_len, I_ONE, I_TWO, half, big, O_I2, O_I3, &
-      &                           base_level_id, int_coeff, grad_pscr, bdotpscr, ndims
+      &                           base_level_id, int_coeff, grad_pscr, bdotpscr, ndims, xdim, ydim,zdim
       use diagnostics,      only: ma1d, my_allocate
       use dataio_pub,       only: die, warn, nh
       use func,             only: operator(.notequals.)
@@ -133,6 +135,11 @@ contains
          nl                  = ibuff(ubound(ibuff, 1) - 1)    ! this must match the last lbuff() index above  
          sigma(1:nscr)  = rbuff(nn+1      :nn+  nscr)
       end if
+      allocate(iarr_all_scr_swp(xdim:zdim, 4)) 
+
+      iarr_all_scr_swp(xdim,:) = [1,2,3,4]
+      iarr_all_scr_swp(ydim,:) = [1,3,2,4]
+      iarr_all_scr_swp(zdim,:) = [1,4,3,2]
 
       call all_cg%reg_var(grad_pscr, dim4 = ndims, ord_prolong = ord_fluid_prolong)        !! Main array of grad.Pc
       call all_cg%reg_var(bdotpscr,ord_prolong = ord_fluid_prolong)                        !! Main array to store (B.grad.Pc)
@@ -141,5 +148,6 @@ contains
       call all_cg%reg_var(int_coeff, dim4 = ndims * nscr, ord_prolong = ord_fluid_prolong) !! Main array of interaction coefficient in the 3 dimensions
 
    end subroutine init_streamingcr
+
 
 end module initstreamingcr

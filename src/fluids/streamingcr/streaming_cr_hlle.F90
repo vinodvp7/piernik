@@ -26,71 +26,28 @@
 !
 #include "piernik.h"
 
-module solvecg_unsplit
+module streaming_cr_hlle
 
-! pulled by ANY
+! pulled by STREAM_CR
 
    implicit none
 
    private
-   public  :: solve_cg_unsplit
+   public  :: update_scr_fluid
 
 contains
 
-! This routine has to conform to the interface defined in sweeps::sweep
-
-   subroutine solve_cg_unsplit(cg,istep)
-
-      use constants,             only: mag_n, GEO_XYZ
-      use dataio_pub,            only: die
-      use domain,                only: dom
-      use fluidindex,            only: flind
-      use grid_cont,             only: grid_container
-      use named_array_list,      only: wna
-      use sources,               only: prepare_sources
-      use unsplit_mag_modules,   only: solve_cg_ub
-#ifdef STREAM_CR
-      use scr_helpers,           only: sanitize_scr_helper_container
-#endif /* STREAM_CR */
-
-      implicit none
-
-      type(grid_container), pointer, intent(in) :: cg
-      integer,                       intent(in) :: istep     ! stage in the time integration scheme
-      integer :: nmag, i
-
-      if (dom%geometry_type /= GEO_XYZ) call die("[solve_cg_unsplit:solve_cg_unsplit] Non-cartesian geometry is not implemented yet in this Unsplit solver.")
-
-      call prepare_sources(cg)
-#ifdef STREAM_CR
-      call sanitize_scr_helper_container(cg)
-#endif /* STREAM_CR */
-      if (wna%exists(mag_n)) then
-         !call die("[solve_cg_unsplit:solve_cg_unsplit] Magnetic field is still unsafe for the flux named arrays")
-         nmag = 0
-         do i = 1, flind%fluids
-            if (flind%all_fluids(i)%fl%is_magnetized) nmag = nmag + 1
-         enddo
-         if (nmag > 1) call die("[solve_cg_unsplit:solve_cg_unsplit] At most one magnetized fluid is implemented")
-            call solve_cg_ub(cg, istep)
-      else
-         call solve_cg_u(cg,istep)
-      endif
-
-      cg%processed = .true.
-
-   end subroutine solve_cg_unsplit
-
-   subroutine solve_cg_u(cg,istep)
+   subroutine update_scr_fluid(cg,istep)
       use grid_cont,        only: grid_container
       use named_array_list, only: wna, qna
-      use constants,        only: pdims, ORTHO1, ORTHO2, I_ONE, LO, HI, uh_n, cs_i2_n, first_stage, xdim, ydim, zdim
+      use constants,        only: pdims, ORTHO1, ORTHO2, I_ONE, LO, HI, scrh, cs_i2_n, first_stage, xdim, ydim, zdim, int_coeff, ndims
       use global,           only: integration_order
       use domain,           only: dom
-      use fluidindex,       only: iarr_all_swp
+      use initstreamingcr,  only: iarr_all_scr_swp
       use fluxtypes,        only: ext_fluxes
       use unsplit_source,   only: apply_source
       use diagnostics,      only: my_allocate, my_deallocate
+      !use streaming_cr_source,  only: apply_scr_source
 
       implicit none
 
@@ -98,8 +55,9 @@ contains
       integer,                       intent(in) :: istep
 
       integer                                    :: i1, i2
-      integer(kind=4)                            :: uhi, ddim
-      real, dimension(:,:),allocatable           :: u
+      integer(kind=4)                            :: scrii, ddim
+      real, dimension(:,:),allocatable           :: u, sc
+      real, dimension(:),allocatable             :: sscr
       real, dimension(:,:), pointer              :: pu
       real, dimension(:,:), pointer              :: pflux
       real, dimension(:),   pointer              :: cs2
@@ -107,85 +65,81 @@ contains
       real, dimension(:,:),allocatable           :: tflux
       type(ext_fluxes)                           :: eflx
       integer                                    :: i_cs_iso2
-      uhi = wna%ind(uh_n)
-      if (qna%exists(cs_i2_n)) then
-         i_cs_iso2 = qna%ind(cs_i2_n)
-      else
-         i_cs_iso2 = -1
-      endif
-      cs2 => null()
+      scrii= wna%ind(scrh)
       do ddim=xdim,zdim
          if (.not. dom%has_dir(ddim)) cycle
-         call my_allocate(u,[cg%n_(ddim), size(cg%u,1,kind=4)])
+         call my_allocate(u,[cg%n_(ddim), size(cg%scr,1,kind=4)])
          call my_allocate(flux,[size(u, 1,kind=4)-I_ONE,size(u, 2,kind=4)])
          call my_allocate(tflux,[size(u, 2,kind=4),size(u, 1,kind=4)])
+         call my_allocate(sc,[cg%n_(ddim), ndims])
+         call my_allocate(sscr,[cg%n_(ddim)])
          do i2 = cg%ijkse(pdims(ddim, ORTHO2), LO), cg%ijkse(pdims(ddim, ORTHO2), HI)
             do i1 = cg%ijkse(pdims(ddim, ORTHO1), LO), cg%ijkse(pdims(ddim, ORTHO1), HI)
                if (ddim==xdim) then
-                  pflux => cg%w(wna%xflx)%get_sweep(xdim,i1,i2)
+                  pflux => cg%w(wna%scrxflx)%get_sweep(xdim,i1,i2)
                else if (ddim==ydim) then
-                  pflux => cg%w(wna%yflx)%get_sweep(ydim,i1,i2)
+                  pflux => cg%w(wna%scryflx)%get_sweep(ydim,i1,i2)
                else if (ddim==zdim) then
-                  pflux => cg%w(wna%zflx)%get_sweep(zdim,i1,i2)
+                  pflux => cg%w(wna%scrzflx)%get_sweep(zdim,i1,i2)
                endif
 
 
-               pu => cg%w(uhi)%get_sweep(ddim,i1,i2)
-               if (istep == first_stage(integration_order) .or. integration_order < 2 ) pu => cg%w(wna%fi)%get_sweep(ddim,i1,i2)
+               pu => cg%w(scrii)%get_sweep(ddim,i1,i2)
+               if (istep == first_stage(integration_order) .or. integration_order < 2 ) pu => cg%w(wna%scr)%get_sweep(ddim,i1,i2)
 
+               u(:, iarr_all_scr_swp(ddim,:)) = transpose(pu(:,:))
 
-               u(:, iarr_all_swp(ddim,:)) = transpose(pu(:,:))
-
-
-
-               if (i_cs_iso2 > 0) cs2 => cg%q(i_cs_iso2)%get_sweep(ddim,i1,i2)
-
+               sc = cg%w(wna%ind(int_coeff))%get_sweep(ddim, i1, i2)
+               sscr = sc(ddim,:)
 
                call cg%set_fluxpointers(ddim, i1, i2, eflx)
-               call solve_u(u,cs2, eflx, flux)
 
+               call solve_u(u, sscr, eflx, flux, ddim, cg%dl(ddim))
 
                call cg%save_outfluxes(ddim, i1, i2, eflx)
-               tflux(:,2:) = transpose(flux(:, iarr_all_swp(ddim,:)))
+
+               tflux(:,2:) = transpose(flux(:, iarr_all_scr_swp(ddim,:)))
                tflux(:,1) = 0.0
                pflux(:,:) = tflux
             enddo
          enddo
 
          call my_deallocate(u); call my_deallocate(flux); call my_deallocate(tflux)
+         call my_deallocate(sscr); call my_deallocate(sc)
 
       enddo
       call apply_flux(cg,istep)
-      call apply_source(cg,istep)
+      !call apply_scr_source(cg, istep)
       nullify(cs2)
 
-   end subroutine solve_cg_u
+   end subroutine update_scr_fluid
 
-   subroutine solve_u(ui, cs2, eflx, flx)
+   subroutine solve_u(ui, sc, eflx, flx, ddim, dl)
 
       use fluxtypes,      only: ext_fluxes
       use hlld,           only: riemann_wrap_u
-      use interpolations, only: interpol
       use dataio_pub,     only: die
+      use interpolations, only: interpol_scr
 
       implicit none
 
       real, dimension(:,:),        intent(in)    :: ui       !< cell-centered intermediate fluid states
-      real, dimension(:), pointer, intent(in)    :: cs2     !< square of local isothermal sound speed
+      real, dimension(:), target,  intent(in)    :: sc              !< interaction coefficient
       type(ext_fluxes),            intent(inout) :: eflx    !< external fluxes
       real, dimension(:,:),        intent(inout) :: flx     !< Output flux of a 1D chain of a domain at a fixed ortho location of that dimension
-
+      integer,                     intent(in)    :: ddim
+      real,                        intent(in)    :: dl
       ! left and right states at interfaces 1 .. n-1
       real, dimension(size(ui, 1)-1, size(ui, 2)), target :: ql, qr
 
       ! updates required for higher order of integration will likely have shorter length
       if (size(flx,dim=1) /= size(ui, 1)-1 .or. size(flx,dim=2) /= size(ui, 2)  ) then
-         call die("[solve_cg_unsplit:solve_u] flux array dimension does not match the expected dimensions")
+         call die("[streaming_cr_hlle:solve_u] flux array dimension does not match the expected dimensions")
       endif
 
 
-      call interpol(ui, ql, qr)
-      call riemann_wrap_u(ql, qr, cs2, flx) ! Now we advance the left and right states by a timestep.
+      call interpol_scr(ui, ql, qr)
+      call riemann_wrap_hlle(ql, qr, sc, flx, ddim, dl) ! Now we advance the left and right states by a timestep.
 
       if (associated(eflx%li)) flx(eflx%li%index, :) = eflx%li%uflx
       if (associated(eflx%ri)) flx(eflx%ri%index, :) = eflx%ri%uflx
@@ -200,7 +154,7 @@ contains
       use global,             only: integration_order, dt
       use named_array_list,   only: wna
       use constants,          only: xdim, ydim, zdim, last_stage, rk_coef, &
-                                     uh_n, I_ONE, ndims
+                                     scrh, I_ONE, ndims
 
       implicit none
 
@@ -220,17 +174,17 @@ contains
       T=> null()
       active = [ dom%has_dir(xdim), dom%has_dir(ydim), dom%has_dir(zdim) ]
 
-      F(xdim)%flx => cg%fx   ;  F(ydim)%flx => cg%gy   ;  F(zdim)%flx => cg%hz
+      F(xdim)%flx => cg%scrfx   ;  F(ydim)%flx => cg%scrgy   ;  F(zdim)%flx => cg%scrhz
 
-      L0 = [ lbound(cg%w(wna%fi)%arr,2), lbound(cg%w(wna%fi)%arr,3), lbound(cg%w(wna%fi)%arr,4) ]
-      U0 = [ ubound(cg%w(wna%fi)%arr,2), ubound(cg%w(wna%fi)%arr,3), ubound(cg%w(wna%fi)%arr,4) ]
+      L0 = [ lbound(cg%w(wna%scr)%arr,2), lbound(cg%w(wna%scr)%arr,3), lbound(cg%w(wna%scr)%arr,4) ]
+      U0 = [ ubound(cg%w(wna%scr)%arr,2), ubound(cg%w(wna%scr)%arr,3), ubound(cg%w(wna%scr)%arr,4) ]
 
-      uhi = wna%ind(uh_n)
+      uhi = wna%ind(scrh)
 
       if (istep==last_stage(integration_order) .or. integration_order==I_ONE) then
-         T => cg%w(wna%fi)%arr
+         T => cg%w(wna%scr)%arr
       else
-         cg%w(uhi)%arr(:,:,:,:) = cg%w(wna%fi)%arr(:,:,:,:)
+         cg%w(uhi)%arr(:,:,:,:) = cg%w(wna%scr)%arr(:,:,:,:)
          T => cg%w(uhi)%arr
       endif
 
@@ -278,4 +232,43 @@ contains
       enddo
    end subroutine bounds_for_flux
 
-end module solvecg_unsplit
+
+
+   subroutine riemann_wrap_hlle(ql, qr, sc, flx, ddim, dl)
+
+      use initstreamingcr,       only: vm, nscr
+
+      implicit none
+
+      real, dimension(:,:), target,  intent(in)    :: ql, qr          !< left and right fluid states
+      real, dimension(:),   target,  intent(in)    :: sc              !< interaction coefficient
+      real, dimension(:,:), target,  intent(inout) :: flx             !< output fluxes: fluid
+      integer,                       intent(in)    :: ddim            !< direction
+      real,                          intent(in)    :: dl
+
+      real :: R, tau, vl, vr
+      real, dimension(size(flx, 2)) :: fl, fr
+      integer :: i    
+      do i = 1, size(flx, 1)
+         tau = sc(i) * dl / vm
+
+         R = sqrt((1.0- exp(-tau*tau))/ (tau*tau))
+
+         vl = min(vm,R*vm/(sqrt(3.0)))              ! v+ in Jiang and Oh
+         vr = -vl                                 ! v- in Jiang and Oh
+
+         fl(1) = ql(i,2) * vm * vm     ! Remember q for Fc is Fc/vm^2  but flux of Ec is simply Fc 
+
+         fl(2) = ql(i,1)/3.0           ! Flux of Fc is Pc = Ec/3
+
+         fl(3:4) = 0.0
+
+         fr(1) = qr(i,2) * vm * vm     ! Remember q for Fc is Fc/vm^2  but flux of Ec is simply Fc 
+
+         fr(2) = qr(i,1)/3.0           ! Flux of Fc is Pc = Ec/3
+
+         fr(3:4) = 0.0
+         flx(i,:) = (vl*fl - vr*fr)/(vl-vr) + vl*vr/(vl-vr) * (qr(i,:)-ql(i,:))
+      enddo 
+   end subroutine riemann_wrap_hlle
+end module streaming_cr_hlle

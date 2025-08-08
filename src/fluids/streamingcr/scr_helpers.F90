@@ -48,7 +48,7 @@ contains
       use initstreamingcr,    only: sigma, nscr
       use named_array_list,   only: wna, qna
       use constants,          only: grad_pscr, xdim, ydim, zdim, first_stage, scrn, &
-      &                             scrh, bdotpscr, mag_n, magh_n, uh_n, fluid_n, int_coeff
+      &                             scrh, bdotpscr, mag_n, magh_n, uh_n, fluid_n, int_coeff, LO, HI
       use global,             only: integration_order
       use domain,             only: dom
       use fluidindex,         only: iarr_all_dn
@@ -58,7 +58,7 @@ contains
       type(grid_container), pointer, intent(in) :: cg
       integer,                       intent(in) :: istep
 
-      integer                                   :: gpci, nx, ny, nz, scri, i, magi, fldi, icfi
+      integer                                   :: gpci, nx, ny, nz, scri, i, magi, fldi, icfi, j, k
 
       scri   = wna%ind(scrh)
       magi   = wna%ind(magh_n)
@@ -69,38 +69,73 @@ contains
          magi   = wna%ind(mag_n)
          fldi   = wna%ind(fluid_n)
       endif
-
       icfi = wna%ind(int_coeff)
       gpci = wna%ind(grad_pscr)
       nx   = cg%n_(xdim)
       ny   = cg%n_(ydim)
       nz   = cg%n_(zdim)
 
+
+    ! --- X-Direction Gradient ---
       if (dom%has_dir(xdim)) then
-      ! dPc/dx
-         cg%w(gpci)%arr(xdim,2:nx-1,:,:) = 1.0/3.0 * (cg%w(scri)%arr(1,3:nx,:,:) - cg%w(scri)%arr(1,1:nx-2,:,:))/(2. * cg%dl(xdim)) ! 2nd order
-         cg%w(gpci)%arr(xdim,1,:,:)      = 1.0/3.0 * (cg%w(scri)%arr(1,2,:,:) - cg%w(scri)%arr(1,1,:,:))/(cg%dl(xdim)) ! 1st order
-         cg%w(gpci)%arr(xdim,nx,:,:)     = 1.0/3.0 * (cg%w(scri)%arr(1,nx,:,:) - cg%w(scri)%arr(1,nx-1,:,:))/(cg%dl(xdim)) ! 1st order
+          ! Loop over the entire domain (including ghosts), except the very first and last cells
+          ! where a central difference stencil would go out of bounds.
+          do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
+          do j = cg%lhn(ydim,LO), cg%lhn(ydim,HI)
+          do i = cg%lhn(xdim,LO)+1, cg%lhn(xdim,HI)-1
+              cg%w(gpci)%arr(xdim,i,j,k) = 1.0/3.0 * (cg%w(scri)%arr(1,i+1,j,k) - cg%w(scri)%arr(1,i-1,j,k)) / (2. * cg%dl(xdim))
+          end do
+          end do
+          end do
       else
-         cg%w(gpci)%arr(xdim,:,:,:) = 0.0
+          cg%w(gpci)%arr(xdim,:,:,:) = 0.0
+      endif
+      ! Handle X-boundaries
+      if (dom%has_dir(xdim)) then
+          i = cg%lhn(xdim,LO)
+          cg%w(gpci)%arr(xdim,i,:,:) = cg%w(gpci)%arr(xdim,i+1,:,:) ! Copy from neighbor
+          
+          i = cg%lhn(xdim,HI)
+          cg%w(gpci)%arr(xdim,i,:,:) = cg%w(gpci)%arr(xdim,i-1,:,:) ! Copy from neighbor
+      endif
+      ! --- Y-Direction Gradient ---
+      if (dom%has_dir(ydim)) then
+          do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
+          do j = cg%lhn(ydim,LO)+1, cg%lhn(ydim,HI)-1
+          do i = cg%lhn(xdim,LO), cg%lhn(xdim,HI)
+              cg%w(gpci)%arr(ydim,i,j,k) = 1.0/3.0 * (cg%w(scri)%arr(1,i,j+1,k) - cg%w(scri)%arr(1,i,j-1,k)) / (2. * cg%dl(ydim))
+          end do
+          end do
+          end do
+      else
+          cg%w(gpci)%arr(ydim,:,:,:) = 0.0
       endif
       if (dom%has_dir(ydim)) then
-      ! dPc/dy
-         cg%w(gpci)%arr(ydim,:,2:ny-1,:) = 1.0/3.0 * (cg%w(scri)%arr(1,:,3:ny,:) - cg%w(scri)%arr(1,:,1:ny-2,:))/(2. * cg%dl(ydim)) ! 2nd order
-         cg%w(gpci)%arr(ydim,:,1,:)      = 1.0/3.0 * (cg%w(scri)%arr(1,:,2,:) - cg%w(scri)%arr(1,:,1,:))/(cg%dl(ydim)) ! 1st order
-         cg%w(gpci)%arr(ydim,:,ny,:)     = 1.0/3.0 * (cg%w(scri)%arr(1,:,ny,:) - cg%w(scri)%arr(1,:,ny-1,:))/(cg%dl(ydim)) ! 1st order
+          j = cg%lhn(ydim,LO)
+          cg%w(gpci)%arr(ydim,:,j,:) = cg%w(gpci)%arr(ydim,:,j+1,:) ! Copy from neighbor
+          
+          j = cg%lhn(ydim,HI)
+          cg%w(gpci)%arr(ydim,:,j,:) = cg%w(gpci)%arr(ydim,:,j-1,:) ! Copy from neighbor
+      endif
+      ! --- Z-Direction Gradient ---
+      if (dom%has_dir(zdim)) then
+          do k = cg%lhn(zdim,LO)+1, cg%lhn(zdim,HI)-1
+          do j = cg%lhn(ydim,LO), cg%lhn(ydim,HI)
+          do i = cg%lhn(xdim,LO), cg%lhn(xdim,HI)
+              cg%w(gpci)%arr(zdim,i,j,k) = 1.0/3.0 * (cg%w(scri)%arr(1,i,j,k+1) - cg%w(scri)%arr(1,i,j,k-1)) / (2. * cg%dl(zdim))
+          end do
+          end do
+          end do
       else
-         cg%w(gpci)%arr(ydim,:,:,:) = 0.0
+          cg%w(gpci)%arr(zdim,:,:,:) = 0.0
       endif
       if (dom%has_dir(zdim)) then
-      ! dPc/dz
-         cg%w(gpci)%arr(zdim,:,:,2:nz-1) = 1.0/3.0 * (cg%w(scri)%arr(1,:,:,3:nz) - cg%w(scri)%arr(1,:,:,1:nz-2))/(2. * cg%dl(zdim)) ! 2nd order
-         cg%w(gpci)%arr(zdim,:,:,1)      = 1.0/3.0 * (cg%w(scri)%arr(1,:,:,2) - cg%w(scri)%arr(1,:,:,1))/(cg%dl(zdim)) ! 1st order
-         cg%w(gpci)%arr(zdim,:,:,nz)     = 1.0/3.0 * (cg%w(scri)%arr(1,:,:,nz) - cg%w(scri)%arr(1,:,:,nz-1))/(cg%dl(zdim)) ! 1st order
-      else
-         cg%w(gpci)%arr(zdim,:,:,:) = 0.0
+          k = cg%lhn(zdim,LO)
+          cg%w(gpci)%arr(zdim,:,:,k) = cg%w(gpci)%arr(zdim,:,:,k+1) ! Copy from neighbor
+          
+          k = cg%lhn(zdim,HI)
+          cg%w(gpci)%arr(zdim,:,:,k) = cg%w(gpci)%arr(zdim,:,:,k-1) ! Copy from neighbor
       endif
-
       cg%q(qna%ind(bdotpscr))%arr(:,:,:) = 0.0
       do i = xdim,zdim
          cg%q( qna%ind(bdotpscr))%arr(:,:,:) = cg%q( qna%ind(bdotpscr))%arr(:,:,:) + &
@@ -112,11 +147,33 @@ contains
 
       do i= 1,nscr
          cg%w(icfi)%arr(xdim, :,:,:) = 1.0/(1.0/cg%w(icfi)%arr(xdim, :,:,:) +&
-         &                             4./3. * sum( cg%w(icfi)%arr(xdim:zdim, :,:,:)**2, dim=1) * &
+         &                             4./3. * sum( cg%w(magi)%arr(xdim:zdim, :,:,:)**2, dim=1) * &
          &                             cg%w(scri)%arr(1,:,:,:) /(cg%q( qna%ind(bdotpscr))%arr(:,:,:) &
          &                             * sqrt(cg%w(fldi)%arr(iarr_all_dn(xdim),:,:,:))))
       end do
-
    end subroutine update_scr_interaction
 
+   subroutine sanitize_scr_helper_container(cg)
+      use grid_cont,          only: grid_container
+      use initstreamingcr,    only: sigma, nscr
+      use named_array_list,   only: wna, qna
+      use constants,          only: grad_pscr, xdim, ydim, zdim, first_stage, scrn, &
+      &                             scrh, bdotpscr, mag_n, magh_n, uh_n, fluid_n, int_coeff
+      use global,             only: integration_order
+      use domain,             only: dom
+      use fluidindex,         only: iarr_all_dn
+
+      implicit none
+
+      type(grid_container), pointer, intent(in) :: cg
+
+      cg%w(wna%ind(scrh))%arr(:,:,:,:) = cg%scr(:,:,:,:)
+      
+      cg%q(qna%ind(bdotpscr))%arr(:,:,:) = 0.0
+
+      cg%w(wna%ind(int_coeff))%arr(:,:,:,:) = 0.0
+
+      cg%w(wna%ind(grad_pscr))%arr(:,:,:,:) = 0.0
+
+   end subroutine sanitize_scr_helper_container
 end module scr_helpers

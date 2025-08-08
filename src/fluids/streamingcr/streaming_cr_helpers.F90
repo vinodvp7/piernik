@@ -51,11 +51,13 @@ contains
       type(grid_container), pointer, intent(in) :: cg
       integer,                       intent(in) :: istep
 
-      integer                                   :: grad_pscri, nx, ny, nz, scrii, i, bhi, rmi, uhi
+      integer                                   :: grad_pscri, nx, ny, nz, scrii, i, bhi, rmi, uhi,icfi
+
       rmi   = wna%ind(rot_mat)
       scrii = wna%ind(scrh)
       bhi   = wna%ind(magh_n)
       uhi   = wna%ind(uh_n)
+      icfi = wna%ind(int_coeff)
       if (istep == first_stage(integration_order) .or. integration_order < 2 )  then
          scrii = wna%ind(scrn)
          bhi   = wna%ind(mag_n)
@@ -110,10 +112,86 @@ contains
       cg%q(qna%ind(mag_1d))%arr(:,:,:) = sqrt(cg%w(bhi)%arr(xdim,:,:,:)**2 + cg%w(bhi)%arr(ydim,:,:,:)**2 + cg%w(bhi)%arr(zdim,:,:,:)**2 )
 
       cg%w(wna%ind(int_coeff))%arr(:,:,:,:) = sigma(1)
+
       do i= 1,nscr
-         cg%w(wna%ind(int_coeff))%arr(xdim,:,:,:)  = 1.0 / (1./cg%w(wna%ind(int_coeff))%arr(xdim,:,:,:) + 4./3. * cg%q(qna%ind(mag_1d))%arr(:,:,:)**2 * cg%w(scrii)%arr(1,:,:,:)/(sqrt(cg%w(uhi)%arr(iarr_all_dn(xdim),:,:,:))*cg%q(qna%ind(bdotpscr))%arr(:,:,:)) )
+         cg%w(icfi)%arr(xdim,:,:,:)  = 1.0 / (1./cg%w(icfi)%arr(xdim,:,:,:) + 4./3. * cg%q(qna%ind(mag_1d))%arr(:,:,:)**2 * cg%w(scrii)%arr(1,:,:,:)/(sqrt(cg%w(uhi)%arr(iarr_all_dn(xdim),:,:,:))*cg%q(qna%ind(bdotpscr))%arr(:,:,:)) )
       end do
    end subroutine update_scr_interacting_coeff
 
+ subroutine rotate_along_magx(cg,icfi, sdim)
+      use grid_cont,          only: grid_container
+      use named_array_list,   only: wna
+      use constants,          only: rot_mat, sphi, cphi, stheta, ctheta, xdim, ydim, zdim, LO, HI
 
+      implicit none
+
+      type(grid_container), pointer, intent(in) :: cg
+      integer,                       intent(in) :: icfi,sdim
+
+      integer :: rmi, i, j, k
+      real    :: vx, vy, vz  ! Temporary variables to hold original vector
+      real    :: cp, sp, ct, st
+
+      rmi   = wna%ind(rot_mat)
+
+      do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
+      do j = cg%lhn(ydim,LO), cg%lhn(ydim,HI)
+      do i = cg%lhn(xdim,LO), cg%lhn(xdim,HI)
+          ! Store original vector in temporary variables
+          vx = cg%w(icfi)%arr(sdim,  i,j,k)
+          vy = cg%w(icfi)%arr(sdim+1,i,j,k)
+          vz = cg%w(icfi)%arr(sdim+2,i,j,k)
+
+          cp = cg%w(rmi)%arr(cphi,  i,j,k)
+          sp = cg%w(rmi)%arr(sphi,  i,j,k)
+          ct = cg%w(rmi)%arr(ctheta,i,j,k)
+          st = cg%w(rmi)%arr(stheta,i,j,k)
+          
+          ! Calculate rotated components using original values
+          cg%w(icfi)%arr(sdim,  i,j,k) =  st*(cp*vx + sp*vy) + ct*vz
+          cg%w(icfi)%arr(sdim+1,i,j,k) = -sp*vx + cp*vy
+          cg%w(icfi)%arr(sdim+2,i,j,k) = -ct*(cp*vx + sp*vy) + st*vz
+      end do
+      end do
+      end do
+   end subroutine rotate_along_magx
+
+   ! ... replace your existing derotate_along_magx with this ...
+   subroutine derotate_along_magx(cg,icfi,sdim)
+      use grid_cont,          only: grid_container
+      use named_array_list,   only: wna
+      use constants,          only: rot_mat, sphi, cphi, stheta, ctheta, xdim, ydim, zdim, LO, HI
+
+      implicit none
+
+      type(grid_container), pointer, intent(in) :: cg
+      integer,                       intent(in) :: icfi,sdim
+
+      integer :: rmi, i, j, k
+      real    :: vx_rot, vy_rot, vz_rot ! Temporary variables to hold rotated vector
+      real    :: cp, sp, ct, st
+
+      rmi   = wna%ind(rot_mat)
+
+      do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
+      do j = cg%lhn(ydim,LO), cg%lhn(ydim,HI)
+      do i = cg%lhn(xdim,LO), cg%lhn(xdim,HI)
+          ! Store rotated vector in temporary variables
+          vx_rot = cg%w(icfi)%arr(sdim,  i,j,k)
+          vy_rot = cg%w(icfi)%arr(sdim+1,i,j,k)
+          vz_rot = cg%w(icfi)%arr(sdim+2,i,j,k)
+
+          cp = cg%w(rmi)%arr(cphi,  i,j,k)
+          sp = cg%w(rmi)%arr(sphi,  i,j,k)
+          ct = cg%w(rmi)%arr(ctheta,i,j,k)
+          st = cg%w(rmi)%arr(stheta,i,j,k)
+          
+          ! Calculate lab-frame components using rotated values (inverse = transpose)
+          cg%w(icfi)%arr(sdim,  i,j,k) = cp*(st*vx_rot - ct*vz_rot) - sp*vy_rot
+          cg%w(icfi)%arr(sdim+1,i,j,k) = sp*(st*vx_rot - ct*vz_rot) + cp*vy_rot
+          cg%w(icfi)%arr(sdim+2,i,j,k) = ct*vx_rot + st*vz_rot
+      end do
+      end do
+      end do
+   end subroutine derotate_along_magx
 end module streaming_cr_helpers

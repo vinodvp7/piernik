@@ -68,15 +68,14 @@ contains
       implicit none
       integer(kind=4) :: nl,nn,icr
 
-      namelist /STREAMING_CR/ nscr, floorescr, gamma_scr, use_floorescr, sigma,vm
+      namelist /STREAMING_CR/ nscr, floorescr, use_floorescr, sigma, vm
                               
 
       nscr                    = 1
       floorescr               = 0.0
-      gamma_scr               = 4./3.
       vm                      = 100.0
       use_floorescr           = .true.
-      sigma(1:nscr)           = 0.0
+      sigma(1:nscr)           = 1e8
 
       if (master) then
          if (.not.nh%initialized) call nh%init()
@@ -104,7 +103,6 @@ contains
 
          rbuff(1) = floorescr   
          rbuff(2) = vm       
-         rbuff(3) = gamma_scr
          
          lbuff(1) = use_floorescr 
             
@@ -131,7 +129,6 @@ contains
 
          floorescr       = rbuff(1)   
          vm              = rbuff(2)        
-         gamma_scr       = rbuff(3) 
 
          use_floorescr   = lbuff(1) 
 
@@ -139,7 +136,6 @@ contains
          nl                  = ibuff(ubound(ibuff, 1) - 1)    ! this must match the last lbuff() index above  
          sigma(1:nscr)  = rbuff(nn+1      :nn+  nscr)
       end if
-      gamma_scr_1 = gamma_scr - 1.0
 
       allocate(iarr_all_scr_swp(xdim:zdim, 4)) 
 

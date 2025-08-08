@@ -49,7 +49,7 @@ contains
       use unsplit_source,   only: apply_source
       use diagnostics,      only: my_allocate, my_deallocate
 #ifdef STREAM_CR
-      use streaming_cr_helpers, only: update_scr_interacting_coeff
+      use streaming_cr_helpers, only: update_scr_interacting_coeff, rotate_along_magx, derotate_along_magx
       use streaming_cr_hlle,    only: update_scr_fluid
 #endif /* STREAM_CR */
 
@@ -161,7 +161,7 @@ contains
          call my_deallocate(bflux)
       enddo
 #ifdef STREAM_CR
-        call update_scr_interacting_coeff(cg, istep)
+        call update_scr_interacting_coeff(cg, istep)      ! Both sigma and rotation matrix has been calculated 
         call update_scr_fluid(cg, istep)
 #endif /* STREAM_CR */
       call apply_flux(cg,istep,.true.)

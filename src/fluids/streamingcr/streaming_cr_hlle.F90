@@ -47,6 +47,7 @@ contains
       use fluxtypes,        only: ext_fluxes
       use unsplit_source,   only: apply_source
       use diagnostics,      only: my_allocate, my_deallocate
+      use streaming_cr_source,  only: apply_scr_source
 
       implicit none
 
@@ -54,7 +55,7 @@ contains
       integer,                       intent(in) :: istep
 
       integer                                    :: i1, i2
-      integer(kind=4)                            :: uhi, ddim
+      integer(kind=4)                            :: scrii, ddim
       real, dimension(:,:),allocatable           :: u, sc
       real, dimension(:),allocatable             :: sscr
       real, dimension(:,:), pointer              :: pu
@@ -64,13 +65,7 @@ contains
       real, dimension(:,:),allocatable           :: tflux
       type(ext_fluxes)                           :: eflx
       integer                                    :: i_cs_iso2
-      uhi = wna%ind(scrh)
-      if (qna%exists(cs_i2_n)) then
-         i_cs_iso2 = qna%ind(cs_i2_n)
-      else
-         i_cs_iso2 = -1
-      endif
-      cs2 => null()
+      scrii= wna%ind(scrh)
       do ddim=xdim,zdim
          if (.not. dom%has_dir(ddim)) cycle
          call my_allocate(u,[cg%n_(ddim), size(cg%scr,1,kind=4)])
@@ -89,7 +84,7 @@ contains
                endif
 
 
-               pu => cg%w(uhi)%get_sweep(ddim,i1,i2)
+               pu => cg%w(scrii)%get_sweep(ddim,i1,i2)
                if (istep == first_stage(integration_order) .or. integration_order < 2 ) pu => cg%w(wna%scr)%get_sweep(ddim,i1,i2)
 
                u(:, iarr_all_scr_swp(ddim,:)) = transpose(pu(:,:))
@@ -114,6 +109,7 @@ contains
 
       enddo
       call apply_flux(cg,istep)
+      call apply_scr_source(cg, istep)
       nullify(cs2)
 
    end subroutine update_scr_fluid

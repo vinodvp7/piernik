@@ -28,14 +28,14 @@ $RESTART_CONTROL
 /
 
 $END_CONTROL
-  tend = 0.2
+  tend = 0.1
   nend = 100000
 /
 
 $OUTPUT_CONTROL
    problem_name = 'scr'
    run_id = 'tst'
-   dt_hdf = 0.02
+   dt_hdf = 0.05
    dt_res = 0.0
    dt_log = 0.02
    dt_tsl = 0.02
@@ -47,15 +47,14 @@ $FLUID_IONIZED
 /
 $STREAMING_CR
       nscr                    = 1
-      gamma_scr               = 4./3.
       vm                      = 100.0
-      sigma                   = 1e8  
+      sigma(1:1)                   = 1e8  
 /
 $NUMERICAL_SETUP
   cfl     = 0.4
   smalld  = 1.e-5
   smallei = 1.e-5
-  limiter = 'vanleer'
+  limiter = 'minmod'
   solver_type = 'unsplit'
   solver_str = 'riemann'
 /

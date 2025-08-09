@@ -75,7 +75,7 @@ contains
 
       integer                                   :: gpci, scri, i, magi, fldi, icfi
       procedure(gradient_pc), pointer           :: grad_pc => null()
-      real :: eps = 1e-10
+      real :: eps = tiny(1.0)
 
       if (ord_scr_grad == 2)  grad_pc => gradient_pc_order_2 
       if (ord_scr_grad == 4)  grad_pc => gradient_pc_order_4 
@@ -106,7 +106,7 @@ contains
       do i= 1,nscr
          cg%w(icfi)%arr(xdim, :,:,:) = 1.0/(1.0/cg%w(icfi)%arr(xdim, :,:,:) +&
          &                             4./3. * sum( cg%w(magi)%arr(xdim:zdim, :,:,:)**2, dim=1) * &
-         &                             cg%w(scri)%arr(1,:,:,:) /((cg%q( qna%ind(bdotpscr))%arr(:,:,:)+eps) &                 
+         &                             cg%w(scri)%arr(1,:,:,:) /((cg%q( qna%ind(bdotpscr))%arr(:,:,:) + eps) &                 
          &                             * sqrt(cg%w(fldi)%arr(iarr_all_dn(xdim),:,:,:))))      ! added a small epsilon to B.gradpc so that denominator is regularized
       end do
    end subroutine update_scr_interaction

@@ -77,7 +77,7 @@ contains
          ! for the constant signal speed 'vm'.
          do i = xdim, zdim
             if (.not. dom%has_dir(i)) cycle
-            dt_patch = min(dt_patch, cg%dl(i) / vm )
+            dt_patch = min(dt_patch, cg%dl(i) / (vm/sqrt(3.0)) )
          end do
          ! Update the running minimum for this MPI process
          dt_local_min = min(dt_local_min, dt_patch)

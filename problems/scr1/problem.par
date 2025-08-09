@@ -1,5 +1,5 @@
 $BASE_DOMAIN
-  n_d = 1024,1,1
+  n_d = 256,1,1
   nb  = 4
   bnd_xl = 'out'
   bnd_xr = 'out'
@@ -48,7 +48,8 @@ $FLUID_IONIZED
 $STREAMING_CR
       nscr                    = 1
       vm                      = 100.0
-      sigma                   = 1e8  
+      sigma                   = 1e8 
+      ord_scr_grad            = 4
 /
 $NUMERICAL_SETUP
   cfl     = 0.4

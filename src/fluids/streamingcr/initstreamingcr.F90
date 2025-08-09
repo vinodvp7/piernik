@@ -49,7 +49,7 @@ module initstreamingcr
     logical                                 :: use_floorescr    !< correct streaming CR energy density or not                              
     real, dimension(120)                    :: sigma            !< \sigma'^{-1}_c 
     integer(kind=4), allocatable, dimension(:,:) :: iarr_all_scr_swp !< array (size = flind) of all fluid indexes in the order depending on sweeps direction
-
+    integer                                 :: ord_scr_grad
 contains
 
    subroutine init_streamingcr
@@ -67,10 +67,11 @@ contains
       implicit none
       integer(kind=4) :: nl,nn,icr
 
-      namelist /STREAMING_CR/ nscr, floorescr, use_floorescr, sigma,vm
+      namelist /STREAMING_CR/ nscr, floorescr, use_floorescr, sigma,vm, ord_scr_grad
                               
 
       nscr                    = 1
+      ord_scr_grad            = 2
       floorescr               = 0.0
       vm                      = 100.0
       use_floorescr           = .true.
@@ -99,7 +100,7 @@ contains
       if (master) then
 
          ibuff(1) = nscr
-
+         ibuff(2) = ord_scr_grad
          rbuff(1) = floorescr   
          rbuff(2) = vm       
          
@@ -125,6 +126,7 @@ contains
       if (slave) then
 
          nscr            = ibuff(1) 
+         ord_scr_grad    = ibuff(2)
 
          floorescr       = rbuff(1)   
          vm              = rbuff(2)        

@@ -159,7 +159,7 @@ contains
       gpci = wna%ind(grad_pscr)
       nx   = cg%n_(xdim)
       ny   = cg%n_(ydim)
-      nz   = cg%n_(zdim)
+      nz   = cg%n_(zdim),
 
 
     ! --- X-Direction Gradient ---

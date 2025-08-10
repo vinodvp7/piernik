@@ -34,7 +34,8 @@
 !! In this module following namelist of parameters is specified:
 !! \copydetails initstreamingcr::init_streamingcr
 !<
-module initstreamingcr                   
+module initstreamingcr   
+                   
 ! pulled by STREAM_CR
 
     use constants, only: cbuff_len
@@ -148,7 +149,6 @@ contains
       !call all_cg%reg_var(mag_1d,ord_prolong = ord_mag_prolong)
       !call all_cg%reg_var(rot_mat, dim4 = stheta, ord_prolong = ord_fluid_prolong) 
       call all_cg%reg_var(int_coeff, dim4 = ndims * nscr, ord_prolong = ord_fluid_prolong) !! Main array of interaction coefficient in the 3 dimensions
-
    end subroutine init_streamingcr
 
 

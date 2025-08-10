@@ -53,6 +53,9 @@ contains
 #ifdef MAGNETIC
       use all_boundaries, only: all_mag_boundaries
 #endif /* MAGNETIC */
+#ifdef STREAM_CR
+      use all_boundaries, only: all_scr_boundaries
+#endif /* STREAM_CR */
 
       implicit none
 
@@ -76,6 +79,10 @@ contains
 #ifdef MAGNETIC
             call all_mag_boundaries(istep) ! ToDo: take care of psi boundaries
 #endif /* MAGNETIC */
+#ifdef STREAM_CR
+            call all_scr_boundaries(istep=istep) ! ToDo: take care of psi boundaries
+
+#endif /* STREAM_CR */
       endif
 
    end subroutine update_boundaries

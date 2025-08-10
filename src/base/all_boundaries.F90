@@ -39,7 +39,9 @@ module all_boundaries
 #ifdef MAGNETIC
    public :: all_mag_boundaries
 #endif /* MAGNETIC */
-
+#ifdef STREAM_CR
+   public :: all_scr_boundaries
+#endif /* STREAM_CR */
 contains
 
 !>
@@ -188,4 +190,39 @@ contains
    end subroutine all_mag_boundaries
 #endif /* MAGNETIC */
 
+#ifdef STREAM_CR
+   subroutine all_scr_boundaries(istep)
+
+      use cg_leaves,        only: leaves
+!!$      use cg_list_global,   only: all_cg
+      use constants,        only: xdim, zdim, psi_n, BND_INVALID, PPP_SCR,psih_n,magh_n, first_stage,scrh
+      use domain,           only: dom
+      use global,           only: psi_bnd, integration_order
+      use named_array_list, only: wna, qna
+      use ppp,              only: ppp_main
+
+      implicit none
+      integer,         optional, intent(in) :: istep
+
+      integer(kind=4) :: dir
+      character(len=*), parameter :: abm_label = "all_scr_boundaries"
+
+      call ppp_main%start(abm_label, PPP_SCR)
+
+
+      do dir = xdim, zdim
+         if (dom%has_dir(dir)) call leaves%bnd_b(dir)
+      enddo
+
+      if (present(istep) .and. istep==first_stage(integration_order)) then
+         call leaves%leaf_arr4d_boundaries(wna%ind(scrh))
+      else
+         call leaves%leaf_arr4d_boundaries(wna%scr)
+      endif
+
+
+      call ppp_main%stop(abm_label, PPP_SCR)
+
+   end subroutine all_scr_boundaries
+#endif /* STREAM_CR */
 end module all_boundaries

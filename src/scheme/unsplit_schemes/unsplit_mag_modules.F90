@@ -49,8 +49,9 @@ contains
       use unsplit_source,   only: apply_source
       use diagnostics,      only: my_allocate, my_deallocate
 #ifdef STREAM_CR
-      use scr_helpers,      only: update_scr_interaction
-      use constants,        only: scrh
+      use scr_helpers,        only: update_scr_interaction
+      use constants,          only: scrh
+      use streaming_cr_hlle,  only: update_scr_fluid
 #endif /* STREAM_CR */
       implicit none
 
@@ -161,6 +162,7 @@ contains
       enddo
 #ifdef STREAM_CR
       call update_scr_interaction(cg, istep)
+      call update_scr_fluid(cg, istep)
 #endif /* STREAM_CR */
       call apply_flux(cg,istep,.true.)
       call apply_flux(cg,istep,.false.)

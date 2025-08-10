@@ -276,6 +276,10 @@ contains
       call set_cresp_names
 #endif /* CRESP */
 
+#ifdef STREAM_CR
+     call set_streamingcr_names
+#endif STREAM_CR /* STREAM_CR */
+
 #ifdef MAGNETIC
       call this%reg_var(mag_n,  vital = .true.,  dim4 = ndims, ord_prolong = ord_mag_prolong, restart_mode = AT_OUT_B, position=pia)  !! Main array of magnetic field's components, "b"
       call this%reg_var(magh_n, vital = .false., dim4 = ndims) !! Array for copy of magnetic field's components, "b" used in half-timestep in RK2
@@ -672,4 +676,33 @@ contains
                endif
          end select
       end subroutine set_flux_names
+
+#ifdef STREAM_CR
+      subroutine set_streamingcr_names
+         use constants,        only: dsetnamelen, I_ONE
+         use named_array_list, only: wna, na_var_4d
+         use initstreamingcr,  only: nscr
+
+         implicit none
+
+         integer(kind=4) :: i
+         character(len=dsetnamelen) :: var
+
+         select type (lst => wna%lst)
+            type is (na_var_4d)
+            do i=I_ONE,nscr
+               write(var, '(a,i2.2)') "escr_", i
+               call lst(wna%fi)%set_compname(flind%scr(i)%iescr, var)
+               write(var, '(a,i2.2)') "fscrx_", i
+               call lst(wna%fi)%set_compname(flind%scr(i)%ifscrx , var)
+               write(var, '(a,i2.2)') "fscry_", i
+               call lst(wna%fi)%set_compname(flind%scr(i)%ifscry , var)
+               write(var, '(a,i2.2)') "fscrz_", i
+               call lst(wna%fi)%set_compname(flind%scr(i)%ifscrz , var)
+            end do
+            class default
+               call die("[cg_list_global:set_streamingcr_names] Unknown list type")
+         end select
+      end subroutine set_streamingcr_names
+#endif /* STREAM_CR */
 end module cg_list_global

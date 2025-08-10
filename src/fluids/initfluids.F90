@@ -107,7 +107,7 @@ contains
 
       use constants,      only: PIERNIK_INIT_GLOBAL
       use dataio_pub,     only: die, code_progress, warn
-      use fluidindex,     only: fluid_index, flind
+      use fluidindex,     only: fluid_index, flind,iarr_all_fscrx,iarr_all_escr,iarr_all_fscry,iarr_all_fscrz
       use fluids_pub,     only: has_dst, has_ion, has_neu, cs2_max
       use fluxes,         only: set_limiter
       use func,           only: operator(.notequals.)
@@ -117,16 +117,19 @@ contains
       use initneutral,    only: init_neutral
       use mass_defect,    only: init_magic_mass
 #ifdef COSM_RAYS
-      use initcosmicrays, only: init_cosmicrays
+      use initcosmicrays,  only: init_cosmicrays
 #endif /* COSM_RAYS */
 #ifdef CRESP
-      use initcrspectrum, only: init_cresp
+      use initcrspectrum,  only: init_cresp
 #endif /* CRESP */
 #ifdef TRACER
-      use inittracer,     only: init_tracer
+      use inittracer,      only: init_tracer
 #endif /* TRACER */
+#ifdef STREAM_CR                                   
+      use initstreamingcr, only: init_streamingcr,nscr     ! 1.Added this line          
+#endif /* STREAM_CR */
 #ifdef VERBOSE
-      use dataio_pub,     only: printinfo
+      use dataio_pub,      only: printinfo
 #endif /* VERBOSE */
 
       implicit none
@@ -151,9 +154,14 @@ contains
 #ifdef TRACER
       call init_tracer
 #endif /* TRACER */
-
+#ifdef STREAM_CR
+      call init_streamingcr                               ! 2.Added this line
+#endif /* STREAM */
       call fluid_index    ! flind has valid values afterwards
-
+      write(115,*) iarr_all_escr
+      write(115,*) iarr_all_fscrx
+      write(115,*) iarr_all_fscry
+      write(115,*) iarr_all_fscrz
       cs2_max = 0.0
       do ifl = lbound(flind%all_fluids, dim=1), ubound(flind%all_fluids, dim=1)
          cs2_max = max(cs2_max, flind%all_fluids(ifl)%fl%cs2)

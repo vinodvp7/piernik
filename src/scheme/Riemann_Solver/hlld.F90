@@ -99,7 +99,7 @@ contains
 
          associate (iend => flind%all_fluids(flind%fluids)%fl%end)
             ! If there are CR or tracers, then calculate their fluxes with first fluid (typically ionized).
-            if (i == 1 .and. iend < flind%all) then
+            if (i == 1 .and. iend < flind%all .and. flind%stcosm < 1 ) then
                p_ct_flx => flx(:, iend + I_ONE:)
                p_ctl => ql(:, iend + I_ONE:)
                p_ctr => qr(:, iend + I_ONE:)

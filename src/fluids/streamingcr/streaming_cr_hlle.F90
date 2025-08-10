@@ -36,7 +36,7 @@
 !<
 module streaming_cr_hlle
 
-! pulled by STREAM_CR
+! pulled by NONE
 
    implicit none
 

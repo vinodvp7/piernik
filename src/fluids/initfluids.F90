@@ -158,10 +158,6 @@ contains
       call init_streamingcr                               ! 2.Added this line
 #endif /* STREAM */
       call fluid_index    ! flind has valid values afterwards
-      write(115,*) iarr_all_escr
-      write(115,*) iarr_all_fscrx
-      write(115,*) iarr_all_fscry
-      write(115,*) iarr_all_fscrz
       cs2_max = 0.0
       do ifl = lbound(flind%all_fluids, dim=1), ubound(flind%all_fluids, dim=1)
          cs2_max = max(cs2_max, flind%all_fluids(ifl)%fl%cs2)

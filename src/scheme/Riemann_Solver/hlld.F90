@@ -72,7 +72,7 @@ contains
       real, dimension(:),   pointer, intent(in)    :: cs2             !< square of local isothermal sound speed
       real, dimension(:,:), target,  intent(inout) :: flx, mag_cc     !< output fluxes: fluid, magnetic field and psi
 
-      integer :: i
+      integer :: i,s
       class(component_fluid), pointer :: fl
 
       real, dimension(size(b_cc_l,1), size(b_cc_l,2)), target :: b0, bf0
@@ -96,7 +96,6 @@ contains
             p_bccr => b0
             p_bcc  => bf0
          endif
-
          associate (iend => flind%all_fluids(flind%fluids)%fl%end)
             ! If there are CR or tracers, then calculate their fluxes with first fluid (typically ionized).
             if (i == 1 .and. iend < flind%all .and. flind%stcosm < 1 ) then
@@ -109,7 +108,13 @@ contains
             endif
          end associate
       enddo
-
+#ifdef STREAM_CR
+         if (flind%stcosm > 0) then
+            do s = 1, flind%stcosm
+               flx(:, flind%scr(s)%beg : flind%scr(s)%end) = 0.0   ! <- hydro/MHD doesn’t touch SCR
+            end do
+         end if
+#endif
    end subroutine riemann_wrap
 
    subroutine riemann_wrap_u(ql, qr, cs2, flx)

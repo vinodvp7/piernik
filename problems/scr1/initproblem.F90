@@ -111,7 +111,7 @@ contains
       use constants,   only: xdim, ydim, zdim, LO, HI
       use dataio_pub,  only: die
       use fluidindex,  only: flind
-      use fluidtypes,  only: component_fluid
+      use fluidtypes,  only: component_fluid, component_scr
       use func,        only: ekin, emag
       use grid_cont,   only: grid_container
 #ifndef ISO
@@ -119,18 +119,17 @@ contains
 #endif /* !ISO */
       implicit none
 
-      class(component_fluid), pointer :: fl
-      integer                         :: i, j, k
-      real                            :: xi, yj, zk, vx, vy, vz, rho, pre, bx, by, bz
-      type(cg_list_element),  pointer :: cgl
-      type(grid_container),   pointer :: cg
-      integer                         :: p
+      class(component_fluid), pointer  :: fl
+      class(component_scr),allocatable :: scr_fluid
+      integer                          :: i, j, k
+      real                             :: xi, yj, zk, vx, vy, vz, rho, pre, bx, by, bz
+      type(cg_list_element),  pointer  :: cgl
+      type(grid_container),   pointer  :: cg
+      integer                          :: p
 
       !   Secondary parameters
       do p = 1, flind%fluids
-
          fl => flind%all_fluids(p)%fl
-
          cgl => leaves%first
          do while (associated(cgl))
             cg => cgl%cg
@@ -157,17 +156,36 @@ contains
                            cg%u(fl%ien,i,j,k) = cg%u(fl%ien,i,j,k) + emag(cg%b(xdim,i,j,k), cg%b(ydim,i,j,k), cg%b(zdim,i,j,k))
 
                         endif
-
                      endif
-
-                     cg%scr(1,i,j,k)   = exp(-a*xi*xi)
-                     cg%scr(2:4,i,j,k) = 0.0
                   enddo
                enddo
             enddo
             cgl => cgl%nxt
          enddo
       enddo
+
+      do p = 1, flind%stcosm
+         scr_fluid = flind%scr(p)
+         cgl => leaves%first
+         do while (associated(cgl))
+            cg => cgl%cg
+            do j = cg%lhn(ydim,LO), cg%lhn(ydim,HI)
+               yj = cg%y(j)
+               do i = cg%lhn(xdim,LO), cg%lhn(xdim,HI)
+                  xi = cg%x(i)
+                  do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
+                     zk = cg%z(k)
+                     cg%u(scr_fluid%iescr, i,j,k) = exp(-a * xi * xi)
+                     cg%u(scr_fluid%ifscrx,i,j,k) = 0.0
+                     cg%u(scr_fluid%ifscry,i,j,k) = 0.0
+                     cg%u(scr_fluid%ifscrz,i,j,k) = 0.0
+                  enddo
+               enddo
+            enddo
+            cgl => cgl%nxt
+         enddo
+      enddo
+
 
    end subroutine problem_initial_conditions
 !-----------------------------------------------------------------------------

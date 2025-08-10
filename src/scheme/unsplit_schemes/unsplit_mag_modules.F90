@@ -172,6 +172,7 @@ contains
       use hlld,           only: riemann_wrap
       use interpolations, only: interpol
       use dataio_pub,     only: die
+      use fluidindex,     only: flind
 
       implicit none
 
@@ -185,6 +186,7 @@ contains
       ! left and right states at interfaces 1 .. n-1
       real, dimension(size(ui, 1)-1, size(ui, 2)), target :: ql, qr
       real, dimension(size(bi, 1)-1, size(bi, 2)), target :: bl, br
+      integer ::s
 
       ! updates required for higher order of integration will likely have shorter length
 
@@ -206,7 +208,13 @@ contains
       else
         call die("[unsplit_mag_modules:solve] Unplit method is only implemented with Hyperbolic Divergence Cleaning")
       endif
-
+#ifdef STREAM_CR
+      if (flind%stcosm > 0) then
+         do s = 1, flind%stcosm
+            flx(:, flind%scr(s)%beg : flind%scr(s)%end) = 0.0
+         end do
+      end if
+#endif
    end subroutine solve
 
    subroutine apply_flux(cg, istep, mag)

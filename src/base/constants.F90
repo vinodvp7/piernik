@@ -273,6 +273,17 @@ module constants
    character(len=dsetnamelen), parameter :: nbdn_n  = "nbdn"    !< density from particles
    character(len=dsetnamelen), parameter :: prth_n  = "prth"    !< histogram of particles on the grid
 #endif /* NBODY */
+#ifdef STREAM_CR
+   character(len=dsetnamelen), parameter :: scrn      = "scrn"      !< main streaming cosmic ray fluid array
+   character(len=dsetnamelen), parameter :: scrh      = "scrh"      !< auxiliary array for half-step values
+   character(len=dsetnamelen), parameter :: xscrflx   = "xscrflx"   !< main X face-flux array for scr
+   character(len=dsetnamelen), parameter :: yscrflx   = "yscrflx"   !< main Y face-flux array for scr
+   character(len=dsetnamelen), parameter :: zscrflx   = "zscrflx"   !< main Z face-flux array for scr
+   character(len=dsetnamelen), parameter :: grad_pscr = "grad_pscr" !< array storing gradient of Pc
+   character(len=dsetnamelen), parameter :: bdotpscr  = "bdotpscr"  !< array storing (B.gradPc) 
+   character(len=dsetnamelen), parameter :: rot_mat   = "rot_mat"   !< Array to store cos/sin phi and cos/sin theta values for rotating the frame
+   character(len=dsetnamelen), parameter :: int_coeff = "int_coeff" !< Array storing the interaction coefficient
+#endif /* STREAM_CR */ 
    ! misc
    character(len=dsetnamelen), parameter :: wcu_n   = "wcu"     !< (resistivity) COMMENT ME
    character(len=dsetnamelen), parameter :: cs_i2_n = "cs_iso2" !< map of imposed isothermal sound speed

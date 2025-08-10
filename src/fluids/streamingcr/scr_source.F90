@@ -36,7 +36,7 @@
 !<
 module scr_source
 
-! pulled by STREAM_CR
+! pulled by NONE
 
    implicit none
 

@@ -447,6 +447,104 @@ contains
       end subroutine set_magnetic_names
 #endif /* MAGNETIC */
 
+   subroutine set_flux_names
+
+         use fluidindex,       only: flind
+         use fluids_pub,       only: has_dst, has_ion, has_neu
+         use named_array_list, only: wna, na_var_4d
+
+         implicit none
+
+         select type (lst => wna%lst)
+            type is (na_var_4d)
+               if (has_ion) then
+                  call lst(wna%xflx)%set_compname(flind%ion%idn, "xfdeni")
+                  call lst(wna%xflx)%set_compname(flind%ion%imx, "xfmomxi")
+                  call lst(wna%xflx)%set_compname(flind%ion%imy, "xfmomyi")
+                  call lst(wna%xflx)%set_compname(flind%ion%imz, "xfmomzi")
+                  if (flind%ion%has_energy) call lst(wna%xflx)%set_compname(flind%ion%ien, "xfenei")
+
+                  call lst(wna%yflx)%set_compname(flind%ion%idn, "yfdeni")
+                  call lst(wna%yflx)%set_compname(flind%ion%imx, "yfmomxi")
+                  call lst(wna%yflx)%set_compname(flind%ion%imy, "yfmomyi")
+                  call lst(wna%yflx)%set_compname(flind%ion%imz, "yfmomzi")
+                  if (flind%ion%has_energy) call lst(wna%yflx)%set_compname(flind%ion%ien, "yfenei")
+
+                  call lst(wna%zflx)%set_compname(flind%ion%idn, "zfdeni")
+                  call lst(wna%zflx)%set_compname(flind%ion%imx, "zfmomxi")
+                  call lst(wna%zflx)%set_compname(flind%ion%imy, "zfmomyi")
+                  call lst(wna%zflx)%set_compname(flind%ion%imz, "zfmomzi")
+                  if (flind%ion%has_energy) call lst(wna%zflx)%set_compname(flind%ion%ien, "zfenei")
+
+               endif
+
+               if (has_neu) then
+                  call lst(wna%xflx)%set_compname(flind%neu%idn, "xfdenn")
+                  call lst(wna%xflx)%set_compname(flind%neu%imx, "xfmomxn")
+                  call lst(wna%xflx)%set_compname(flind%neu%imy, "xfmomyn")
+                  call lst(wna%xflx)%set_compname(flind%neu%imz, "xfmomzn")
+                  if (flind%neu%has_energy) call lst(wna%xflx)%set_compname(flind%neu%ien, "xfenen")
+
+                  call lst(wna%yflx)%set_compname(flind%neu%idn, "yfdenn")
+                  call lst(wna%yflx)%set_compname(flind%neu%imx, "yfmomxn")
+                  call lst(wna%yflx)%set_compname(flind%neu%imy, "yfmomyn")
+                  call lst(wna%yflx)%set_compname(flind%neu%imz, "yfmomzn")
+                  if (flind%neu%has_energy) call lst(wna%yflx)%set_compname(flind%neu%ien, "yfenen")
+
+                  call lst(wna%zflx)%set_compname(flind%neu%idn, "zfdenn")
+                  call lst(wna%zflx)%set_compname(flind%neu%imx, "zfmomxn")
+                  call lst(wna%zflx)%set_compname(flind%neu%imy, "zfmomyn")
+                  call lst(wna%zflx)%set_compname(flind%neu%imz, "zfmomzn")
+                  if (flind%neu%has_energy) call lst(wna%zflx)%set_compname(flind%neu%ien, "zfenen")
+               endif
+
+               if (has_dst) then
+                  call lst(wna%xflx)%set_compname(flind%dst%idn, "xfdend")
+                  call lst(wna%xflx)%set_compname(flind%dst%imx, "xfmomxd")
+                  call lst(wna%xflx)%set_compname(flind%dst%imy, "xfmomyd")
+                  call lst(wna%xflx)%set_compname(flind%dst%imz, "xfmomzd")
+
+                  call lst(wna%yflx)%set_compname(flind%dst%idn, "yfdend")
+                  call lst(wna%yflx)%set_compname(flind%dst%imx, "yfmomxd")
+                  call lst(wna%yflx)%set_compname(flind%dst%imy, "yfmomyd")
+                  call lst(wna%yflx)%set_compname(flind%dst%imz, "yfmomzd")
+
+                  call lst(wna%zflx)%set_compname(flind%dst%idn, "zfdend")
+                  call lst(wna%zflx)%set_compname(flind%dst%imx, "zfmomxd")
+                  call lst(wna%zflx)%set_compname(flind%dst%imy, "zfmomyd")
+                  call lst(wna%zflx)%set_compname(flind%dst%imz, "zfmomzd")
+               endif
+         end select
+      end subroutine set_flux_names
+
+#ifdef STREAM_CR
+      subroutine set_streamingcr_names
+         use constants,        only: dsetnamelen, I_ONE
+         use named_array_list, only: wna, na_var_4d
+         use initstreamingcr,  only: nscr
+
+         implicit none
+
+         integer(kind=4) :: i
+         character(len=dsetnamelen) :: var
+
+         select type (lst => wna%lst)
+            type is (na_var_4d)
+            do i=I_ONE,nscr
+               write(var, '(a,i2.2)') "escr_", i
+               call lst(wna%fi)%set_compname(flind%scr(i)%iescr, var)
+               write(var, '(a,i2.2)') "fscrx_", i
+               call lst(wna%fi)%set_compname(flind%scr(i)%ifscrx , var)
+               write(var, '(a,i2.2)') "fscry_", i
+               call lst(wna%fi)%set_compname(flind%scr(i)%ifscry , var)
+               write(var, '(a,i2.2)') "fscrz_", i
+               call lst(wna%fi)%set_compname(flind%scr(i)%ifscrz , var)
+            end do
+            class default
+               call die("[cg_list_global:set_streamingcr_names] Unknown list type")
+         end select
+      end subroutine set_streamingcr_names
+#endif /* STREAM_CR */
    end subroutine register_fluids
 
 !> \brief Check if all named arrays are consistently registered
@@ -607,102 +705,4 @@ contains
 
    end subroutine mark_orphans
 
-   subroutine set_flux_names
-
-         use fluidindex,       only: flind
-         use fluids_pub,       only: has_dst, has_ion, has_neu
-         use named_array_list, only: wna, na_var_4d
-
-         implicit none
-
-         select type (lst => wna%lst)
-            type is (na_var_4d)
-               if (has_ion) then
-                  call lst(wna%xflx)%set_compname(flind%ion%idn, "xfdeni")
-                  call lst(wna%xflx)%set_compname(flind%ion%imx, "xfmomxi")
-                  call lst(wna%xflx)%set_compname(flind%ion%imy, "xfmomyi")
-                  call lst(wna%xflx)%set_compname(flind%ion%imz, "xfmomzi")
-                  if (flind%ion%has_energy) call lst(wna%xflx)%set_compname(flind%ion%ien, "xfenei")
-
-                  call lst(wna%yflx)%set_compname(flind%ion%idn, "yfdeni")
-                  call lst(wna%yflx)%set_compname(flind%ion%imx, "yfmomxi")
-                  call lst(wna%yflx)%set_compname(flind%ion%imy, "yfmomyi")
-                  call lst(wna%yflx)%set_compname(flind%ion%imz, "yfmomzi")
-                  if (flind%ion%has_energy) call lst(wna%yflx)%set_compname(flind%ion%ien, "yfenei")
-
-                  call lst(wna%zflx)%set_compname(flind%ion%idn, "zfdeni")
-                  call lst(wna%zflx)%set_compname(flind%ion%imx, "zfmomxi")
-                  call lst(wna%zflx)%set_compname(flind%ion%imy, "zfmomyi")
-                  call lst(wna%zflx)%set_compname(flind%ion%imz, "zfmomzi")
-                  if (flind%ion%has_energy) call lst(wna%zflx)%set_compname(flind%ion%ien, "zfenei")
-
-               endif
-
-               if (has_neu) then
-                  call lst(wna%xflx)%set_compname(flind%neu%idn, "xfdenn")
-                  call lst(wna%xflx)%set_compname(flind%neu%imx, "xfmomxn")
-                  call lst(wna%xflx)%set_compname(flind%neu%imy, "xfmomyn")
-                  call lst(wna%xflx)%set_compname(flind%neu%imz, "xfmomzn")
-                  if (flind%neu%has_energy) call lst(wna%xflx)%set_compname(flind%neu%ien, "xfenen")
-
-                  call lst(wna%yflx)%set_compname(flind%neu%idn, "yfdenn")
-                  call lst(wna%yflx)%set_compname(flind%neu%imx, "yfmomxn")
-                  call lst(wna%yflx)%set_compname(flind%neu%imy, "yfmomyn")
-                  call lst(wna%yflx)%set_compname(flind%neu%imz, "yfmomzn")
-                  if (flind%neu%has_energy) call lst(wna%yflx)%set_compname(flind%neu%ien, "yfenen")
-
-                  call lst(wna%zflx)%set_compname(flind%neu%idn, "zfdenn")
-                  call lst(wna%zflx)%set_compname(flind%neu%imx, "zfmomxn")
-                  call lst(wna%zflx)%set_compname(flind%neu%imy, "zfmomyn")
-                  call lst(wna%zflx)%set_compname(flind%neu%imz, "zfmomzn")
-                  if (flind%neu%has_energy) call lst(wna%zflx)%set_compname(flind%neu%ien, "zfenen")
-               endif
-
-               if (has_dst) then
-                  call lst(wna%xflx)%set_compname(flind%dst%idn, "xfdend")
-                  call lst(wna%xflx)%set_compname(flind%dst%imx, "xfmomxd")
-                  call lst(wna%xflx)%set_compname(flind%dst%imy, "xfmomyd")
-                  call lst(wna%xflx)%set_compname(flind%dst%imz, "xfmomzd")
-
-                  call lst(wna%yflx)%set_compname(flind%dst%idn, "yfdend")
-                  call lst(wna%yflx)%set_compname(flind%dst%imx, "yfmomxd")
-                  call lst(wna%yflx)%set_compname(flind%dst%imy, "yfmomyd")
-                  call lst(wna%yflx)%set_compname(flind%dst%imz, "yfmomzd")
-
-                  call lst(wna%zflx)%set_compname(flind%dst%idn, "zfdend")
-                  call lst(wna%zflx)%set_compname(flind%dst%imx, "zfmomxd")
-                  call lst(wna%zflx)%set_compname(flind%dst%imy, "zfmomyd")
-                  call lst(wna%zflx)%set_compname(flind%dst%imz, "zfmomzd")
-               endif
-         end select
-      end subroutine set_flux_names
-
-#ifdef STREAM_CR
-      subroutine set_streamingcr_names
-         use constants,        only: dsetnamelen, I_ONE
-         use named_array_list, only: wna, na_var_4d
-         use initstreamingcr,  only: nscr
-
-         implicit none
-
-         integer(kind=4) :: i
-         character(len=dsetnamelen) :: var
-
-         select type (lst => wna%lst)
-            type is (na_var_4d)
-            do i=I_ONE,nscr
-               write(var, '(a,i2.2)') "escr_", i
-               call lst(wna%fi)%set_compname(flind%scr(i)%iescr, var)
-               write(var, '(a,i2.2)') "fscrx_", i
-               call lst(wna%fi)%set_compname(flind%scr(i)%ifscrx , var)
-               write(var, '(a,i2.2)') "fscry_", i
-               call lst(wna%fi)%set_compname(flind%scr(i)%ifscry , var)
-               write(var, '(a,i2.2)') "fscrz_", i
-               call lst(wna%fi)%set_compname(flind%scr(i)%ifscrz , var)
-            end do
-            class default
-               call die("[cg_list_global:set_streamingcr_names] Unknown list type")
-         end select
-      end subroutine set_streamingcr_names
-#endif /* STREAM_CR */
 end module cg_list_global

@@ -130,7 +130,8 @@ contains
       iarr_all_fscry(scrpos) = scr_fluid%ifscry
       iarr_all_fscrz(scrpos) = scr_fluid%ifscrz
       iarr_all_scr_swp(:,I_ONE + (scrpos-I_ONE)*I_FOUR:I_FOUR + (scrpos-I_ONE)*I_FOUR) = scr_fluid%iarr_scr_swp(:,:)
-      iarr_all_swp(:, scr_fluid%beg:scr_fluid%end) = scr_fluid%iarr_scr_swp(:,:)
+
+      !iarr_all_swp(:, scr_fluid%beg:scr_fluid%end) = scr_fluid%iarr_scr_swp(:,:)
 
       scrpos = scrpos + I_ONE
    end subroutine set_scrindex_arrays
@@ -140,7 +141,7 @@ contains
 !<
    subroutine fluid_index
 
-      use constants,      only: ndims, xdim, ydim, zdim, I_ONE
+      use constants,      only: ndims, xdim, ydim, zdim, I_ONE, I_FOUR
       use fluids_pub,     only: has_dst, has_ion, has_neu
       use initdust,       only: dust_fluid
       use initionized,    only: ion_fluid
@@ -199,7 +200,7 @@ contains
 
 ! Allocate index arrays
       allocate(iarr_mag_swp(ndims,nmag),iarr_all_mag(nmag))
-      allocate(iarr_all_swp(xdim:zdim, flind%all))
+      allocate(iarr_all_swp(xdim:zdim, flind%all - I_FOUR*flind%stcosm))
       allocate(iarr_all_dn(flind%fluids),iarr_all_mx(flind%fluids),iarr_all_my(flind%fluids),iarr_all_mz(flind%fluids))
       allocate(iarr_all_sg(flind%fluids_sg))
 #ifdef ISO

@@ -131,6 +131,16 @@ module constants
       enumerator :: LO = 1, HI                           !! indices for low (left) and high (right) boundaries
    end enum
 
+#ifdef STREAM_CR
+   ! enumerate the position of cos and sin angle of rotation matrix useful for streaming CR
+   enum, bind(C)
+      enumerator :: cphi = 1      ! cos phi   : Bx/sqrt(Bx^2 + By^2)
+      enumerator :: sphi          ! sin phi   : By/sqrt(Bx^2 + By^2)
+      enumerator :: ctheta        ! cos theta : Bz/sqrt(Bx^2 + By^2 + Bz^2)
+      enumerator :: stheta        ! sin theta : sqrt(Bx^2 + By^2)/sqrt(Bx^2 + By^2 + Bz^2)
+   end enum
+#endif /* STREAM_CR */
+
    ! string lengths
    integer(kind=4), parameter :: cwdlen = 512               !< allow for quite long CWD
    integer(kind=4), parameter :: fmt_len = 128              !< length of format string
@@ -274,8 +284,6 @@ module constants
    character(len=dsetnamelen), parameter :: prth_n  = "prth"    !< histogram of particles on the grid
 #endif /* NBODY */
 #ifdef STREAM_CR
-   character(len=dsetnamelen), parameter :: scrn      = "scrn"      !< main streaming cosmic ray fluid array
-   character(len=dsetnamelen), parameter :: scrh      = "scrh"      !< auxiliary array for half-step values
    character(len=dsetnamelen), parameter :: xscrflx   = "xscrflx"   !< main X face-flux array for scr
    character(len=dsetnamelen), parameter :: yscrflx   = "yscrflx"   !< main Y face-flux array for scr
    character(len=dsetnamelen), parameter :: zscrflx   = "zscrflx"   !< main Z face-flux array for scr

@@ -230,7 +230,7 @@ contains
    subroutine register_fluids(this)
 
       use constants,  only: wa_n, fluid_n, uh_n, AT_NO_B, PIERNIK_INIT_FLUIDS, xflx_n, yflx_n, zflx_n, &
-      &                     UNSPLIT
+      &                     UNSPLIT, I_FOUR
       use dataio_pub, only: die, code_progress
       use fluidindex, only: flind
       use global,     only: ord_fluid_prolong, which_solver_type
@@ -242,7 +242,9 @@ contains
       &                     psi_n, psih_n, xbflx_n, ybflx_n, zbflx_n, psiflx_n
       use global,     only: cc_mag, ord_mag_prolong
 #endif /* MAGNETIC */
-
+#ifdef STREAM_CR
+      use constants,    only: int_coeff, rot_mat, bdotpscr, grad_pscr, xscrflx, yscrflx, zscrflx 
+#endif /* STREAM_CR */
       implicit none
 
       class(cg_list_global_t), intent(inout)          :: this          !< object invoking type-bound procedure
@@ -262,9 +264,9 @@ contains
       call this%reg_var(uh_n,                                             dim4 = flind%all, ord_prolong = ord_fluid_prolong) !! Main array of all fluids' components (for t += dt/2)
 
       if (which_solver_type == UNSPLIT) then
-         call this%reg_var(xflx_n, vital = .false., restart_mode = AT_NO_B, dim4 = flind%all, ord_prolong = ord_fluid_prolong)   !! X Face-Fluid flux array
-         call this%reg_var(yflx_n, vital = .false., restart_mode = AT_NO_B, dim4 = flind%all, ord_prolong = ord_fluid_prolong)   !! Y Face-Fluid flux array
-         call this%reg_var(zflx_n, vital = .false., restart_mode = AT_NO_B, dim4 = flind%all, ord_prolong = ord_fluid_prolong)   !! Z Face-Fluid flux array
+         call this%reg_var(xflx_n, vital = .false., restart_mode = AT_NO_B, dim4 = flind%all - I_FOUR * flind%stcosm, ord_prolong = ord_fluid_prolong)   !! X Face-Fluid flux array
+         call this%reg_var(yflx_n, vital = .false., restart_mode = AT_NO_B, dim4 = flind%all - I_FOUR * flind%stcosm, ord_prolong = ord_fluid_prolong)   !! Y Face-Fluid flux array
+         call this%reg_var(zflx_n, vital = .false., restart_mode = AT_NO_B, dim4 = flind%all - I_FOUR * flind%stcosm, ord_prolong = ord_fluid_prolong)   !! Z Face-Fluid flux array
          call set_flux_names
       endif
 
@@ -277,6 +279,12 @@ contains
 #endif /* CRESP */
 
 #ifdef STREAM_CR
+         call this%reg_var(xscrflx, vital = .false., restart_mode = AT_NO_B, dim4 =  I_FOUR * flind%stcosm, ord_prolong = ord_fluid_prolong)   !! X Face-Fluid flux array
+         call this%reg_var(yscrflx, vital = .false., restart_mode = AT_NO_B, dim4 = I_FOUR * flind%stcosm, ord_prolong = ord_fluid_prolong)   !! Y Face-Fluid flux array
+         call this%reg_var(zscrflx, vital = .false., restart_mode = AT_NO_B, dim4 = I_FOUR * flind%stcosm, ord_prolong = ord_fluid_prolong)   !! Z Face-Fluid flux array
+         call this%reg_var(rot_mat, vital = .false., restart_mode = AT_NO_B, dim4 = I_FOUR, ord_prolong = ord_fluid_prolong)   !! X Face-Fluid flux array
+         call this%reg_var(grad_pscr, vital = .false., restart_mode = AT_NO_B, dim4 = ndims * flind%stcosm, ord_prolong = ord_fluid_prolong)   !! Y Face-Fluid flux array
+         call this%reg_var(bdotpscr, vital = .false., restart_mode = AT_NO_B, dim4 = flind%stcosm, ord_prolong = ord_fluid_prolong)   !! Z Face-Fluid flux array
      call set_streamingcr_names
 #endif STREAM_CR /* STREAM_CR */
 

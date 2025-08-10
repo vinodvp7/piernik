@@ -44,7 +44,7 @@ contains
                                   psi_n, psih_n, psidim, cs_i2_n, first_stage, xdim, ydim, zdim, I_ONE
       use global,           only: integration_order
       use domain,           only: dom
-      use fluidindex,       only: iarr_all_swp, iarr_mag_swp
+      use fluidindex,       only: iarr_all_swp, iarr_mag_swp, flind
       use fluxtypes,        only: ext_fluxes
       use unsplit_source,   only: apply_source
       use diagnostics,      only: my_allocate, my_deallocate
@@ -55,7 +55,7 @@ contains
       integer,                       intent(in) :: istep
 
       integer                                    :: i1, i2
-      integer(kind=4)                            :: uhi, bhi, psii, psihi, ddim
+      integer(kind=4)                            :: uhi, bhi, psii, psihi, ddim, flb, fle,nfld
       real, dimension(:,:),allocatable           :: u
       real, dimension(:,:),allocatable           :: b
       real, dimension(:,:),allocatable           :: b_psi                ! This will carry both b and psi so it will have one extra size in dim=2
@@ -70,6 +70,10 @@ contains
       real, dimension(:,:),allocatable           :: tbflux                ! to temporarily store transpose of bflux
       type(ext_fluxes)                           :: eflx
       integer                                    :: i_cs_iso2
+
+      flb = flind%all_fluids(1)%fl%beg
+      fle = flind%all_fluids(flind%fluids)%fl%end
+      nfld = fle - flb + I_ONE
 
       uhi = wna%ind(uh_n)
       bhi = wna%ind(magh_n)
@@ -87,7 +91,7 @@ contains
       do ddim=xdim,zdim
         if (.not. dom%has_dir(ddim)) cycle
 
-         call my_allocate(u,[cg%n_(ddim), size(cg%u,1, kind=4)])
+         call my_allocate(u,[cg%n_(ddim), nfld])
          call my_allocate(b,[cg%n_(ddim), size(cg%b,1, kind=4)])
          call my_allocate(b_psi,[size(b,1, kind=4), size(b,2, kind=4) + I_ONE ])
          call my_allocate(flux,[size(u, 1, kind=4)-I_ONE,size(u, 2, kind=4)])
@@ -123,8 +127,7 @@ contains
                     ppsi => cg%q(psii)%get_sweep(ddim,i1,i2)
                endif
 
-
-               u(:, iarr_all_swp(ddim,:)) = transpose(pu(:,:))
+               u(:, iarr_all_swp(ddim,:)) = transpose(pu(flb:fle,:))
                b(:, iarr_mag_swp(ddim,:)) = transpose(pb(:,:))
 
                b_psi(:, xdim:zdim) = b(:,:) ; b_psi(:,psidim) = ppsi(:)
@@ -208,13 +211,13 @@ contains
       else
         call die("[unsplit_mag_modules:solve] Unplit method is only implemented with Hyperbolic Divergence Cleaning")
       endif
-#ifdef STREAM_CR
-      if (flind%stcosm > 0) then
-         do s = 1, flind%stcosm
-            flx(:, flind%scr(s)%beg : flind%scr(s)%end) = 0.0
-         end do
-      end if
-#endif
+!#ifdef STREAM_CR
+!      if (flind%stcosm > 0) then
+!         do s = 1, flind%stcosm
+!            flx(:, flind%scr(s)%beg : flind%scr(s)%end) = 0.0
+!         end do
+ !     end if
+!#endif
    end subroutine solve
 
    subroutine apply_flux(cg, istep, mag)

@@ -108,13 +108,13 @@ contains
             endif
          end associate
       enddo
-#ifdef STREAM_CR
-         if (flind%stcosm > 0) then
-            do s = 1, flind%stcosm
-               flx(:, flind%scr(s)%beg : flind%scr(s)%end) = 0.0   ! <- hydro/MHD doesn’t touch SCR
-            end do
-         end if
-#endif
+!#ifdef STREAM_CR
+!         if (flind%stcosm > 0) then
+!            do s = 1, flind%stcosm
+!               flx(:, flind%scr(s)%beg : flind%scr(s)%end) = 0.0   ! <- hydro/MHD doesn’t touch SCR
+!            end do
+!         end if
+!#endif
    end subroutine riemann_wrap
 
    subroutine riemann_wrap_u(ql, qr, cs2, flx)

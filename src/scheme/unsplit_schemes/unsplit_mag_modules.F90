@@ -48,7 +48,9 @@ contains
       use fluxtypes,        only: ext_fluxes
       use unsplit_source,   only: apply_source
       use diagnostics,      only: my_allocate, my_deallocate
-
+#ifdef STREAM_CR
+      use scr_helpers,     only: update_scr_interaction
+#endif /* STREAM_CR */
       implicit none
 
       type(grid_container), pointer, intent(in) :: cg
@@ -159,6 +161,9 @@ contains
          call my_deallocate(b); call my_deallocate(b_psi); call my_deallocate(tbflux)
          call my_deallocate(bflux)
       enddo
+#ifdef STREAM_CR
+      call update_scr_interaction(cg, istep)
+#endif /* STREAM_CR */
       call apply_flux(cg,istep,.true.)
       call apply_flux(cg,istep,.false.)
       call update_psi(cg,istep)
@@ -227,7 +232,7 @@ contains
       use named_array_list,   only: wna
       use constants,          only: xdim, ydim, zdim, last_stage, rk_coef, &
                                      uh_n, I_ONE, ndims, magh_n
-
+      use fluidindex,         only: flind
       implicit none
 
       type :: fxptr
@@ -241,8 +246,12 @@ contains
       logical                     :: active(ndims)
       integer                     :: L0(ndims), U0(ndims), L(ndims), U(ndims), shift(ndims)
       integer                     :: afdim, uhi, bhi
+      integer(kind=4)             :: flb, fle
       real, pointer               :: T(:,:,:,:)
       type(fxptr)                 :: F(ndims)
+
+      flb = flind%all_fluids(1)%fl%beg
+      fle = flind%all_fluids(flind%fluids)%fl%end
 
       T => null()
       active = [ dom%has_dir(xdim), dom%has_dir(ydim), dom%has_dir(zdim) ]
@@ -269,10 +278,10 @@ contains
 
          uhi = wna%ind(uh_n)
          if (istep==last_stage(integration_order) .or. integration_order==I_ONE) then
-            T => cg%w(wna%fi)%arr
+            T => cg%w(wna%fi)%arr(flb:fle,:,:,:)
          else
-            cg%w(uhi)%arr(:,:,:,:) = cg%w(wna%fi)%arr(:,:,:,:)
-            T => cg%w(uhi)%arr
+            cg%w(uhi)%arr(flb:fle,:,:,:) = cg%w(wna%fi)%arr(flb:fle,:,:,:)
+            T => cg%w(uhi)%arr(flb:fle,:,:,:)
          endif
       endif
       do afdim = xdim, zdim

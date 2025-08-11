@@ -285,6 +285,7 @@ contains
          call this%reg_var(rot_mat, vital = .false., restart_mode = AT_NO_B, dim4 = I_FOUR, ord_prolong = ord_fluid_prolong)   !! X Face-Fluid flux array
          call this%reg_var(grad_pscr, vital = .false., restart_mode = AT_NO_B, dim4 = ndims * flind%stcosm, ord_prolong = ord_fluid_prolong)   !! Y Face-Fluid flux array
          call this%reg_var(bdotpscr, vital = .false., restart_mode = AT_NO_B, dim4 = flind%stcosm, ord_prolong = ord_fluid_prolong)   !! Z Face-Fluid flux array
+         call this%reg_var(int_coeff, vital = .false., restart_mode = AT_NO_B, dim4 = ndims * flind%stcosm, ord_prolong = ord_fluid_prolong)   !! Z Face-Fluid flux array
      call set_streamingcr_names
 #endif STREAM_CR /* STREAM_CR */
 
@@ -541,11 +542,11 @@ contains
             do i=I_ONE,nscr
                write(var, '(a,i2.2)') "escr_", i
                call lst(wna%fi)%set_compname(flind%scr(i)%iescr, var)
-               write(var, '(a,i2.2)') "fscrx_", i
+               write(var, '(a,i2.2)') "fxscr_", i
                call lst(wna%fi)%set_compname(flind%scr(i)%ifscrx , var)
-               write(var, '(a,i2.2)') "fscry_", i
+               write(var, '(a,i2.2)') "fyscr_", i
                call lst(wna%fi)%set_compname(flind%scr(i)%ifscry , var)
-               write(var, '(a,i2.2)') "fscrz_", i
+               write(var, '(a,i2.2)') "fzscr_", i
                call lst(wna%fi)%set_compname(flind%scr(i)%ifscrz , var)
             end do
             class default

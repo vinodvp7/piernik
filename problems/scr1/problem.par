@@ -28,28 +28,28 @@ $RESTART_CONTROL
 /
 
 $END_CONTROL
-  tend = 2.1
+  tend = 0.1
   nend = 100000000
 /
 
 $OUTPUT_CONTROL
    problem_name = 'scr'
    run_id = 'tst'
-   dt_hdf = 0.1
+   dt_hdf = 1e-20
    dt_res = 0.0
    dt_log = 0.02
    dt_tsl = 0.02
-   vars(1:) = 'dens', 'ener', 'velz', 'pres', 'escr', 'fxscr', 'fyscr', 'fzscr', 'gradpcx', 'bdotgradpc', 'sigma', 'gradpcy', 'gradpcz'
+   vars(1:) = 'dens', 'ener', 'velz', 'pres', 'escr', 'fxscr','fyscr','fzscr','sigmax', 'gradpcx','gradpcy','gradpcz', 'bdotgradpc'
 /
 
 $FLUID_IONIZED
   gamma = 1.6667
 /
 $STREAMING_CR
-      nscr                    = 10
+      nscr                    = 1
       vm                      = 100.0
       sigma                   = 1e8 
-      ord_scr_grad            = 4
+      ord_scr_grad            = 2
 /
 $NUMERICAL_SETUP
   cfl     = 0.4

@@ -60,8 +60,6 @@ contains
       use dataio_pub,       only: die, warn, nh
       use func,             only: operator(.notequals.)
       use mpisetup,         only: ibuff, rbuff, lbuff, cbuff, master, slave
-      !use cg_list_global,   only: all_cg
-      !use named_array_list, only: wna
       use global,           only: ord_fluid_prolong
 
       implicit none
@@ -138,11 +136,6 @@ contains
          sigma(1:nscr)  = rbuff(nn+1      :nn+  nscr)
       end if
 
-      !call all_cg%reg_var(grad_pscr, dim4 = ndims, ord_prolong = ord_fluid_prolong)        !! Main array of grad.Pc
-      !call all_cg%reg_var(bdotpscr,ord_prolong = ord_fluid_prolong)                        !! Main array to store (B.grad.Pc)
-      !call all_cg%reg_var(rot_mat, dim4 = stheta, ord_prolong = ord_fluid_prolong) 
-      !call all_cg%reg_var(int_coeff, dim4 = ndims * nscr, ord_prolong = ord_fluid_prolong) !! Main array of interaction coefficient in the 3 dimensions
    end subroutine init_streamingcr
-
 
 end module initstreamingcr

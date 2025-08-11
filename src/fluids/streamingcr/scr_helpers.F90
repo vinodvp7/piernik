@@ -100,8 +100,9 @@ contains
          &  cg%w(gpci)%arr(i : I_THREE*(flind%stcosm - I_ONE) + i : I_THREE,:,:,:) * spread(cg%w(magi)%arr(i,:,:,:),1,flind%stcosm)
       end do
       cg%w(wna%ind(bdotpscr))%arr(:,:,:,:) = abs(cg%w(wna%ind(bdotpscr))%arr(:,:,:,:))
-
-      cg%w(icfi)%arr(:,:,:,:) = sigma(1)
+      do i = 1, flind%stcosm
+         cg%w(icfi)%arr(xdim + I_THREE*(i-1) :zdim + I_THREE*(i-1) ,:,:,:) = sigma(i)
+      end do
       cg%w(icfi)%arr(xdim : I_THREE*(flind%stcosm - I_ONE) + xdim : I_THREE, :,:,:) = &
       & 1.0/(1.0/cg%w(icfi)%arr(xdim : I_THREE*(flind%stcosm - I_ONE) + xdim : I_THREE, :,:,:) +&
       & 4./3. * spread(sum( cg%w(magi)%arr(xdim:zdim, :,:,:)**2, dim=1) ,1 ,flind%stcosm) * &

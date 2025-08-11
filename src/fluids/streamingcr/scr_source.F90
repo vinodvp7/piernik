@@ -36,24 +36,24 @@
 !<
 module scr_source
 
-! pulled by NONE
+! pulled by STREAM_CR
 
    implicit none
 
 contains
 
 
-   subroutine update_scr_source(cg,istep)
+   subroutine apply_source(cg,istep)
       use grid_cont,        only: grid_container
       use named_array_list, only: wna, qna
       use constants,        only: pdims, ORTHO1, ORTHO2, I_ONE, LO, HI, uh_n, &
-      &                           first_stage, xdim, ydim, zdim, ndims, int_coeff, I_THREE,rk_coef
+      &                           first_stage, xdim, ydim, zdim, ndims, int_coeff, I_THREE,rk_coef, bdotpscr
       use global,           only: integration_order, dt
       use domain,           only: dom
       use fluidindex,       only: iarr_all_swp, flind
       use fluxtypes,        only: ext_fluxes
       use diagnostics,      only: my_allocate, my_deallocate
-      use fluidindex,       only: iarr_all_only_scr_swp
+      use fluidindex,       only: iarr_all_fscrx, iarr_all_escr
       use initstreamingcr,  only: vm
 
       implicit none
@@ -62,19 +62,20 @@ contains
       integer,                       intent(in) :: istep
 
       integer                                    :: i1, i2
-      integer(kind=4)                            :: uhi, ddim, scrb, scre, nscrd
-      real, dimension(:,:),allocatable           :: u, int_s, int_coef
-      real, dimension(:,:), pointer              :: pu
+      integer(kind=4)                            :: uhi, ddim, scrb, scre, nscrd,bpci
+      real, dimension(:,:),allocatable           :: u, int_s, int_coef, ue
+      real, dimension(:,:), pointer              :: pu, pb
 
       scrb = flind%scr(1)%beg
       scre = flind%scr(flind%stcosm)%end
       nscrd = scre - scrb + I_ONE
       uhi = wna%ind(uh_n)
-
+      bpci = wna%ind(bdotpscr)
       do ddim=xdim,zdim
 
          if (.not. dom%has_dir(ddim)) cycle
          call my_allocate(u,[cg%n_(ddim), nscrd])
+         call my_allocate(ue,[cg%n_(ddim), nscrd])
          call my_allocate(int_s, [ndims * flind%stcosm,cg%n_(ddim)])
          call my_allocate(int_coef, [cg%n_(ddim) , flind%stcosm])        ! interaction coefficient along one dimension for all species
 
@@ -84,21 +85,23 @@ contains
                int_s       = cg%w(wna%ind(int_coeff))%get_sweep(ddim, i1, i2)
 
                int_coef(:,:) = transpose(int_s(ddim : I_THREE*(flind%stcosm - I_ONE) + ddim : I_THREE,:) )
-
+               pb => cg%w(bpci)%get_sweep(ddim, i1, i2)
                pu => cg%w(wna%fi)%get_sweep(ddim,i1,i2)
-               if (istep == first_stage(integration_order) .or. integration_order < 2 ) pu => cg%w(uhi)%get_sweep(ddim,i1,i2)
-               
-               u(:, iarr_all_only_scr_swp(ddim,:)) = transpose(pu(scrb:scre,:))
-               u(:,2 : 4*(flind%stcosm - I_ONE) + 2 : 4) = u(:,2 : 4*(flind%stcosm - I_ONE) + 2 : 4) * exp(-(int_coef(:,:)*vm*vm*rk_coef(istep)*dt ))
+               if (istep == first_stage(integration_order) .or. integration_order < 2 ) then
+                  pu => cg%w(uhi)%get_sweep(ddim,i1,i2)
+               endif               
+               u(:,:)  = transpose(pu(iarr_all_fscrx,:))
+               ue(:,:) = transpose(pu(iarr_all_escr,:))
+               u(:,:)  = (u(:,:) - int_coef(:,:) * ue(:,:)* 4./3. * vm *vm *rk_coef(istep)*dt * transpose(sign(1.0,pb(:,:))) ) /( 1.0 + (int_coef(:,:)*vm*vm*rk_coef(istep)*dt ))
 
-               pu(scrb:scre,:) = transpose(u(:, iarr_all_only_scr_swp(ddim,:)))
+               pu(iarr_all_fscrx,:) = transpose(u(:, :))
             enddo
          enddo
-         call my_deallocate(u)
+         call my_deallocate(u); call my_deallocate(ue)
          call my_deallocate(int_coef); call my_deallocate(int_s)
       enddo
 
-   end subroutine update_scr_source
+   end subroutine apply_source
 
 
 end module scr_source

@@ -55,7 +55,7 @@ contains
       use diagnostics,      only: my_allocate, my_deallocate
       use fluidindex,       only: iarr_all_only_scr_swp
       use initstreamingcr,  only: vm
-      !use scr_source,       only: apply_source
+      use scr_source,       only: apply_source
 
       implicit none
 
@@ -122,8 +122,8 @@ contains
          call my_deallocate(tflux)
          call my_deallocate(int_coef); call my_deallocate(int_s)
       enddo
-      !call apply_source(cg,istep)
       call apply_flux(cg,istep)
+      call apply_source(cg,istep)
 
    end subroutine update_scr_fluid
 
@@ -263,7 +263,7 @@ subroutine riemann_hlle(ql, qr, int_coef, flx, dl)
    real, dimension(I_FOUR)         :: fl, fr
    real                            :: vl, vr, tau, R
    integer                         :: i, j
-   
+
    do i = 1,size(flx,1)
       do j = 1, flind%stcosm
          tau = dl * int_coef(i,j) * vm

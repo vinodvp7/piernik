@@ -55,6 +55,7 @@ contains
       use diagnostics,      only: my_allocate, my_deallocate
       use initstreamingcr,  only: iarr_all_scr_swp,vm
       use scr_source,       only: apply_source
+      use scr_helpers,     only: update_gp
 
       implicit none
 
@@ -117,8 +118,9 @@ contains
          call my_deallocate(u); call my_deallocate(flux); call my_deallocate(tflux);
          call my_deallocate(int_coef); call my_deallocate(int_s)
       enddo
-      call apply_source(cg,istep)
       call apply_flux(cg,istep)
+      call update_gp(cg,istep)
+      call apply_source(cg,istep)
 
    end subroutine update_scr_fluid
 

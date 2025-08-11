@@ -56,6 +56,7 @@ contains
       use fluidindex,       only: iarr_all_only_scr_swp
       use initstreamingcr,  only: vm
       use scr_source,       only: apply_source
+      use scr_helpers,      only: update_gp
 
       implicit none
 
@@ -123,6 +124,7 @@ contains
          call my_deallocate(int_coef); call my_deallocate(int_s)
       enddo
       call apply_flux(cg,istep)
+      call update_gp(cg,istep)
       call apply_source(cg,istep)
 
    end subroutine update_scr_fluid
@@ -267,6 +269,7 @@ subroutine riemann_hlle(ql, qr, int_coef, flx, dl)
    do i = 1,size(flx,1)
       do j = 1, flind%stcosm
          tau = dl * int_coef(i,j) * vm
+         if (tau < 1e-35) write(*,*) j , i , tau, int_coef(i,j)
          R   = sqrt(((1.0 - exp(-tau*tau))/(tau*tau)))
          vl  = min(vm, R * vm/(sqrt(3.0)) )
 
@@ -277,8 +280,8 @@ subroutine riemann_hlle(ql, qr, int_coef, flx, dl)
          fl(3) = 0.0 ;  fr(3) = 0.0  
          fl(4) = 0.0 ;  fr(4) = 0.0 
 
-         flx(i,I_ONE+I_FOUR * (j-1) :I_FOUR+I_FOUR * (j-1) ) =  (fl * vl - fr * vr) /(vl -vr) + &
-         &    vl *vr /(vl - vr) * (qr(i,I_ONE+I_FOUR * (j-1) :I_FOUR+I_FOUR * (j-1))-ql(i,I_ONE+I_FOUR * (j-1) :I_FOUR+I_FOUR * (j-1)))
+         flx(i,I_ONE+I_FOUR * (j-1) :I_FOUR+I_FOUR * (j-1) ) =  (fl + fr ) /(2.0) - &
+         &    vl /(2.0) * (qr(i,I_ONE+I_FOUR * (j-1) :I_FOUR+I_FOUR * (j-1))-ql(i,I_ONE+I_FOUR * (j-1) :I_FOUR+I_FOUR * (j-1)))
 
       end do
    end do

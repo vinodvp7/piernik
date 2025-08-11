@@ -28,7 +28,7 @@ $RESTART_CONTROL
 /
 
 $END_CONTROL
-  tend = 0.1
+  tend = 0.15
   nend = 10000000
 /
 
@@ -46,16 +46,18 @@ $FLUID_IONIZED
   gamma = 1.6667
 /
 $STREAMING_CR
-      nscr                    = 2
+      nscr                    = 3
       vm                      = 100.0
-      sigma                   = 1e8 
+      sigma(1)                = 1e8
+      sigma(2)                = 1e8
+      sigma(3)                = 1e8
       ord_scr_grad            = 4
 /
 $NUMERICAL_SETUP
-  cfl     = 0.4
+  cfl     = 0.2
   smalld  = 1.e-5
   smallei = 1.e-5
-  limiter = 'vanleer'
+  limiter = 'minmod'
   solver_type = 'unsplit'
   solver_str = 'riemann'
   integration_order = 2

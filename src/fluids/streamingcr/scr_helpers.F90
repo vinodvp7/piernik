@@ -40,6 +40,14 @@ module scr_helpers
 
    implicit none
 
+      abstract interface
+         subroutine gradient_pc(cg, istep, oops)
+            use grid_cont, only: grid_container
+            type(grid_container), pointer, intent(in) :: cg
+            integer, intent(in) :: istep
+            logical, optional, intent(in) :: oops
+         end subroutine gradient_pc
+      end  interface
 contains
 
    subroutine update_scr_interaction(cg, istep)
@@ -54,28 +62,14 @@ contains
       use fluidindex,         only: iarr_all_dn, iarr_all_escr, flind
 
       implicit none
-      
-      interface
-
-         subroutine gradient_pc(cg,istep)
-
-            use grid_cont, only: grid_container
-
-            implicit none
-
-            type(grid_container), pointer, intent(in) :: cg
-            integer,                       intent(in) :: istep     
-
-         end subroutine gradient_pc
-
-      end interface
+   
 
       type(grid_container), pointer, intent(in) :: cg
       integer,                       intent(in)    :: istep
 
       integer                                   :: gpci, i, magi, fldi, icfi
       procedure(gradient_pc), pointer           :: grad_pc => null()
-      real :: eps = tiny(1.0)
+      real :: eps = 1e-40
 
       if (ord_scr_grad == 2)  grad_pc => gradient_pc_order_2 
       if (ord_scr_grad == 4)  grad_pc => gradient_pc_order_4 
@@ -99,15 +93,18 @@ contains
          &  cg%w( wna%ind(bdotpscr))%arr(I_ONE : flind%stcosm : I_ONE,:,:,:) + &
          &  cg%w(gpci)%arr(i : I_THREE*(flind%stcosm - I_ONE) + i : I_THREE,:,:,:) * spread(cg%w(magi)%arr(i,:,:,:),1,flind%stcosm)
       end do
-      cg%w(wna%ind(bdotpscr))%arr(:,:,:,:) = cg%w(wna%ind(bdotpscr))%arr(:,:,:,:)
+
+
       do i = 1, flind%stcosm
          cg%w(icfi)%arr(xdim + I_THREE*(i-1) :zdim + I_THREE*(i-1) ,:,:,:) = sigma(i)
       end do
+
+      write(115,*) abs(cg%w(wna%ind(bdotpscr))%arr(I_ONE : flind%stcosm : I_ONE,:,:,:) + eps)
       cg%w(icfi)%arr(xdim : I_THREE*(flind%stcosm - I_ONE) + xdim : I_THREE, :,:,:) = &
       & 1.0/(1.0/cg%w(icfi)%arr(xdim : I_THREE*(flind%stcosm - I_ONE) + xdim : I_THREE, :,:,:) +&
       & 4./3. * spread(sum( cg%w(magi)%arr(xdim:zdim, :,:,:)**2, dim=1) ,1 ,flind%stcosm) * &
       & cg%w(fldi)%arr(iarr_all_escr,:,:,:) /(abs(cg%w(wna%ind(bdotpscr))%arr(I_ONE : flind%stcosm : I_ONE,:,:,:) + eps) &                 
-      & * spread(sqrt(cg%w(fldi)%arr(iarr_all_dn(xdim),:,:,:)),1,flind%stcosm)))      ! added a small epsilon to B.gradpc so that denominator is regularized
+      & *spread(sqrt(cg%w(fldi)%arr(iarr_all_dn(1),:,:,:)),1,flind%stcosm)))      ! added a small epsilon to B.gradpc so that denominator is regularized
    end subroutine update_scr_interaction
 
    subroutine sanitize_scr_helper_container(cg)
@@ -130,7 +127,7 @@ contains
 
    end subroutine sanitize_scr_helper_container
 
-   subroutine gradient_pc_order_2(cg, istep)
+   subroutine gradient_pc_order_2(cg, istep, oops)
 
 
       use grid_cont,          only: grid_container
@@ -145,12 +142,20 @@ contains
 
       type(grid_container), pointer, intent(in)    :: cg
       integer,                       intent(in)    :: istep
+      logical, optional,             intent(in) :: oops     
 
       integer                                   :: gpci, nx, ny, nz, fldi, i, j, k
 
-      fldi   = wna%ind(uh_n)
-      if (istep == first_stage(integration_order) .or. integration_order < 2 )  then
+      if ( present(oops) .and. oops) then
          fldi   = wna%ind(fluid_n)
+         if (istep == first_stage(integration_order) .or. integration_order < 2 )  then
+            fldi   = wna%ind(uh_n)
+         endif
+      else 
+         fldi   = wna%ind(uh_n)
+         if (istep == first_stage(integration_order) .or. integration_order < 2 )  then
+            fldi   = wna%ind(fluid_n)
+         endif
       endif
       gpci = wna%ind(grad_pscr)
       nx   = cg%n_(xdim)
@@ -221,7 +226,7 @@ contains
    end subroutine gradient_pc_order_2
 
 
-   subroutine gradient_pc_order_4(cg, istep)
+   subroutine gradient_pc_order_4(cg, istep,oops)
 
 
       use grid_cont,          only: grid_container
@@ -235,13 +240,21 @@ contains
       implicit none
 
       type(grid_container), pointer, intent(in) :: cg
-      integer,                       intent(in)    :: istep
+      integer,                       intent(in) :: istep
+      logical, optional,             intent(in) :: oops     
 
       integer                                   :: gpci, nx, ny, nz, fldi, i, j, k
 
-      fldi   = wna%ind(uh_n)
-      if (istep == first_stage(integration_order) .or. integration_order < 2 )  then
+      if ( present(oops) .and. oops) then
          fldi   = wna%ind(fluid_n)
+         if (istep == first_stage(integration_order) .or. integration_order < 2 )  then
+            fldi   = wna%ind(uh_n)
+         endif
+      else 
+         fldi   = wna%ind(uh_n)
+         if (istep == first_stage(integration_order) .or. integration_order < 2 )  then
+            fldi   = wna%ind(fluid_n)
+         endif
       endif
       gpci = wna%ind(grad_pscr)
       nx   = cg%n_(xdim)
@@ -340,4 +353,50 @@ contains
             cg%u(iarr_all_escr,:,:,:) = max(floorescr,cg%u(iarr_all_escr,:,:,:)) 
       endif
    end subroutine care_positives
+
+   subroutine update_gp(cg, istep)
+
+      use grid_cont,          only: grid_container
+      use initstreamingcr,    only: sigma, nscr, ord_scr_grad
+      use named_array_list,   only: wna, qna
+      use constants,          only: grad_pscr, xdim, ydim, zdim, first_stage, &
+      &                              bdotpscr, mag_n, magh_n, uh_n, fluid_n, int_coeff, LO, HI, I_THREE, I_ONE
+      use global,             only: integration_order
+      use domain,             only: dom
+      use fluidindex,         only: iarr_all_dn,flind
+
+      implicit none
+            
+
+
+      type(grid_container), pointer, intent(in) :: cg
+      integer,                       intent(in)    :: istep
+
+      integer                                   :: gpci, i, magi, fldi, icfi
+      procedure(gradient_pc), pointer           :: grad_pc => null()
+      real :: eps = tiny(1.0)
+
+      if (ord_scr_grad == 2)  grad_pc => gradient_pc_order_2 
+      if (ord_scr_grad == 4)  grad_pc => gradient_pc_order_4 
+
+      magi   = wna%ind(magh_n)
+      fldi   = wna%ind(uh_n)
+
+      if (istep == first_stage(integration_order) .or. integration_order < 2 )  then
+         magi   = wna%ind(mag_n)
+         fldi   = wna%ind(fluid_n)
+      endif
+      icfi = wna%ind(int_coeff)
+      gpci = wna%ind(grad_pscr)
+
+      call grad_pc(cg, istep,.true.)
+
+      cg%w(wna%ind(bdotpscr))%arr(:,:,:,:) = 0.0
+
+      do i = xdim,zdim
+         cg%w( wna%ind(bdotpscr))%arr(I_ONE : flind%stcosm : I_ONE,:,:,:) = &
+         &  cg%w( wna%ind(bdotpscr))%arr(I_ONE : flind%stcosm : I_ONE,:,:,:) + &
+         &  cg%w(gpci)%arr(i : I_THREE*(flind%stcosm - I_ONE) + i : I_THREE,:,:,:) * spread(cg%w(magi)%arr(i,:,:,:),1,flind%stcosm)
+      end do
+      end subroutine update_gp
 end module scr_helpers

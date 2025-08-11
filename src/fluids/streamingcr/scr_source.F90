@@ -74,8 +74,8 @@ contains
       do ddim=xdim,zdim
 
          if (.not. dom%has_dir(ddim)) cycle
-         call my_allocate(u,[cg%n_(ddim), nscrd])
-         call my_allocate(ue,[cg%n_(ddim), nscrd])
+         call my_allocate(u,[cg%n_(ddim), flind%stcosm])
+         call my_allocate(ue,[cg%n_(ddim), flind%stcosm])
          call my_allocate(int_s, [ndims * flind%stcosm,cg%n_(ddim)])
          call my_allocate(int_coef, [cg%n_(ddim) , flind%stcosm])        ! interaction coefficient along one dimension for all species
 
@@ -92,7 +92,7 @@ contains
                endif               
                u(:,:)  = transpose(pu(iarr_all_fscrx,:))
                ue(:,:) = transpose(pu(iarr_all_escr,:))
-               u(:,:)  = (u(:,:) - int_coef(:,:) * ue(:,:)* 4./3. * vm *vm *rk_coef(istep)*dt * transpose(sign(1.0,pb(:,:))) ) /( 1.0 + (int_coef(:,:)*vm*vm*rk_coef(istep)*dt ))
+               u(:,:)  = (u(:,:) - int_coef(:,:) * ue(:,:)* 4./3. * vm *vm *rk_coef(istep)*dt * transpose( merge( 0.0, sign(1.0,pb(:,:)), abs(pb(:,:)) < 1.0e-6 ) ) ) /( 1.0 + (int_coef(:,:)*vm*vm*rk_coef(istep)*dt ))
 
                pu(iarr_all_fscrx,:) = transpose(u(:, :))
             enddo

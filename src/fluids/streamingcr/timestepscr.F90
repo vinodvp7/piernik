@@ -94,7 +94,7 @@ contains
       ! 3. UPDATE THE MAIN TIMESTEP
       ! The main timestep 'dt' is the minimum of its current value and the
       ! globally correct timestep required by this module.
-      dt = min(dt, dt_local_min)
+      dt = cfl*min(dt, dt_local_min)
 
    end subroutine timestep_scr
 

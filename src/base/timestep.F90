@@ -142,7 +142,9 @@ contains
 #ifdef NBODY
       use particle_timestep,  only: timestep_nbody
 #endif /* NBODY */
-
+#ifdef STREAM_CR
+      use timestepscr,        only: timestep_scr
+#endif /* STREAM_CR */
       implicit none
 
       real,              intent(inout) :: dt        !< the timestep
@@ -185,6 +187,9 @@ contains
 #ifdef RESISTIVE
       call timestep_resist(dt)
 #endif /* RESISTIVE */
+#ifdef STREAM_CR
+      call timestep_scr(dt)
+#endif /* STREAM_CR */
 
       call timestep_sources(dt)
       call timestep_fargo(dt)

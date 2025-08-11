@@ -320,4 +320,24 @@ contains
          end do
       endif
    end subroutine gradient_pc_order_4
+
+   subroutine care_positives(cg, istep)
+      use initstreamingcr, only: use_floorescr, floorescr
+      use grid_cont, only: grid_container
+      use fluidindex,    only: iarr_all_escr
+      use constants, only: first_stage
+      use global, only: integration_order
+
+      implicit none
+
+      type(grid_container), pointer, intent(in) :: cg
+      integer,                       intent(in) :: istep     
+
+
+      if (istep==first_stage(integration_order) .and. integration_order>1) return 
+
+      if (use_floorescr) then
+            cg%u(iarr_all_escr,:,:,:) = max(floorescr,cg%u(iarr_all_escr,:,:,:)) 
+      endif
+   end subroutine care_positives
 end module scr_helpers

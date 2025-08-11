@@ -31,7 +31,7 @@
 
 module timestepscr
 
-! pulled by NONE
+! pulled by STREAM_CR
 
 
    implicit none

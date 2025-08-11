@@ -49,7 +49,8 @@ contains
       use unsplit_source,   only: apply_source
       use diagnostics,      only: my_allocate, my_deallocate
 #ifdef STREAM_CR
-      use scr_helpers,     only: update_scr_interaction
+      use scr_helpers,        only: update_scr_interaction, care_positives
+      use streaming_cr_hlle,  only: update_scr_fluid
 #endif /* STREAM_CR */
       implicit none
 
@@ -146,8 +147,7 @@ contains
 
                tflux(:,2:) = transpose(flux(:, iarr_all_swp(ddim,:)))
                tflux(:,1) = 0.0
-               pflux(:,:) = tflux
-
+               pflux(flb:fle,:) = tflux
 
                tbflux(:,2:) = transpose(bflux(:, iarr_mag_swp(ddim,:)))
                tbflux(:,1) = 0
@@ -163,6 +163,7 @@ contains
       enddo
 #ifdef STREAM_CR
       call update_scr_interaction(cg, istep)
+      call update_scr_fluid(cg,istep)
 #endif /* STREAM_CR */
       call apply_flux(cg,istep,.true.)
       call apply_flux(cg,istep,.false.)
@@ -250,14 +251,12 @@ contains
       real, pointer               :: T(:,:,:,:)
       type(fxptr)                 :: F(ndims)
 
-      flb = flind%all_fluids(1)%fl%beg
-      fle = flind%all_fluids(flind%fluids)%fl%end
-
       T => null()
       active = [ dom%has_dir(xdim), dom%has_dir(ydim), dom%has_dir(zdim) ]
 
       if (mag) then
-
+         flb = lbound(cg%bfx ,1)
+         fle = lbound(cg%bfx ,1)
          F(xdim)%flx => cg%bfx   ;  F(ydim)%flx => cg%bgy   ;  F(zdim)%flx => cg%bhz
 
          L0 = [ lbound(cg%w(wna%bi)%arr,2), lbound(cg%w(wna%bi)%arr,3), lbound(cg%w(wna%bi)%arr,4) ]
@@ -270,18 +269,21 @@ contains
             cg%w(bhi)%arr(:,:,:,:) = cg%w(wna%bi)%arr(:,:,:,:)
             T => cg%w(bhi)%arr
          endif
+
       else
-         F(xdim)%flx => cg%fx   ;  F(ydim)%flx => cg%gy   ;  F(zdim)%flx => cg%hz
+         flb = flind%all_fluids(1)%fl%beg
+         fle = flind%all_fluids(flind%fluids)%fl%end
+         F(xdim)%flx => cg%fx   ;  F(ydim)%flx => cg%gy  ;  F(zdim)%flx => cg%hz
 
          L0 = [ lbound(cg%w(wna%fi)%arr,2), lbound(cg%w(wna%fi)%arr,3), lbound(cg%w(wna%fi)%arr,4) ]
          U0 = [ ubound(cg%w(wna%fi)%arr,2), ubound(cg%w(wna%fi)%arr,3), ubound(cg%w(wna%fi)%arr,4) ]
 
          uhi = wna%ind(uh_n)
          if (istep==last_stage(integration_order) .or. integration_order==I_ONE) then
-            T => cg%w(wna%fi)%arr(flb:fle,:,:,:)
+            T => cg%w(wna%fi)%arr
          else
             cg%w(uhi)%arr(flb:fle,:,:,:) = cg%w(wna%fi)%arr(flb:fle,:,:,:)
-            T => cg%w(uhi)%arr(flb:fle,:,:,:)
+            T => cg%w(uhi)%arr
          endif
       endif
       do afdim = xdim, zdim
@@ -290,10 +292,10 @@ contains
          call bounds_for_flux(L0,U0,active,afdim,L,U)
 
          shift = 0 ;  shift(afdim) = I_ONE
-         T(:, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) = T(:, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) &
+         T(flb:fle, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) = T(flb:fle, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) &
             + dt / cg%dl(afdim) * rk_coef(istep) * ( &
-               F(afdim)%flx(:, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) - &
-               F(afdim)%flx(:, L(xdim)+shift(xdim):U(xdim)+shift(xdim), &
+               F(afdim)%flx(flb:fle, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) - &
+               F(afdim)%flx(flb:fle, L(xdim)+shift(xdim):U(xdim)+shift(xdim), &
                            L(ydim)+shift(ydim):U(ydim)+shift(ydim), &
                            L(zdim)+shift(zdim):U(zdim)+shift(zdim)) )
       enddo

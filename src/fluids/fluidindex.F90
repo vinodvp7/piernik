@@ -72,6 +72,7 @@ module fluidindex
    integer(kind=4), allocatable, dimension(:) :: iarr_all_fscry         !< array of indexes pointing to mass densities of all fluids
    integer(kind=4), allocatable, dimension(:) :: iarr_all_fscrz         !< array of indexes pointing to mass densities of all fluids
    integer(kind=4), allocatable, dimension(:,:) :: iarr_all_scr_swp         !< array (size = flind) of all fluid indexes in the order depending on sweeps direction
+   integer(kind=4), allocatable, dimension(:,:) :: iarr_all_only_scr_swp         !< array (size = flind) of all fluid indexes in the order depending on sweeps direction
 
 
    integer(kind=4), allocatable, dimension(:)   :: iarr_all_mag         !< array (size = nmag) of all magnetic field components
@@ -117,7 +118,7 @@ contains
    end subroutine set_fluidindex_arrays
 
    subroutine set_scrindex_arrays(scr_fluid)
-      use constants,  only: I_ONE,I_FOUR
+      use constants,  only: I_ONE,I_FOUR, I_TWO, I_THREE, xdim, ydim, zdim
       use fluidtypes, only: component_scr
 
       implicit none
@@ -131,6 +132,12 @@ contains
       iarr_all_fscrz(scrpos) = scr_fluid%ifscrz
       iarr_all_scr_swp(:,I_ONE + (scrpos-I_ONE)*I_FOUR:I_FOUR + (scrpos-I_ONE)*I_FOUR) = scr_fluid%iarr_scr_swp(:,:)
 
+      iarr_all_only_scr_swp(xdim,I_ONE + (scrpos-I_ONE)*I_FOUR:I_FOUR + (scrpos-I_ONE)*I_FOUR) &
+      & = [I_ONE + (scrpos-I_ONE)*I_FOUR  , I_TWO + (scrpos-I_ONE)*I_FOUR , I_THREE + (scrpos-I_ONE)*I_FOUR, scrpos*I_FOUR ]
+      iarr_all_only_scr_swp(ydim,I_ONE + (scrpos-I_ONE)*I_FOUR:I_FOUR + (scrpos-I_ONE)*I_FOUR) &
+      & = [I_ONE + (scrpos-I_ONE)*I_FOUR  , I_THREE + (scrpos-I_ONE)*I_FOUR , I_TWO + (scrpos-I_ONE)*I_FOUR, scrpos*I_FOUR ]
+      iarr_all_only_scr_swp(zdim,I_ONE + (scrpos-I_ONE)*I_FOUR:I_FOUR + (scrpos-I_ONE)*I_FOUR) &
+      & = [I_ONE + (scrpos-I_ONE)*I_FOUR  , scrpos*I_FOUR , I_THREE + (scrpos-I_ONE)*I_FOUR,  I_TWO + (scrpos-I_ONE)*I_FOUR]
       scrpos = scrpos + I_ONE
    end subroutine set_scrindex_arrays
 
@@ -220,6 +227,7 @@ contains
 #ifdef STREAM_CR
       allocate(iarr_all_scr_swp(xdim:zdim, 4*nscr))
       allocate(iarr_all_escr(nscr),iarr_all_fscrx(nscr),iarr_all_fscry(nscr),iarr_all_fscrz(nscr))
+      allocate(iarr_all_only_scr_swp(xdim:zdim, 4*nscr))
 #else /* !STREAM_CR */
       allocate(iarr_all_scr_swp(0, 0))
       allocate(iarr_all_escr(0),iarr_all_fscrx(0),iarr_all_fscry(0),iarr_all_fscrz(0))
@@ -321,6 +329,7 @@ contains
             if (allocated(iarr_all_fscry    )) call my_deallocate(iarr_all_fscry)
             if (allocated(iarr_all_fscrz    )) call my_deallocate(iarr_all_fscrz)
             if (allocated(iarr_all_scr_swp)) call my_deallocate(iarr_all_scr_swp)
+            if (allocated(iarr_all_only_scr_swp)) call my_deallocate(iarr_all_only_scr_swp)
       endif
 
 

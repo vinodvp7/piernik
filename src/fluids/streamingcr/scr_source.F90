@@ -43,15 +43,18 @@ module scr_source
 contains
 
 
-   subroutine apply_source (cg,istep)
+   subroutine update_scr_source(cg,istep)
       use grid_cont,        only: grid_container
       use named_array_list, only: wna, qna
-      use constants,        only: pdims, ORTHO1, ORTHO2, I_ONE, LO, HI, scrh, &
-      &                           first_stage, xdim, ydim, zdim, ndims, int_coeff,rk_coef
-      use global,           only: integration_order,dt
+      use constants,        only: pdims, ORTHO1, ORTHO2, I_ONE, LO, HI, uh_n, &
+      &                           first_stage, xdim, ydim, zdim, ndims, int_coeff, I_THREE,rk_coef
+      use global,           only: integration_order, dt
       use domain,           only: dom
+      use fluidindex,       only: iarr_all_swp, flind
+      use fluxtypes,        only: ext_fluxes
       use diagnostics,      only: my_allocate, my_deallocate
-      use initstreamingcr,  only: iarr_all_scr_swp, vm
+      use fluidindex,       only: iarr_all_only_scr_swp
+      use initstreamingcr,  only: vm
 
       implicit none
 
@@ -59,59 +62,43 @@ contains
       integer,                       intent(in) :: istep
 
       integer                                    :: i1, i2
-      integer(kind=4)                            :: scrii, ddim
-      real, dimension(:,:),allocatable           :: u, int_s
-      real, dimension(:), allocatable            :: int_coef
+      integer(kind=4)                            :: uhi, ddim, scrb, scre, nscrd
+      real, dimension(:,:),allocatable           :: u, int_s, int_coef
       real, dimension(:,:), pointer              :: pu
 
-      scrii= wna%ind(scrh)
+      scrb = flind%scr(1)%beg
+      scre = flind%scr(flind%stcosm)%end
+      nscrd = scre - scrb + I_ONE
+      uhi = wna%ind(uh_n)
 
       do ddim=xdim,zdim
 
          if (.not. dom%has_dir(ddim)) cycle
-
-         call my_allocate(u,[cg%n_(ddim), size(cg%scr,1,kind=4)])
-         call my_allocate(int_s, [cg%n_(ddim), ndims])
-         call my_allocate(int_coef, [cg%n_(ddim)])
+         call my_allocate(u,[cg%n_(ddim), nscrd])
+         call my_allocate(int_s, [ndims * flind%stcosm,cg%n_(ddim)])
+         call my_allocate(int_coef, [cg%n_(ddim) , flind%stcosm])        ! interaction coefficient along one dimension for all species
 
          do i2 = cg%ijkse(pdims(ddim, ORTHO2), LO), cg%ijkse(pdims(ddim, ORTHO2), HI)
             do i1 = cg%ijkse(pdims(ddim, ORTHO1), LO), cg%ijkse(pdims(ddim, ORTHO1), HI)
 
                int_s       = cg%w(wna%ind(int_coeff))%get_sweep(ddim, i1, i2)
 
-               int_coef(:) = int_s(ddim,:)
+               int_coef(:,:) = transpose(int_s(ddim : I_THREE*(flind%stcosm - I_ONE) + ddim : I_THREE,:) )
 
+               pu => cg%w(wna%fi)%get_sweep(ddim,i1,i2)
+               if (istep == first_stage(integration_order) .or. integration_order < 2 ) pu => cg%w(uhi)%get_sweep(ddim,i1,i2)
+               
+               u(:, iarr_all_only_scr_swp(ddim,:)) = transpose(pu(scrb:scre,:))
+               u(:,2 : 4*(flind%stcosm - I_ONE) + 2 : 4) = u(:,2 : 4*(flind%stcosm - I_ONE) + 2 : 4) * exp(-(int_coef(:,:)*vm*vm*rk_coef(istep)*dt ))
 
-               pu => cg%w(wna%scr)%get_sweep(ddim,i1,i2)
-               if (istep == first_stage(integration_order) .or. integration_order < 2 )  pu => cg%w(scrii)%get_sweep(ddim,i1,i2)
-
-               u(:, iarr_all_scr_swp(ddim,:)) = transpose(pu(:,:))
-               u(:,2) = u(:,2) * exp(-int_coef(:) * vm * vm  * (rk_coef(istep)*dt))
-
-               call care_positives(u)
-
-               pu(:,:) = transpose( u(:, iarr_all_scr_swp(ddim,:)) )
-
+               pu(scrb:scre,:) = transpose(u(:, iarr_all_only_scr_swp(ddim,:)))
             enddo
          enddo
-         call my_deallocate(u); call my_deallocate(int_coef); call my_deallocate(int_s)
+         call my_deallocate(u)
+         call my_deallocate(int_coef); call my_deallocate(int_s)
       enddo
-   end subroutine apply_source 
 
-   subroutine care_positives(u)
-      use initstreamingcr, only: use_floorescr, floorescr
+   end subroutine update_scr_source
 
-      implicit none
 
-      real, dimension(:,:), intent(inout) :: u
-      integer :: i
-
-      if (use_floorescr) then
-         do i = lbound(u,1), ubound(u,1)
-            if (u(i,1) < 0 ) then
-               u(i,1) = floorescr
-            endif
-         enddo
-      endif
-   end subroutine care_positives
 end module scr_source

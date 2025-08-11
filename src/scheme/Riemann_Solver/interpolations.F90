@@ -41,6 +41,10 @@ module interpolations
    private
    public :: set_interpolations, interpol
 
+#ifdef STREAM_CR
+   public :: interpol_scr
+#endif /* STREAM_CR */
+
    interface
 
       subroutine interpolation(prim_var, prim_var_l, prim_var_r, f_limiter)
@@ -131,6 +135,35 @@ contains
 
    end subroutine interpol
 
+#ifdef STREAM_CR
+   subroutine interpol_scr(u, ql, qr)
+
+      use fluxlimiters,       only: flimiter, blimiter
+      use fluidindex,         only: flind
+      use initstreamingcr,    only: vm
+      use constants,          only: I_ONE, I_TWO, I_THREE, I_FOUR
+
+      implicit none
+
+      real, dimension(:,:), intent(in)     :: u
+      real, dimension(:,:), intent(out)    :: ql
+      real, dimension(:,:), intent(out)    :: qr
+      integer                              :: p
+
+
+      real, dimension(size(u, 1), size(u, 2)) :: q
+
+      do p = 1, flind%stcosm
+         q(:,  I_ONE + (p-I_ONE)*I_FOUR)   =  u(:,  I_ONE   + (p-I_ONE)*I_FOUR)
+         q(:,  I_TWO + (p-I_ONE)*I_FOUR)   =  u(:,  I_TWO   + (p-I_ONE)*I_FOUR)/vm**2
+         q(:,  I_THREE + (p-I_ONE)*I_FOUR) =  u(:,  I_THREE + (p-I_ONE)*I_FOUR)/vm**2
+         q(:,  I_FOUR + (p-I_ONE)*I_FOUR)  =  u(:,  I_FOUR  + (p-I_ONE)*I_FOUR)/vm**2
+      enddo
+
+      call interp(q,   ql,   qr,   flimiter)
+
+   end subroutine interpol_scr
+#endif /* STREAM_CR */
 !>
 !! \brief Interpret and set desired interpolation scheme.
 !<

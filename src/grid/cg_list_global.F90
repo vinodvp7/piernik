@@ -264,9 +264,9 @@ contains
       call this%reg_var(uh_n,                                             dim4 = flind%all, ord_prolong = ord_fluid_prolong) !! Main array of all fluids' components (for t += dt/2)
 
       if (which_solver_type == UNSPLIT) then
-         call this%reg_var(xflx_n, vital = .false., restart_mode = AT_NO_B, dim4 = flind%all - I_FOUR * flind%stcosm, ord_prolong = ord_fluid_prolong)   !! X Face-Fluid flux array
-         call this%reg_var(yflx_n, vital = .false., restart_mode = AT_NO_B, dim4 = flind%all - I_FOUR * flind%stcosm, ord_prolong = ord_fluid_prolong)   !! Y Face-Fluid flux array
-         call this%reg_var(zflx_n, vital = .false., restart_mode = AT_NO_B, dim4 = flind%all - I_FOUR * flind%stcosm, ord_prolong = ord_fluid_prolong)   !! Z Face-Fluid flux array
+         call this%reg_var(xflx_n, vital = .false., restart_mode = AT_NO_B, dim4 = flind%all, ord_prolong = ord_fluid_prolong)   !! X Face-Fluid flux array
+         call this%reg_var(yflx_n, vital = .false., restart_mode = AT_NO_B, dim4 = flind%all, ord_prolong = ord_fluid_prolong)   !! Y Face-Fluid flux array
+         call this%reg_var(zflx_n, vital = .false., restart_mode = AT_NO_B, dim4 = flind%all, ord_prolong = ord_fluid_prolong)   !! Z Face-Fluid flux array
          call set_flux_names
       endif
 
@@ -279,9 +279,6 @@ contains
 #endif /* CRESP */
 
 #ifdef STREAM_CR
-         call this%reg_var(xscrflx, vital = .false., restart_mode = AT_NO_B, dim4 =  I_FOUR * flind%stcosm, ord_prolong = ord_fluid_prolong)   !! X Face-Fluid flux array
-         call this%reg_var(yscrflx, vital = .false., restart_mode = AT_NO_B, dim4 = I_FOUR * flind%stcosm, ord_prolong = ord_fluid_prolong)   !! Y Face-Fluid flux array
-         call this%reg_var(zscrflx, vital = .false., restart_mode = AT_NO_B, dim4 = I_FOUR * flind%stcosm, ord_prolong = ord_fluid_prolong)   !! Z Face-Fluid flux array
          call this%reg_var(rot_mat, vital = .false., restart_mode = AT_NO_B, dim4 = I_FOUR, ord_prolong = ord_fluid_prolong)   !! X Face-Fluid flux array
          call this%reg_var(grad_pscr, vital = .false., restart_mode = AT_NO_B, dim4 = ndims * flind%stcosm, ord_prolong = ord_fluid_prolong)   !! Y Face-Fluid flux array
          call this%reg_var(bdotpscr, vital = .false., restart_mode = AT_NO_B, dim4 = flind%stcosm, ord_prolong = ord_fluid_prolong)   !! Z Face-Fluid flux array

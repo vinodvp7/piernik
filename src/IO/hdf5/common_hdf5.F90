@@ -116,6 +116,9 @@ contains
 #ifdef CRESP
       use initcosmicrays, only: ncrb
 #endif /* CRESP */
+#ifdef STREAM_CR
+      use initstreamingcr, only: nscr
+#endif /* STREAM_CR */
 
       implicit none
 
@@ -127,7 +130,9 @@ contains
 #ifdef COSM_RAYS
       integer                                              :: k, ke
 #endif /* COSM_RAYS */
-
+#ifdef STREAM_CR
+      integer                                              :: s
+#endif /* STREAM_CR */
       i = 10  ! Let the default counter be 2-digit wide
 #ifdef COSM_RAYS
       i = max(i, size(cr_names))
@@ -318,6 +323,68 @@ contains
                   call append_var(aux)
                enddo
 #endif /* CRESP */
+#ifdef STREAM_CR
+         case ('escr')
+            do s = 1, nscr
+               write(aux, '(a,"_",i2.2)') 'escr', s
+               call append_var(aux)
+            end do
+
+         case ('xfscr')
+            do s = 1, nscr
+               write(aux, '(a,"_",i2.2)') 'xfscr', s
+               call append_var(aux)
+            end do
+         case ('yfscr')
+            do s = 1, nscr
+               write(aux, '(a,"_",i2.2)') 'yfscr', s
+               call append_var(aux)
+            end do
+         case ('zfscr')
+            do s = 1, nscr
+               write(aux, '(a,"_",i2.2)') 'zfscr', s
+               call append_var(aux)
+            end do
+
+         case ('bdotgradpc')
+            do s = 1, nscr
+               write(aux, '(a,"_",i2.2)') 'bdotgradpc', s
+               call append_var(aux)
+            end do
+
+         case ('gradpcx')
+            do s = 1, nscr
+               write(aux, '(a,"_",i2.2)') 'gradpcx', s
+               call append_var(aux)
+            end do
+         case ('gradpcy')
+            do s = 1, nscr
+               write(aux, '(a,"_",i2.2)') 'gradpcy', s
+               call append_var(aux)
+            end do
+         case ('gradpcz')
+            do s = 1, nscr
+               write(aux, '(a,"_",i2.2)') 'gradpcz', s
+               call append_var(aux)
+            end do
+
+         ! optional: per-direction interaction coefficient
+         case ('sigmax')
+            do s = 1, nscr
+               write(aux, '(a,"_",i2.2)') 'sigmax', s
+               call append_var(aux)
+            end do
+         case ('sigmay')
+            do s = 1, nscr
+               write(aux, '(a,"_",i2.2)') 'sigmay', s
+               call append_var(aux)
+            end do
+         case ('sigmaz')
+            do s = 1, nscr
+               write(aux, '(a,"_",i2.2)') 'sigmaz', s
+               call append_var(aux)
+            end do
+#endif /* STREAM_CR */
             case default
                if (.not. has_ion .and. (any(trim(vars(i)) == ["deni", "vlxi", "vlyi", "vlzi", "enei", "ethi", "prei"]) .or. any(trim(vars(i)) == ["momxi", "momyi", "momzi"]))) then
                   if (master) call warn("[common_hdf5:init_hdf5] Cannot safely use plot variable '" // trim(vars(i)) // "' without ionized fluid")

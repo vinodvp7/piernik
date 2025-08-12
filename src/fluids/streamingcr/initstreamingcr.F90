@@ -47,8 +47,8 @@ module initstreamingcr
    integer(kind=4)                         :: nscr             !< number of non-spectral streaming CR components
    real                                    :: floorescr        !< floor value of streaming CR energy density
    real                                    :: vm               !< maximum speed in the simulation which controls the streaming CR timestepping
-   logical                                 :: use_floorescr    !< floor streaming CR energy density or not                              
-   real, dimension(120)                    :: sigma            !< diffusion coefficient \sigma_c_primed. Magic number 120 for maximum number of non-spectral species.You can always go beyond this by changing it
+   logical                                 :: use_floorescr    !< floor streaming CR energy density or not                               
+   real, dimension(99)                     :: sigma            !< diffusion coefficient \sigma_c_primed. Magic number 99 for maximum number of non-spectral species.You can always go beyond this by changing it. But rbuff limits this number even lower
    integer                                 :: ord_scr_grad     !< order for gradient of Pc. Possible 2 and 4. 2 works for most cases. If 4 then nb > 2 else fall back to gradient order 2 
    real                                    :: smallbdotpc      !< maximum speed in the simulation which controls the streaming CR timestepping
 

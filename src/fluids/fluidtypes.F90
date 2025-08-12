@@ -35,7 +35,10 @@ module fluidtypes
    implicit none
 
    private
-   public :: component, component_fluid, phys_prop, var_numbers, component_scr, var_numbers_scr
+   public :: component, component_fluid, phys_prop, var_numbers
+#ifdef STREAM_CR
+   public :: component_scr, var_numbers_scr
+#endif /* STREAM_CR */
 
    type :: phys_prop
       type(value) :: dens_min

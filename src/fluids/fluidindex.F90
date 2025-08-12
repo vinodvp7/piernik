@@ -80,11 +80,16 @@ module fluidindex
    integer(kind=4), allocatable, dimension(:,:) :: iarr_mag_swp         !< array (size = nmag) of all mag. field indexes in the order depending on sweeps direction
 
    integer(kind=4) :: i_sg                                              !< index denoting position of the selfgravitating fluid in the row of fluids - should be an iarr_sg !
+   
    integer(kind=4), allocatable, dimension(:)   :: iarr_all_escr          !< array of indexes pointing to energy density of all streaming cosmic rays
    integer(kind=4), allocatable, dimension(:)   :: iarr_all_xfscr         !< array of indexes pointing to Fcx of all streaming cosmic rays
    integer(kind=4), allocatable, dimension(:)   :: iarr_all_yfscr         !< array of indexes pointing to Fcy of all streaming cosmic rays
    integer(kind=4), allocatable, dimension(:)   :: iarr_all_zfscr         !< array of indexes pointing to Fcz of all streaming cosmic rays
    integer(kind=4), allocatable, dimension(:,:) :: iarr_all_scr_swp       !< array (size = scrind) of all streaming cosmic rays indexes in the order depending on sweeps direction
+   integer(kind=4), allocatable, dimension(:)   :: iarr_all_gpcx          !< array of indexes pointing to x component of ∇.Pc of all streaming cosmic rays
+   integer(kind=4), allocatable, dimension(:)   :: iarr_all_gpcy          !< array of indexes pointing to y component of ∇.Pc of all streaming cosmic rays
+   integer(kind=4), allocatable, dimension(:)   :: iarr_all_gpcz          !< array of indexes pointing to z component of ∇.Pc of all streaming cosmic rays
+
 contains
 
    subroutine set_fluidindex_arrays(fl, have_ener)
@@ -233,6 +238,7 @@ contains
 #ifdef STREAM_CR
       allocate(iarr_all_scr_swp(xdim:zdim, 4*nscr))
       allocate(iarr_all_escr(nscr),iarr_all_xfscr(nscr),iarr_all_yfscr(nscr),iarr_all_zfscr(nscr))
+      allocate(iarr_all_gpcx(nscr),iarr_all_gpcy(nscr),iarr_all_gpcz(nscr))
 #else /* !STREAM_CR */
       allocate(iarr_all_scr_swp(0, 0))
       allocate(iarr_all_escr(0),iarr_all_xfscr(0),iarr_all_yfscr(0),iarr_all_zfscr(0))
@@ -276,6 +282,9 @@ contains
       do i=1, nscr
             call set_scrindex_arrays(scrind%scr(i))
       end do
+      iarr_all_gpcx = [(xdim + 3*(i-1), i=1, nscr)]
+      iarr_all_gpcy = [(ydim + 3*(i-1), i=1, nscr)]
+      iarr_all_gpcz = [(zdim + 3*(i-1), i=1, nscr)]      
 #endif /* STREAM_CR */
 
       allocate(flind%all_fluids(flind%fluids))
@@ -312,6 +321,9 @@ contains
       if (allocated(iarr_all_yfscr)) call my_deallocate(iarr_all_yfscr)
       if (allocated(iarr_all_zfscr)) call my_deallocate(iarr_all_zfscr)
       if (allocated(iarr_all_scr_swp)) call my_deallocate(iarr_all_scr_swp)
+      if (allocated(iarr_all_gpcx)) call my_deallocate(iarr_all_gpcx)
+      if (allocated(iarr_all_gpcy)) call my_deallocate(iarr_all_gpcy)
+      if (allocated(iarr_all_gpcz)) call my_deallocate(iarr_all_gpcz)
 #endif /* STREAM_CR */
       call my_deallocate(iarr_mag_swp)
       call my_deallocate(iarr_all_swp)

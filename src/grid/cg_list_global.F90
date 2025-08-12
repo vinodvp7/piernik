@@ -243,7 +243,7 @@ contains
       use global,     only: cc_mag, ord_mag_prolong
 #endif /* MAGNETIC */
 #ifdef STREAM_CR
-      use constants,        only: scrn, scrh, xscrflx, yscrflx, zscrflx, rtm, gpc, bgpc, icfm I_FOUR
+      use constants,        only: scrn, scrh, xscrflx, yscrflx, zscrflx, rtm, gpc, bgpc, icf, I_FOUR
       use initstreamingcr,  only: nscr
 #endif /* STREAM_CR */
 
@@ -461,11 +461,11 @@ contains
 #endif /* MAGNETIC */
 
 #ifdef STREAM_CR
-      subroutine set_streamingcr_names
+      subroutine set_scr_names
          use constants,        only: dsetnamelen, I_ONE
          use named_array_list, only: wna, na_var_4d
          use initstreamingcr,  only: nscr
-         use scrindex,         only: scrind
+         use fluidindex,       only: scrind
 
          implicit none
 
@@ -487,7 +487,7 @@ contains
             class default
                call die("[cg_list_global:set_streamingcr_names] Unknown list type")
          end select
-      end subroutine set_streamingcr_names
+      end subroutine set_scr_names
 #endif /* STREAM_CR */
 
    end subroutine register_fluids

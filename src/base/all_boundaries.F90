@@ -79,7 +79,7 @@ contains
 
    end subroutine all_bnd_vital_q
 
-   subroutine all_fluid_boundaries(dir, nocorners, istep)
+   subroutine all_fluid_boundaries(dir, nocorners, istep,ignore_scr)
 
       use cg_leaves,          only: leaves
 !      use cg_level_finest,    only: finest
@@ -94,7 +94,7 @@ contains
       integer(kind=4), optional, intent(in) :: dir       !< select only this direction
       logical,         optional, intent(in) :: nocorners !< .when .true. then don't care about proper edge and corner update
       integer,         optional, intent(in) :: istep
-
+      logical,         optional, intent(in) :: ignore_scr
       integer(kind=4)                     :: d
       character(len=*), parameter :: abf_label = "all_fluid_boundaries"
 

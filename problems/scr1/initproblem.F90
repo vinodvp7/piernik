@@ -175,7 +175,7 @@ contains
                   xi = cg%x(i)
                   do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
                      zk = cg%z(k)
-                     cg%u(scr_fluid%iescr, i,j,k) = exp(-a * xi * xi)
+                     cg%u(scr_fluid%iescr, i,j,k) = 2.0 - abs(xi)
                      cg%u(scr_fluid%ifscrx,i,j,k) = 0.0
                      cg%u(scr_fluid%ifscry,i,j,k) = 0.0
                      cg%u(scr_fluid%ifscrz,i,j,k) = 0.0

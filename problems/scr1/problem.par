@@ -1,5 +1,5 @@
 $BASE_DOMAIN
-  n_d = 256,1,1
+  n_d = 1024,1,1
   nb  = 4
   bnd_xl = 'out'
   bnd_xr = 'out'
@@ -28,14 +28,14 @@ $RESTART_CONTROL
 /
 
 $END_CONTROL
-  tend = 0.15
+  tend = 0.06
   nend = 10000000
 /
 
 $OUTPUT_CONTROL
    problem_name = 'scr'
    run_id = 'tst'
-   dt_hdf = 0.05
+   dt_hdf = 0.06
    dt_res = 0.0
    dt_log = 0.02
    dt_tsl = 0.02

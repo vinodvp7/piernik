@@ -269,7 +269,6 @@ subroutine riemann_hlle(ql, qr, int_coef, flx, dl)
    do i = 1,size(flx,1)
       do j = 1, flind%stcosm
          tau = dl * int_coef(i,j) * vm
-         if (tau < 1e-35) write(*,*) j , i , tau, int_coef(i,j)
          R   = sqrt(((1.0 - exp(-tau*tau))/(tau*tau)))
          vl  = min(vm, R * vm/(sqrt(3.0)) )
 

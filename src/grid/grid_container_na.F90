@@ -73,7 +73,12 @@ module grid_cont_na
       real, dimension(:,:,:,:), pointer :: bgy     => null()  !< Main array of Y-faced flux field components
       real, dimension(:,:,:,:), pointer :: bhz     => null()  !< Main array of Z-faced flux field components
       real, dimension(:,:,:,:), pointer :: psiflx  => null()  !< Main array of Z-faced flux field components
-
+#ifdef STREAM_CR
+      real, dimension(:,:,:,:), pointer :: scr        => null()  !< Main array of magnetic field's components
+      real, dimension(:,:,:,:), pointer :: scrfx      => null()  !< Main array of X-faced flux field components
+      real, dimension(:,:,:,:), pointer :: scrgy      => null()  !< Main array of Y-faced flux field components
+      real, dimension(:,:,:,:), pointer :: scrhz      => null()  !< Main array of Z-faced flux field components
+#endif /* STREAM_CR */
    contains
 
       procedure :: cleanup_na            !< Deallocate all internals
@@ -157,6 +162,13 @@ contains
       if (wna%ybflx  > INVALID)  this%bgy     => this%w(wna%ybflx)%arr
       if (wna%zbflx  > INVALID)  this%bhz     => this%w(wna%zbflx)%arr
       if (wna%psiflx > INVALID)  this%psiflx  => this%w(wna%psiflx)%arr
+
+#ifdef STREAM_CR
+      if (wna%scr        > INVALID)  this%scr        => this%w(wna%scr)%arr
+      if (wna%xscrflx    > INVALID)  this%scrfx      => this%w(wna%xscrflx)%arr
+      if (wna%yscrflx    > INVALID)  this%scrgy      => this%w(wna%yscrflx)%arr
+      if (wna%zscrflx    > INVALID)  this%scrhz      => this%w(wna%zscrflx)%arr
+#endif /* STREAM_CR */
 
       if (qna%wai > INVALID) this%wa => this%q(qna%wai)%arr
 
@@ -263,5 +275,14 @@ contains
             this%bhz(:,:,:,:)    = 0.0
             this%psiflx(:,:,:,:) = 0.0
       endif
+      
+#ifdef STREAM_CR
+      if (associated(this%scrfx) .and. associated(this%scrgy) .and. associated(this%scrhz) ) then
+            this%scrfx(:,:,:,:)    = 0.0
+            this%scrgy(:,:,:,:)    = 0.0
+            this%scrhz(:,:,:,:)    = 0.0
+      endif
+#endif /* STREAM_CR */
+
    end subroutine cleanup_flux
 end module grid_cont_na

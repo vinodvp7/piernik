@@ -492,7 +492,11 @@ contains
          if (master) call warn("[global:init_global] RTVD works only with Constrained Transport. Enforcing.")
          divB_0_method = DIVB_CT
       endif
-
+#ifdef STREAM_CR
+      if (which_solver_type /= UNSPLIT) then
+         call die("[global:init_global] Streaming cosmic rays only work with unsplit riemann solver")
+      endif
+#endif /* STREAM_CR */
       !> reshape_b should carefully check things here
       cc_mag = .false.
       select case (divB_0_method)

@@ -48,7 +48,9 @@ contains
       use fluxtypes,        only: ext_fluxes
       use unsplit_source,   only: apply_source
       use diagnostics,      only: my_allocate, my_deallocate
-
+#ifdef STREAM_CR
+      use scr_helpers,      only: update_scr_interaction
+#endif /* STREAM_CR */
       implicit none
 
       type(grid_container), pointer, intent(in) :: cg
@@ -156,6 +158,9 @@ contains
          call my_deallocate(b); call my_deallocate(b_psi); call my_deallocate(tbflux)
          call my_deallocate(bflux)
       enddo
+#ifdef STREAM_CR
+      call update_scr_interaction(cg, istep)
+#endif /* STREAM_CR */
       call apply_flux(cg,istep,.true.)
       call apply_flux(cg,istep,.false.)
       call update_psi(cg,istep)

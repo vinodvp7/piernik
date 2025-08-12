@@ -110,8 +110,8 @@ contains
       use cg_list,     only: cg_list_element
       use constants,   only: xdim, ydim, zdim, LO, HI
       use dataio_pub,  only: die
-      use fluidindex,  only: flind
-      use fluidtypes,  only: component_fluid
+      use fluidindex,  only: flind, scrind
+      use fluidtypes,  only: component_fluid, component_scr
       use func,        only: ekin, emag
       use grid_cont,   only: grid_container
 #ifndef ISO
@@ -120,6 +120,7 @@ contains
       implicit none
 
       class(component_fluid), pointer :: fl
+      class(component_scr),allocatable:: scr_fluid
       integer                         :: i, j, k
       real                            :: xi, yj, zk, vx, vy, vz, rho, pre, bx, by, bz
       type(cg_list_element),  pointer :: cgl
@@ -159,9 +160,6 @@ contains
                         endif
 
                      endif
-
-                     cg%scr(1,i,j,k)   = exp(-a*xi*xi)
-                     cg%scr(2:4,i,j,k) = 0.0
                   enddo
                enddo
             enddo
@@ -169,6 +167,27 @@ contains
          enddo
       enddo
 
+      do p = 1, scrind%stcosm
+         scr_fluid = scrind%scr(p)
+         cgl => leaves%first
+         do while (associated(cgl))
+            cg => cgl%cg
+            do j = cg%lhn(ydim,LO), cg%lhn(ydim,HI)
+               yj = cg%y(j)
+               do i = cg%lhn(xdim,LO), cg%lhn(xdim,HI)
+                  xi = cg%x(i)
+                  do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
+                     zk = cg%z(k)
+                     cg%scr(scr_fluid%iescr, i,j,k) = exp(-a*xi*xi)
+                     cg%scr(scr_fluid%ixfscr,i,j,k) = 0.0
+                     cg%scr(scr_fluid%iyfscr,i,j,k) = 0.0
+                     cg%scr(scr_fluid%izfscr,i,j,k) = 0.0
+                  enddo
+               enddo
+            enddo
+            cgl => cgl%nxt
+         enddo
+      enddo
    end subroutine problem_initial_conditions
 !-----------------------------------------------------------------------------
 end module initproblem

@@ -49,6 +49,9 @@ contains
       use named_array_list,      only: wna
       use sources,               only: prepare_sources
       use unsplit_mag_modules,   only: solve_cg_ub
+#ifdef STREAM_CR
+      use scr_helpers,           only: sanitize_scr_helper_container
+#endif /* STREAM_CR */
 
       implicit none
 
@@ -59,6 +62,10 @@ contains
       if (dom%geometry_type /= GEO_XYZ) call die("[solve_cg_unsplit:solve_cg_unsplit] Non-cartesian geometry is not implemented yet in this Unsplit solver.")
 
       call prepare_sources(cg)
+
+#ifdef STREAM_CR
+      call sanitize_scr_helper_container(cg)
+#endif /* STREAM_CR */
 
       if (wna%exists(mag_n)) then
          !call die("[solve_cg_unsplit:solve_cg_unsplit] Magnetic field is still unsafe for the flux named arrays")

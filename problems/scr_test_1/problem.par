@@ -39,17 +39,17 @@ $OUTPUT_CONTROL
    dt_res = 0.0
    dt_log = 0.02
    dt_tsl = 0.02
-   vars(1:) = 'dens', 'ener', 'velz', 'pres', 'escr', 'xfscr', 'yfscr', 'zfscr', 'gradpcx', 'bdotgradpc', 'sigma', 'gradpcy', 'gradpcz'
+   vars(1:) = 'dens', 'ener', 'velz', 'pres', 'escr', 'xfscr', 'yfscr', 'zfscr', 'gradpcx', 'bdotgradpc', 'sigmax', 'gradpcy', 'gradpcz'
 /
 
 $FLUID_IONIZED
   gamma = 1.6667
 /
 $STREAMING_CR
-      nscr                    = 50
+      nscr                    = 5
       vm                      = 100.0
-      sigma                   = 1e8 
-      ord_scr_grad            = 2
+      sigma                   = 1e8, 1e8, 1e8,1e8,0.0
+      ord_scr_grad            = 4
 /
 $NUMERICAL_SETUP
   cfl     = 0.4

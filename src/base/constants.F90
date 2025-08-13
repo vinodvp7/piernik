@@ -439,6 +439,8 @@ module constants
       enumerator :: PPP_PROB  = int(B"001000000000", kind=4)  ! problem
       enumerator :: PPP_DEBUG = int(B"010000000000", kind=4)  ! debug
       enumerator :: PPP_AUX   = int(B"100000000000", kind=4)  ! auxiliary (unused by default)
+      enumerator :: PPP_SCR   = int(B"100000000001", kind=4)  ! Streaming cosmic rays
+
    end enum
 
    ! OS type

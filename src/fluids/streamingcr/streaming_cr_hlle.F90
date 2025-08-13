@@ -55,7 +55,6 @@ contains
       use diagnostics,      only: my_allocate, my_deallocate
       use fluidindex,       only: iarr_all_scr_swp
       use initstreamingcr,  only: vm
-      use scr_source,       only: apply_source
       use scr_helpers,      only: update_gpc
 
       implicit none
@@ -122,8 +121,6 @@ contains
       enddo
       call apply_flux(cg,istep)
       call update_gpc(cg,istep)
-      call apply_source(cg,istep)
-
    end subroutine update_scr_fluid
 
    subroutine solve_scr(ui, int_coef, eflx, flx, dl)

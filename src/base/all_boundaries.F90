@@ -210,7 +210,7 @@ contains
 
 
       do dir = xdim, zdim
-         if (dom%has_dir(dir)) call leaves%bnd_b(dir)
+         if (dom%has_dir(dir)) call leaves%bnd_scr(dir)
       enddo
 
       if (present(istep) .and. istep==first_stage(integration_order)) then

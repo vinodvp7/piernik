@@ -81,7 +81,6 @@ contains
 #endif /* MAGNETIC */
 #ifdef STREAM_CR
             call all_scr_boundaries(istep=istep) ! ToDo: take care of psi boundaries
-
 #endif /* STREAM_CR */
       endif
 

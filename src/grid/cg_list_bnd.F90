@@ -76,6 +76,8 @@ module cg_list_bnd
       procedure          :: external_boundaries            !< Set up external boundary values
       procedure          :: bnd_u                          !< External (Non-MPI) boundary conditions for the fluid array: cg%u
       procedure          :: bnd_b                          !< External (Non-MPI) boundary conditions for the magnetic field array: cg%b
+      procedure          :: bnd_scr                          !< External (Non-MPI) boundary conditions for the magnetic field array: cg%b
+
       !> \todo move routines for external guardcells for rank-4 arrays here as well (fluidboundaries and magboundaries)
    end type cg_list_bnd_t
 
@@ -1127,4 +1129,193 @@ contains
 
    end subroutine bnd_b
 
+   subroutine bnd_scr(this, dir)
+
+      use cg_cost_data,          only: I_OTHER
+      use cg_list,               only: cg_list_element
+      use constants,             only: ndims, xdim, ydim, zdim, LO, HI, INT4, I_ONE, &
+           &                           BND_MPI, BND_FC, BND_MPI_FC, BND_PER, BND_REF, BND_OUT, BND_OUTD, BND_COR, BND_SHE, BND_USER
+      use dataio_pub,            only: msg, warn, die
+      use domain,                only: dom, vel_outd
+      use fluidboundaries_funcs, only: user_fluidbnd
+      use fluidindex,            only: iarr_all_escr, iarr_all_xfscr, iarr_all_yfscr, iarr_all_zfscr, scrind
+      use grid_cont,             only: grid_container
+      use named_array_list,      only: wna
+      use ppp,                   only: ppp_main
+
+      implicit none
+
+      class(cg_list_bnd_t), intent(in) :: this !< the list on which to perform the boundary exchange
+      integer(kind=4),      intent(in) :: dir  !< the direction in which we perform fluid boundary update (xdim, ydim or zdim)
+
+      type(grid_container), pointer           :: cg
+      integer(kind=4), dimension(ndims,LO:HI) :: l, r
+      logical, save                           :: frun = .true.
+      integer(kind=4)                         :: side, ssign, ib, n, idxN
+      type(cg_list_element), pointer          :: cgl
+      character(len=*), parameter             :: bscr_label = "bnd_scr"
+      if (.not. any([xdim, ydim, zdim] == dir)) call die("[cg_list_bnd:bnd_scr] Invalid direction.")
+
+      call ppp_main%start(bscr_label)
+
+      if (frun) then
+         call sane_bnd
+         frun = .false.
+         if (HI-LO /= I_ONE) call die("[cg_list_bnd:bnd_scr] HI-LO /= I_ONE")
+      endif
+
+      cgl => this%first
+      do while (associated(cgl))
+         cg => cgl%cg
+         call cg%costs%start
+
+         l = cg%lhn ; r = l
+         do side = LO, HI
+
+            select case (cg%bnd(dir, side))
+               case (BND_MPI, BND_COR, BND_SHE, BND_FC, BND_MPI_FC, BND_PER)
+                  ! Do nothing
+               case (BND_USER)
+                  call user_fluidbnd(dir, side, cg, wn=wna%fi)
+               case (BND_OUT)
+                  ssign = lh_2_pm1(side)
+                  r = cg%lhn
+                  r(dir,:) = cg%ijkse(dir,side)                 ! last interior slab
+
+                  do ib = 1_INT4, dom%nb
+                     l = r
+                     l(dir,:) = cg%ijkse(dir,side) + ssign*ib    ! ghost slab ib cells out
+                     cg%scr(:, l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = &
+                     & cg%scr(:, r(xdim,LO):r(xdim,HI), r(ydim,LO):r(ydim,HI), r(zdim,LO):r(zdim,HI))
+                  end do
+
+               case (BND_OUTD)
+               ! treat CRs same as outflow
+               ssign = lh_2_pm1(side)
+               r = cg%lhn
+               r(dir,:) = cg%ijkse(dir,side)
+               do ib = 1_INT4, dom%nb
+                  l = r
+                  l(dir,:) = cg%ijkse(dir,side) + ssign*ib
+                  cg%scr(:, l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = &
+                  & cg%scr(:, r(xdim,LO):r(xdim,HI), r(ydim,LO):r(ydim,HI), r(zdim,LO):r(zdim,HI))
+               end do
+
+               ! ----------------- REFLECTING (flip ONLY normal Fc) -------------
+               case (BND_REF)
+               ssign = lh_2_pm1(side)
+               l = cg%lhn ; r = cg%lhn
+               do ib = 1_INT4, dom%nb
+                  l(dir,:) = cg%ijkse(dir,side) + ssign*ib
+                  r(dir,:) = cg%ijkse(dir,side) + ssign*(1_INT4-ib)
+
+                  ! copy all CR components first
+                  cg%scr(:, l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = &
+                  & cg%scr(:, r(xdim,LO):r(xdim,HI), r(ydim,LO):r(ydim,HI), r(zdim,LO):r(zdim,HI))
+
+                  ! flip the normal CR flux component per species
+                  do n = 1, scrind%stcosm
+                     select case (dir)
+                        case (xdim)
+                           idxN = iarr_all_xfscr(n)
+                        case (ydim)
+                           idxN = iarr_all_yfscr(n)
+                        case (zdim)
+                           idxN = iarr_all_zfscr(n)
+                     end select
+                     cg%scr(idxN, l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = &
+                     & - cg%scr(idxN, l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI))
+                  end do
+               end do
+               case default
+                  write(msg,'("[cg_list_bnd:bnd_scr]: Unrecognized ",i1," boundary condition ",i3," not implemented in ",i1,"-direction")') side, cg%bnd(dir, side), dir
+                  call warn(msg)
+            end select
+
+         enddo
+
+         call cg%costs%stop(I_OTHER)
+         cgl => cgl%nxt
+      enddo
+
+      call ppp_main%stop(bscr_label)
+
+   contains
+
+!> \brief convert [ LO, HI ] to [ -1, 1 ]. Assumes HI-LO == 1
+
+      elemental function lh_2_pm1(lh)
+
+         use constants, only: LO, HI, I_TWO
+
+         implicit none
+
+         integer(kind=4), intent(in) :: lh
+
+         integer(kind=4) :: lh_2_pm1
+
+         lh_2_pm1 = I_TWO*lh - (LO+HI)
+
+      end function lh_2_pm1
+
+!> \brief Perform some checks
+
+      subroutine sane_bnd
+
+         use constants,  only: PIERNIK_INIT_DOMAIN, xdim, zdim, LO, HI, &
+              &                BND_MPI, BND_FC, BND_MPI_FC, BND_PER, BND_REF, BND_OUT, BND_OUTD, BND_OUTH, BND_OUTHD, BND_COR, BND_SHE, BND_USER
+         use dataio_pub, only: msg, warn, die, code_progress
+         use domain,     only: dom, is_multicg
+
+         implicit none
+
+         integer(kind=4) :: dir, side
+
+         if (code_progress < PIERNIK_INIT_DOMAIN) call die("[cg_list_bnd:bnd_u:sane_bnd] MPI not initialized.") ! bnd_xl, bnd_xr
+
+         do dir = xdim, zdim
+            if (dom%has_dir(dir)) then
+               do side = LO, HI
+                  select case (dom%bnd(dir, side))
+                     case (BND_MPI, BND_REF, BND_OUT, BND_OUTD, BND_USER, BND_PER)
+                        ! Do nothing
+                     case (BND_FC, BND_MPI_FC)
+                        call die("[cg_list_bnd:bnd_u:sane_bnd] fine-coarse interfaces not implemented yet")
+                     case (BND_COR)
+                        if (dir == zdim) then
+                           write(msg,'("[cg_list_bnd:bnd_u:sane_bnd] corner ",i1," boundary condition ",i3," not implemented in ",i1,"-direction")') side, dom%bnd(dir, side), dir
+                           call warn(msg)
+                        endif
+                     case (BND_SHE)
+                        if (dir /= xdim) then
+                           write(msg,'("[cg_list_bnd:bnd_u:sane_bnd] shear ",i1," boundary condition ",i3," not implemented in ",i1,"-direction")') side, dom%bnd(dir, side), dir
+                           call warn(msg)
+                        endif
+                     case (BND_OUTH)
+                        if (dir == zdim) then
+                           if (is_multicg) call die("[cg_list_bnd:bnd_u:sane_bnd] hydrostatic:outh_bnd with multiple grid pieces per processor not implemented yet")
+                           ! nontrivial, not really checked
+                        else
+                           write(msg,'("[cg_list_bnd:bnd_u:sane_bnd] outflow hydrostatic ",i1," boundary condition ",i3," not implemented in ",i1,"-direction")') side, dom%bnd(dir, side), dir
+                           call warn(msg)
+                        endif
+                     case (BND_OUTHD)
+                        if (dir == zdim) then
+                           if (is_multicg) call die("[cg_list_bnd:bnd_u:sane_bnd] hydrostatic:outh_bnd with multiple grid pieces per processor not implemented yet")
+                           ! nontrivial, not really checked
+                        else
+                           write(msg,'("[cg_list_bnd:bnd_u:sane_bnd] outflow hydrostatic ",i1," boundary condition ",i3," not implemented in ",i1,"-direction")') side, dom%bnd(dir, side), dir
+                           call warn(msg)
+                        endif
+                     case default
+                        write(msg,'("[cg_list_bnd:bnd_u:sane_bnd] unknown ",i1," boundary condition ",i3," not implemented in ",i1,"-direction")') side, dom%bnd(dir, side), dir
+                        call warn(msg)
+                 end select
+              enddo
+           endif
+         enddo
+
+      end subroutine sane_bnd
+
+   end subroutine bnd_scr
 end module cg_list_bnd

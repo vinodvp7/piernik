@@ -126,7 +126,7 @@ contains
    subroutine solve_scr(ui, int_coef, eflx, flx, dl)
 
       use fluxtypes,      only: ext_fluxes
-      use interpolations, only: interpol_scr 
+      use interpolations, only: interpol_scr_edge
       use dataio_pub,     only: die
 
       implicit none
@@ -145,7 +145,7 @@ contains
          call die("[streaming_cr_hlle:solve_scr] flux array dimension does not match the expected dimensions")
       endif
 
-      call interpol_scr(ui, ql, qr)
+      call interpol_scr_edge(ui, ql, qr)
 
       call riemann_hlle(ql, qr, int_coef, flx,dl) ! Now we advance the left and right states by a timestep.
 
@@ -260,7 +260,13 @@ subroutine riemann_hlle(ql, qr, int_coef, flx, dl)
    do i = 1,size(flx,1)
       do j = 1, scrind%stcosm
          tau = dl * int_coef(i,j) * vm
-         R   = sqrt(((1.0 - exp(-tau*tau))/(tau*tau)))
+         
+         if (tau < 1e-3) then
+            R = 1 - tau**2 /4.0
+         else
+            R   = sqrt(((1.0 - exp(-tau*tau))/(tau*tau)))
+         endif
+         
          vl  = min(vm, R * vm/(sqrt(3.0)) )
 
          vr  = - vl

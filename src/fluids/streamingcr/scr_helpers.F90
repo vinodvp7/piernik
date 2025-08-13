@@ -178,12 +178,18 @@ contains
       endif
       ! Handle X-boundaries
       if (dom%has_dir(xdim)) then
-          i = cg%lhn(xdim,LO)
-          cg%w(gpci)%arr(xdim : I_THREE*(scrind%stcosm - I_ONE) + xdim : I_THREE,i,:,:) = cg%w(gpci)%arr(xdim : I_THREE*(scrind%stcosm - I_ONE) + xdim : I_THREE,i+1,:,:) ! Copy from neighbor
-          
-          i = cg%lhn(xdim,HI)
-          cg%w(gpci)%arr(xdim : I_THREE*(scrind%stcosm - I_ONE) + xdim : I_THREE,i,:,:) = cg%w(gpci)%arr(xdim : I_THREE*(scrind%stcosm - I_ONE) + xdim : I_THREE,i-1,:,:) ! Copy from neighbor
-      endif
+         i = cg%lhn(xdim,LO)                    ! first interior
+         cg%w(gpci)%arr( xdim : I_THREE*(scrind%stcosm - I_ONE) + xdim : I_THREE, i, :,: ) = &
+            (1.0/3.0) * ( -3.0*cg%w(scri)%arr(iarr_all_escr, i  ,:,:)  &
+                                 + 4.0*cg%w(scri)%arr(iarr_all_escr, i+1,:,:)  &
+                                 - 1.0*cg%w(scri)%arr(iarr_all_escr, i+2,:,:) ) / ( 2.0*cg%dl(xdim) )
+
+         i = cg%lhn(xdim,HI)                    ! last interior
+         cg%w(gpci)%arr( xdim : I_THREE*(scrind%stcosm - I_ONE) + xdim : I_THREE, i, :,: ) = &
+            (1.0/3.0) * (  3.0*cg%w(scri)%arr(iarr_all_escr, i  ,:,:)  &
+                                 - 4.0*cg%w(scri)%arr(iarr_all_escr, i-1,:,:)  &
+                                 + 1.0*cg%w(scri)%arr(iarr_all_escr, i-2,:,:) ) / ( 2.0*cg%dl(xdim) )
+      end if
       ! --- Y-Direction Gradient ---
       if (dom%has_dir(ydim)) then
           do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
@@ -197,12 +203,20 @@ contains
           cg%w(gpci)%arr(ydim : I_THREE*(scrind%stcosm - I_ONE) + ydim : I_THREE,:,:,:) = 0.0
       endif
       if (dom%has_dir(ydim)) then
-          j = cg%lhn(ydim,LO)
-          cg%w(gpci)%arr(ydim : I_THREE*(scrind%stcosm - I_ONE) + ydim : I_THREE,:,j,:) = cg%w(gpci)%arr(ydim : I_THREE*(scrind%stcosm - I_ONE) + ydim : I_THREE,:,j+1,:) ! Copy from neighbor
-          
-          j = cg%lhn(ydim,HI)
-          cg%w(gpci)%arr(ydim : I_THREE*(scrind%stcosm - I_ONE) + ydim : I_THREE,:,j,:) = cg%w(gpci)%arr(ydim : I_THREE*(scrind%stcosm - I_ONE) + ydim : I_THREE,:,j-1,:) ! Copy from neighbor
-      endif
+         ! first interior (j0)
+         j = cg%lhn(ydim,LO)
+         cg%w(gpci)%arr( ydim : I_THREE*(scrind%stcosm - I_ONE) + ydim : I_THREE, :, j, : ) = &
+            (1.0/3.0) * ( -3.0*cg%w(scri)%arr(iarr_all_escr, :, j  ,:)  &
+                                 + 4.0*cg%w(scri)%arr(iarr_all_escr, :, j+1,:)  &
+                                 - 1.0*cg%w(scri)%arr(iarr_all_escr, :, j+2,:) ) / ( 2.0*cg%dl(ydim) )
+
+         ! last interior (j1)
+         j = cg%lhn(ydim,HI)
+         cg%w(gpci)%arr( ydim : I_THREE*(scrind%stcosm - I_ONE) + ydim : I_THREE, :, j, : ) = &
+            (1.0/3.0) * (  3.0*cg%w(scri)%arr(iarr_all_escr, :, j  ,:)  &
+                                 - 4.0*cg%w(scri)%arr(iarr_all_escr, :, j-1,:)  &
+                                 + 1.0*cg%w(scri)%arr(iarr_all_escr, :, j-2,:) ) / ( 2.0*cg%dl(ydim) )
+      end if
       ! --- Z-Direction Gradient ---
       if (dom%has_dir(zdim)) then
           do k = cg%lhn(zdim,LO)+1, cg%lhn(zdim,HI)-1
@@ -216,12 +230,20 @@ contains
           cg%w(gpci)%arr(zdim : I_THREE*(scrind%stcosm - I_ONE) + zdim : I_THREE,:,:,:) = 0.0
       endif
       if (dom%has_dir(zdim)) then
-          k = cg%lhn(zdim,LO)
-          cg%w(gpci)%arr(zdim : I_THREE*(scrind%stcosm - I_ONE) + zdim : I_THREE,:,:,k) = cg%w(gpci)%arr(zdim : I_THREE*(scrind%stcosm - I_ONE) + zdim : I_THREE,:,:,k+1) ! Copy from neighbor
-          
-          k = cg%lhn(zdim,HI)
-          cg%w(gpci)%arr(zdim : I_THREE*(scrind%stcosm - I_ONE) + zdim : I_THREE,:,:,k) = cg%w(gpci)%arr(zdim : I_THREE*(scrind%stcosm - I_ONE) + zdim : I_THREE,:,:,k-1) ! Copy from neighbor
-      endif
+         ! first interior (k0)
+         k = cg%lhn(zdim,LO)
+         cg%w(gpci)%arr( zdim : I_THREE*(scrind%stcosm - I_ONE) + zdim : I_THREE, :, :, k ) = &
+            (1.0/3.0) * ( -3.0*cg%w(scri)%arr(iarr_all_escr, :, :, k  )  &
+                                 + 4.0*cg%w(scri)%arr(iarr_all_escr, :, :, k+1)  &
+                                 - 1.0*cg%w(scri)%arr(iarr_all_escr, :, :, k+2) ) / ( 2.0*cg%dl(zdim) )
+
+         ! last interior (k1)
+         k = cg%lhn(zdim,HI)
+         cg%w(gpci)%arr( zdim : I_THREE*(scrind%stcosm - I_ONE) + zdim : I_THREE, :, :, k ) = &
+            (1.0/3.0) * (  3.0*cg%w(scri)%arr(iarr_all_escr, :, :, k  )  &
+                                 - 4.0*cg%w(scri)%arr(iarr_all_escr, :, :, k-1)  &
+                                 + 1.0*cg%w(scri)%arr(iarr_all_escr, :, :, k-2) ) / ( 2.0*cg%dl(zdim) )
+      end if
    end subroutine gradient_pc_order_2
 
 
@@ -242,7 +264,7 @@ contains
       integer,                       intent(in) :: istep
       logical, optional,             intent(in) :: oops     
 
-      integer                                   :: gpci, nx, ny, nz, scri, i, j, k
+      integer                                   :: gpci, nx, ny, nz, scri, i, j, k, i0, i1, j0, j1, k0, k1
 
       if ( present(oops) .and. oops) then
          scri   = wna%ind(scrn)
@@ -279,14 +301,39 @@ contains
       endif
       ! Handle X-boundaries
       if (dom%has_dir(xdim)) then
-         do i = cg%lhn(xdim,LO),cg%lhn(xdim,LO) + 1
-            cg%w(gpci)%arr(xdim : I_THREE*(scrind%stcosm - I_ONE) + xdim : I_THREE,i,:,:) = cg%w(gpci)%arr(xdim : I_THREE*(scrind%stcosm - I_ONE) + xdim : I_THREE,cg%lhn(xdim,LO)+2,:,:) ! Copy from neighbor
-         end do
+         i0 = cg%lhn(xdim,LO)         ! first interior cell index
+         i1 = cg%lhn(xdim,HI)         ! last  interior cell index
 
-         do i = cg%lhn(xdim,HI)-1, cg%lhn(xdim,HI)
-            cg%w(gpci)%arr(xdim : I_THREE*(scrind%stcosm - I_ONE) + xdim : I_THREE,i,:,:) = cg%w(gpci)%arr(xdim : I_THREE*(scrind%stcosm - I_ONE) + xdim : I_THREE,cg%lhn(xdim,HI)-2,:,:) ! Copy from neighbor
-         end do
-      endif
+         ! ---- LO side: first two interior cells (forward, 4th order) ----
+         cg%w(gpci)%arr( xdim:I_THREE*(scrind%stcosm-I_ONE)+xdim:I_THREE, i0,   :,: ) = &
+            (1.0/3.0) * ( -25.0*cg%w(scri)%arr(iarr_all_escr, i0   ,:,:)  &
+                                 + 48.0*cg%w(scri)%arr(iarr_all_escr, i0+1 ,:,:)  &
+                                 - 36.0*cg%w(scri)%arr(iarr_all_escr, i0+2 ,:,:)  &
+                                 + 16.0*cg%w(scri)%arr(iarr_all_escr, i0+3 ,:,:)  &
+                                 -  3.0*cg%w(scri)%arr(iarr_all_escr, i0+4 ,:,:) ) / (12.0*cg%dl(xdim))
+
+         cg%w(gpci)%arr( xdim:I_THREE*(scrind%stcosm-I_ONE)+xdim:I_THREE, i0+1, :,: ) = &
+            (1.0/3.0) * ( -25.0*cg%w(scri)%arr(iarr_all_escr, i0+1 ,:,:)  &
+                                 + 48.0*cg%w(scri)%arr(iarr_all_escr, i0+2 ,:,:)  &
+                                 - 36.0*cg%w(scri)%arr(iarr_all_escr, i0+3 ,:,:)  &
+                                 + 16.0*cg%w(scri)%arr(iarr_all_escr, i0+4 ,:,:)  &
+                                 -  3.0*cg%w(scri)%arr(iarr_all_escr, i0+5 ,:,:) ) / (12.0*cg%dl(xdim))
+
+         ! ---- HI side: last two interior cells (backward, 4th order) ----
+         cg%w(gpci)%arr( xdim:I_THREE*(scrind%stcosm-I_ONE)+xdim:I_THREE, i1,   :,: ) = &
+            (1.0/3.0) * (  25.0*cg%w(scri)%arr(iarr_all_escr, i1   ,:,:)  &
+                                 - 48.0*cg%w(scri)%arr(iarr_all_escr, i1-1 ,:,:)  &
+                                 + 36.0*cg%w(scri)%arr(iarr_all_escr, i1-2 ,:,:)  &
+                                 - 16.0*cg%w(scri)%arr(iarr_all_escr, i1-3 ,:,:)  &
+                                 +  3.0*cg%w(scri)%arr(iarr_all_escr, i1-4 ,:,:) ) / (12.0*cg%dl(xdim))
+
+         cg%w(gpci)%arr( xdim:I_THREE*(scrind%stcosm-I_ONE)+xdim:I_THREE, i1-1, :,: ) = &
+            (1.0/3.0) * (  25.0*cg%w(scri)%arr(iarr_all_escr, i1-1 ,:,:)  &
+                                 - 48.0*cg%w(scri)%arr(iarr_all_escr, i1-2 ,:,:)  &
+                                 + 36.0*cg%w(scri)%arr(iarr_all_escr, i1-3 ,:,:)  &
+                                 - 16.0*cg%w(scri)%arr(iarr_all_escr, i1-4 ,:,:)  &
+                                 +  3.0*cg%w(scri)%arr(iarr_all_escr, i1-5 ,:,:) ) / (12.0*cg%dl(xdim))
+      end if
       ! --- Y-Direction Gradient ---
       if (dom%has_dir(ydim)) then
          do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
@@ -301,14 +348,42 @@ contains
       else
           cg%w(gpci)%arr(ydim : I_THREE*(scrind%stcosm - I_ONE) + ydim : I_THREE,:,:,:) = 0.0
       endif
+
       if (dom%has_dir(ydim)) then
-         do j = cg%lhn(ydim,LO), cg%lhn(ydim,LO) + 1
-            cg%w(gpci)%arr(ydim : I_THREE*(scrind%stcosm - I_ONE) + ydim : I_THREE,:,j,:) = cg%w(gpci)%arr(ydim : I_THREE*(scrind%stcosm - I_ONE) + ydim : I_THREE,:,cg%lhn(ydim,LO)+2,:) ! Copy from neighbor
-         end do
-         do j = cg%lhn(ydim,HI) - 1 ,cg%lhn(ydim,HI)
-            cg%w(gpci)%arr(ydim : I_THREE*(scrind%stcosm - I_ONE) + ydim : I_THREE,:,j,:) = cg%w(gpci)%arr(ydim : I_THREE*(scrind%stcosm - I_ONE) + ydim : I_THREE,:,cg%lhn(ydim,HI)-2,:) ! Copy from neighbor
-         end do
-      endif
+         j0 = cg%lhn(ydim, LO)   ! first  interior index
+         j1 = cg%lhn(ydim, HI)   ! last   interior index
+
+         ! ---- LO side: first two interior cells (forward, 4th order) ----
+         cg%w(gpci)%arr( ydim:I_THREE*(scrind%stcosm-I_ONE)+ydim:I_THREE, :, j0  , : ) = &
+            (1.0/3.0) * ( -25.0*cg%w(scri)%arr(iarr_all_escr, :, j0  ,:)  &
+                           +48.0*cg%w(scri)%arr(iarr_all_escr, :, j0+1,:)  &
+                           -36.0*cg%w(scri)%arr(iarr_all_escr, :, j0+2,:)  &
+                           +16.0*cg%w(scri)%arr(iarr_all_escr, :, j0+3,:)  &
+                           - 3.0*cg%w(scri)%arr(iarr_all_escr, :, j0+4,:) ) / (12.0*cg%dl(ydim))
+
+         cg%w(gpci)%arr( ydim:I_THREE*(scrind%stcosm-I_ONE)+ydim:I_THREE, :, j0+1, : ) = &
+            (1.0/3.0) * ( -25.0*cg%w(scri)%arr(iarr_all_escr, :, j0+1,:)  &
+                           +48.0*cg%w(scri)%arr(iarr_all_escr, :, j0+2,:)  &
+                           -36.0*cg%w(scri)%arr(iarr_all_escr, :, j0+3,:)  &
+                           +16.0*cg%w(scri)%arr(iarr_all_escr, :, j0+4,:)  &
+                           - 3.0*cg%w(scri)%arr(iarr_all_escr, :, j0+5,:) ) / (12.0*cg%dl(ydim))
+
+         ! ---- HI side: last two interior cells (backward, 4th order) ----
+         cg%w(gpci)%arr( ydim:I_THREE*(scrind%stcosm-I_ONE)+ydim:I_THREE, :, j1  , : ) = &
+            (1.0/3.0) * (  25.0*cg%w(scri)%arr(iarr_all_escr, :, j1  ,:)  &
+                           -48.0*cg%w(scri)%arr(iarr_all_escr, :, j1-1,:)  &
+                           +36.0*cg%w(scri)%arr(iarr_all_escr, :, j1-2,:)  &
+                           -16.0*cg%w(scri)%arr(iarr_all_escr, :, j1-3,:)  &
+                           + 3.0*cg%w(scri)%arr(iarr_all_escr, :, j1-4,:) ) / (12.0*cg%dl(ydim))
+
+         cg%w(gpci)%arr( ydim:I_THREE*(scrind%stcosm-I_ONE)+ydim:I_THREE, :, j1-1, : ) = &
+            (1.0/3.0) * (  25.0*cg%w(scri)%arr(iarr_all_escr, :, j1-1,:)  &
+                           -48.0*cg%w(scri)%arr(iarr_all_escr, :, j1-2,:)  &
+                           +36.0*cg%w(scri)%arr(iarr_all_escr, :, j1-3,:)  &
+                           -16.0*cg%w(scri)%arr(iarr_all_escr, :, j1-4,:)  &
+                           + 3.0*cg%w(scri)%arr(iarr_all_escr, :, j1-5,:) ) / (12.0*cg%dl(ydim))
+      end if
+
       ! --- Z-Direction Gradient ---
       if (dom%has_dir(zdim)) then
          do k = cg%lhn(zdim,LO)+1, cg%lhn(zdim,HI)-1
@@ -324,13 +399,40 @@ contains
           cg%w(gpci)%arr(zdim : I_THREE*(scrind%stcosm - I_ONE) + zdim : I_THREE,:,:,:) = 0.0
       endif
       if (dom%has_dir(zdim)) then
-         do k = cg%lhn(zdim,LO), cg%lhn(zdim,LO) + 1
-            cg%w(gpci)%arr(zdim : I_THREE*(scrind%stcosm - I_ONE) + zdim : I_THREE,:,:,k) = cg%w(gpci)%arr(zdim : I_THREE*(scrind%stcosm - I_ONE) + zdim : I_THREE,:,:,cg%lhn(zdim,LO)+2) ! Copy from neighbor
-         end do
-         do k = cg%lhn(zdim,HI) - 1 ,cg%lhn(zdim,HI)
-            cg%w(gpci)%arr(zdim : I_THREE*(scrind%stcosm - I_ONE) + zdim : I_THREE,:,:,k) = cg%w(gpci)%arr(zdim : I_THREE*(scrind%stcosm - I_ONE) + zdim : I_THREE,:,:,cg%lhn(zdim,HI)-2) ! Copy from neighbor
-         end do
-      endif
+         k0 = cg%lhn(zdim, LO)   ! first  interior index
+         k1 = cg%lhn(zdim, HI)   ! last   interior index
+
+         ! ---- LO side: forward, 4th order (k0 and k0+1) ----
+         cg%w(gpci)%arr( zdim:I_THREE*(scrind%stcosm-I_ONE)+zdim:I_THREE, :, :, k0   ) = &
+            (1.0/3.0) * ( -25.0*cg%w(scri)%arr(iarr_all_escr, :, :, k0   )  &
+                           +48.0*cg%w(scri)%arr(iarr_all_escr, :, :, k0+1 )  &
+                           -36.0*cg%w(scri)%arr(iarr_all_escr, :, :, k0+2 )  &
+                           +16.0*cg%w(scri)%arr(iarr_all_escr, :, :, k0+3 )  &
+                           - 3.0*cg%w(scri)%arr(iarr_all_escr, :, :, k0+4 ) ) / (12.0*cg%dl(zdim))
+
+         cg%w(gpci)%arr( zdim:I_THREE*(scrind%stcosm-I_ONE)+zdim:I_THREE, :, :, k0+1 ) = &
+            (1.0/3.0) * ( -25.0*cg%w(scri)%arr(iarr_all_escr, :, :, k0+1 )  &
+                           +48.0*cg%w(scri)%arr(iarr_all_escr, :, :, k0+2 )  &
+                           -36.0*cg%w(scri)%arr(iarr_all_escr, :, :, k0+3 )  &
+                           +16.0*cg%w(scri)%arr(iarr_all_escr, :, :, k0+4 )  &
+                           - 3.0*cg%w(scri)%arr(iarr_all_escr, :, :, k0+5 ) ) / (12.0*cg%dl(zdim))
+
+         ! ---- HI side: backward, 4th order (k1 and k1-1) ----
+         cg%w(gpci)%arr( zdim:I_THREE*(scrind%stcosm-I_ONE)+zdim:I_THREE, :, :, k1   ) = &
+            (1.0/3.0) * (  25.0*cg%w(scri)%arr(iarr_all_escr, :, :, k1   )  &
+                           -48.0*cg%w(scri)%arr(iarr_all_escr, :, :, k1-1 )  &
+                           +36.0*cg%w(scri)%arr(iarr_all_escr, :, :, k1-2 )  &
+                           -16.0*cg%w(scri)%arr(iarr_all_escr, :, :, k1-3 )  &
+                           + 3.0*cg%w(scri)%arr(iarr_all_escr, :, :, k1-4 ) ) / (12.0*cg%dl(zdim))
+
+         cg%w(gpci)%arr( zdim:I_THREE*(scrind%stcosm-I_ONE)+zdim:I_THREE, :, :, k1-1 ) = &
+            (1.0/3.0) * (  25.0*cg%w(scri)%arr(iarr_all_escr, :, :, k1-1 )  &
+                           -48.0*cg%w(scri)%arr(iarr_all_escr, :, :, k1-2 )  &
+                           +36.0*cg%w(scri)%arr(iarr_all_escr, :, :, k1-3 )  &
+                           -16.0*cg%w(scri)%arr(iarr_all_escr, :, :, k1-4 )  &
+                           + 3.0*cg%w(scri)%arr(iarr_all_escr, :, :, k1-5 ) ) / (12.0*cg%dl(zdim))
+      end if
+
    end subroutine gradient_pc_order_4
 
    subroutine care_positives(cg, istep)

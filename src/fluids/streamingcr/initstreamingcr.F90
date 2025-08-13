@@ -51,7 +51,7 @@ module initstreamingcr
    real, dimension(99)                     :: sigma            !< diffusion coefficient \sigma_c_primed. Magic number 99 for maximum number of non-spectral species.You can always go beyond this by changing it. But rbuff limits this number even lower
    integer                                 :: ord_scr_grad     !< order for gradient of Pc. Possible 2 and 4. 2 works for most cases. If 4 then nb > 2 else fall back to gradient order 2 
    real                                    :: smallbdotpc      !< maximum speed in the simulation which controls the streaming CR timestepping
-
+   logical                                 :: enable_scr_feedback !< Whether streaming cosmic ray feedback momentum and energy change to the gas
 contains
 
    subroutine init_streamingcr
@@ -67,7 +67,7 @@ contains
       implicit none
       integer(kind=4) :: nl,nn,icr
 
-      namelist /STREAMING_CR/ nscr, floorescr, use_floorescr, sigma,vm, ord_scr_grad, smallbdotpc
+      namelist /STREAMING_CR/ nscr, floorescr, use_floorescr, sigma,vm, ord_scr_grad, smallbdotpc, enable_scr_feedback
                               
 
       nscr                    = 1
@@ -77,6 +77,7 @@ contains
       use_floorescr           = .true.
       sigma(1:nscr)           = 1.0
       smallbdotpc             = 1e-30
+      enable_scr_feedback     = .true.
 
       if (master) then
          if (.not.nh%initialized) call nh%init()
@@ -106,8 +107,9 @@ contains
          rbuff(3) = smallbdotpc
 
          lbuff(1) = use_floorescr 
+         lbuff(2) = enable_scr_feedback 
             
-         nl       = 1                                     ! this must match the last lbuff() index above
+         nl       = 2                                     ! this must match the last lbuff() index above
          nn       = count(rbuff(:) < huge(1.), kind=4)    ! this must match the last rbuff() index above
          ibuff(ubound(ibuff, 1)    ) = nn
          ibuff(ubound(ibuff, 1) - 1) = nl
@@ -133,7 +135,8 @@ contains
          vm              = rbuff(2)        
          smallbdotpc     = rbuff(3)
 
-         use_floorescr   = lbuff(1) 
+         use_floorescr       = lbuff(1) 
+         enable_scr_feedback = lbuff(2)
 
          nn                  = ibuff(ubound(ibuff, 1)    )    ! this must match the last rbuff() index above
          nl                  = ibuff(ubound(ibuff, 1) - 1)    ! this must match the last lbuff() index above  

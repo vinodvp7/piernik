@@ -466,7 +466,7 @@ contains
       type(grid_container), pointer, intent(in)    :: cg
       integer,                       intent(in)    :: istep
 
-      integer                                   :: gpci, i, magi, scri
+      integer                                   :: gpci, i, magi, scri, j
       procedure(gradient_pc), pointer           :: grad_pc => null()
 
       if (ord_scr_grad == 2)  grad_pc => gradient_pc_order_2 
@@ -485,11 +485,11 @@ contains
       call grad_pc(cg, istep,.true.)
 
       cg%w(wna%ind(bgpc))%arr(:,:,:,:) = 0.0
-
-      do i = xdim,zdim
-         cg%w( wna%ind(bgpc))%arr(I_ONE : scrind%stcosm : I_ONE,:,:,:) = &
-         &  cg%w( wna%ind(bgpc))%arr(I_ONE : scrind%stcosm : I_ONE,:,:,:) + &
-         &  cg%w(gpci)%arr(i : I_THREE*(scrind%stcosm - I_ONE) + i : I_THREE,:,:,:) * spread(cg%w(magi)%arr(i,:,:,:),1,scrind%stcosm)
+      do j = 1, scrind%stcosm
+         do i = xdim,zdim
+            cg%w( wna%ind(bgpc))%arr(j,:,:,:) = cg%w( wna%ind(bgpc))%arr(j,:,:,:) + &
+            &  cg%w(gpci)%arr(i + I_THREE*(j - I_ONE) ,:,:,:) * cg%w(magi)%arr(i,:,:,:)
+         end do
       end do
       end subroutine update_gpc
 

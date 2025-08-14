@@ -67,7 +67,7 @@ contains
       type(grid_container), pointer, intent(in)    :: cg
       integer,                       intent(in)    :: istep
 
-      integer                                   :: gpci, i, magi, fldi, icfi, scri
+      integer                                   :: gpci, i, magi, fldi, icfi, scri, bgpci
       procedure(gradient_pc), pointer           :: grad_pc => null()
 
       if (ord_scr_grad == 2)  grad_pc => gradient_pc_order_2 
@@ -83,7 +83,7 @@ contains
       endif
       icfi = wna%ind(icf)
       gpci = wna%ind(gpc)
-
+      bgpci = wna%ind(bgpc)
       call grad_pc(cg, istep)
 
       cg%w(wna%ind(bgpc))%arr(:,:,:,:) = 0.0
@@ -96,15 +96,17 @@ contains
       end do
 
 
-      do i = 1, scrind%stcosm
+      do  i = 1, scrind%stcosm
          cg%w(icfi)%arr(xdim + I_THREE*(i-1) :zdim + I_THREE*(i-1) ,:,:,:) = sigma(i)
       end do
-      cg%w(icfi)%arr(xdim : I_THREE*(scrind%stcosm - I_ONE) + xdim : I_THREE, :,:,:) = &
-      & 1.0/(1.0/cg%w(icfi)%arr(xdim : I_THREE*(scrind%stcosm - I_ONE) + xdim : I_THREE, :,:,:) +&                        !< 1/σ'
-      & 4./3. * spread(sum( cg%w(magi)%arr(xdim:zdim, :,:,:)**2, dim=1) ,1 ,scrind%stcosm) * &                            !< 4/3 B^2 (Because after rotation Bx = magB)
-      & cg%w(scri)%arr(iarr_all_escr,:,:,:) /(abs(cg%w(wna%ind(bgpc))%arr(I_ONE : scrind%stcosm : I_ONE,:,:,:) + smallbdotpc) &       !< Ec/(|B.∇Pc + ε|√ρ)           
-      & *spread(sqrt(cg%w(fldi)%arr(iarr_all_dn(1),:,:,:)),1,scrind%stcosm)))      ! added a small epsilon to B.gradpc so that denominator is regularized
-      
+
+      do i = 1, scrind%stcosm
+         cg%w(icfi)%arr(xdim + I_THREE*(i - I_ONE) , :,:,:) = &
+         & 1.0/(1.0/cg%w(icfi)%arr(xdim + I_THREE*(i - I_ONE) , :,:,:) + &                        !< 1/σ'
+         & 4./3. * sum( cg%w(magi)%arr(xdim:zdim, :,:,:)**2, dim=1) * &                            !< 4/3 B^2 (Because after rotation Bx = magB)
+         & cg%w(scri)%arr(iarr_all_escr(i),:,:,:) /(abs(cg%w(bgpci)%arr(i,:,:,:) + smallbdotpc)) &       !< Ec/(|B.∇Pc + ε|√ρ)           
+         & * sqrt(cg%w(fldi)%arr(iarr_all_dn(1),:,:,:)))     ! added a small epsilon to B.gradpc so that denominator is regularized
+      end do
    end subroutine update_scr_interaction
 
    subroutine sanitize_scr_helper_container(cg)
@@ -166,12 +168,9 @@ contains
       if (dom%has_dir(xdim)) then
           ! Loop over the entire domain (including ghosts), except the very first and last cells
           ! where a central difference stencil would go out of bounds.
-          do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
-          do j = cg%lhn(ydim,LO), cg%lhn(ydim,HI)
-          do i = cg%lhn(xdim,LO)+1, cg%lhn(xdim,HI)-1
+          do concurrent(k = cg%lhn(zdim,LO) :cg%lhn(zdim,HI) , j = cg%lhn(ydim,LO):cg%lhn(ydim,HI), &
+          & i = cg%lhn(xdim,LO)+1:cg%lhn(xdim,HI)-1 )
               cg%w(gpci)%arr(xdim : I_THREE*(scrind%stcosm - I_ONE) + xdim : I_THREE,i,j,k) = 1.0/3.0 * (cg%w(scri)%arr(iarr_all_escr,i+1,j,k) - cg%w(scri)%arr(iarr_all_escr,i-1,j,k)) / (2. * cg%dl(xdim))
-          end do
-          end do
           end do
       else
           cg%w(gpci)%arr(xdim : I_THREE*(scrind%stcosm - I_ONE) + xdim : I_THREE,:,:,:) = 0.0
@@ -192,12 +191,9 @@ contains
       end if
       ! --- Y-Direction Gradient ---
       if (dom%has_dir(ydim)) then
-          do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
-          do j = cg%lhn(ydim,LO)+1, cg%lhn(ydim,HI)-1
-          do i = cg%lhn(xdim,LO), cg%lhn(xdim,HI)
+          do concurrent (k = cg%lhn(zdim,LO):cg%lhn(zdim,HI), j = cg%lhn(ydim,LO)+1:cg%lhn(ydim,HI)-1, &
+          & i = cg%lhn(xdim,LO):cg%lhn(xdim,HI))
               cg%w(gpci)%arr(ydim : I_THREE*(scrind%stcosm - I_ONE) + ydim : I_THREE,i,j,k) = 1.0/3.0 * (cg%w(scri)%arr(iarr_all_escr,i,j+1,k) - cg%w(scri)%arr(iarr_all_escr,i,j-1,k)) / (2. * cg%dl(ydim))
-          end do
-          end do
           end do
       else
           cg%w(gpci)%arr(ydim : I_THREE*(scrind%stcosm - I_ONE) + ydim : I_THREE,:,:,:) = 0.0
@@ -219,12 +215,9 @@ contains
       end if
       ! --- Z-Direction Gradient ---
       if (dom%has_dir(zdim)) then
-          do k = cg%lhn(zdim,LO)+1, cg%lhn(zdim,HI)-1
-          do j = cg%lhn(ydim,LO), cg%lhn(ydim,HI)
-          do i = cg%lhn(xdim,LO), cg%lhn(xdim,HI)
+          do concurrent(k = cg%lhn(zdim,LO)+1:cg%lhn(zdim,HI)-1, j = cg%lhn(ydim,LO):cg%lhn(ydim,HI), &
+          &  i = cg%lhn(xdim,LO):cg%lhn(xdim,HI)) 
               cg%w(gpci)%arr(zdim : I_THREE*(scrind%stcosm - I_ONE) + zdim : I_THREE,i,j,k) = 1.0/3.0 * (cg%w(scri)%arr(iarr_all_escr,i,j,k+1) - cg%w(scri)%arr(iarr_all_escr,i,j,k-1)) / (2. * cg%dl(zdim))
-          end do
-          end do
           end do
       else
           cg%w(gpci)%arr(zdim : I_THREE*(scrind%stcosm - I_ONE) + zdim : I_THREE,:,:,:) = 0.0

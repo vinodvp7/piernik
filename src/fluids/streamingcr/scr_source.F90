@@ -64,7 +64,7 @@ contains
       type(grid_container), pointer, intent(in) :: cg
       integer,                       intent(in) :: istep
 
-      integer                                    :: i1, i2
+      integer                                    :: i
       integer(kind=4)                            :: ddim, scri, fldi, magi
       real, dimension(:,:),allocatable           :: u, int_s, int_coef, ue
       real, dimension(:,:), pointer              :: pu, pb, pfld, ppc, pmag
@@ -82,12 +82,16 @@ contains
       call my_allocate(tmp_scr, shape(cg%w(scri)%arr))
       tmp_scr(:,:,:,:) = cg%w(scri)%arr(:,:,:,:)
 
+      do i= 1, scrind%stcosm
       ! energy term done here
-      cg%w(scri)%arr(iarr_all_escr,:,:,:) = cg%w(scri)%arr(iarr_all_escr,:,:,:) + dt * rk_coef(istep) * &
-      & ( (spread(cg%w(fldi)%arr(iarr_all_mx(1),:,:,:) , 1 , scrind%stcosm) * cg%w(wna%ind(gpc))%arr(iarr_all_gpcx,:,:,:) + &
-      & spread(cg%w(fldi)%arr(iarr_all_my(1),:,:,:) , 1 , scrind%stcosm) * cg%w(wna%ind(gpc))%arr(iarr_all_gpcy,:,:,:) + & 
-      & spread(cg%w(fldi)%arr(iarr_all_mz(1),:,:,:) , 1 , scrind%stcosm) * cg%w(wna%ind(gpc))%arr(iarr_all_gpcz,:,:,:))/ spread(cg%w(fldi)%arr(iarr_all_dn(1),:,:,:), 1 ,scrind%stcosm) - &
-      & cg%w(wna%ind(bgpc))%arr(:,:,:,:) * cg%w(wna%ind(bgpc))%arr(:,:,:,:) /(abs(cg%w(wna%ind(bgpc))%arr(:,:,:,:) + smallbdotpc) * spread(sqrt(cg%w(fldi)%arr(iarr_all_dn(1),:,:,:)), 1 ,scrind%stcosm)))  ! + Q (needs to be added)
+         cg%w(scri)%arr(iarr_all_escr(i),:,:,:) = cg%w(scri)%arr(iarr_all_escr(i),:,:,:) + dt * rk_coef(istep) * &
+         & ( (cg%w(fldi)%arr(iarr_all_mx(1),:,:,:) * cg%w(wna%ind(gpc))%arr(iarr_all_gpcx(i),:,:,:) + &
+         & cg%w(fldi)%arr(iarr_all_my(1),:,:,:) * cg%w(wna%ind(gpc))%arr(iarr_all_gpcy(i),:,:,:) + & 
+         & cg%w(fldi)%arr(iarr_all_mz(1),:,:,:) * cg%w(wna%ind(gpc))%arr(iarr_all_gpcz(i),:,:,:))/ &
+         & cg%w(fldi)%arr(iarr_all_dn(1),:,:,:) - cg%w(wna%ind(bgpc))%arr(i,:,:,:) * &
+         & cg%w(wna%ind(bgpc))%arr(i,:,:,:) /(abs(cg%w(wna%ind(bgpc))%arr(i,:,:,:) + &
+         & smallbdotpc) * sqrt(cg%w(fldi)%arr(iarr_all_dn(1),:,:,:))))  ! + Q (needs to be added)
+      end do
 
       !call update_rotation_matrix(cg,istep)         !< rotating at n+1/2 using nth B field
       call rotate_along_magx(cg,fldi,iarr_all_mx,iarr_all_my,iarr_all_mz) !< rotated fluid velocity 
@@ -95,20 +99,24 @@ contains
       call rotate_along_magx(cg,wna%ind(gpc),iarr_all_gpcx,iarr_all_gpcy,iarr_all_gpcz) !< rotated ∇.Pc
 
       if (dom%has_dir(xdim)) then
-            cg%w(scri)%arr(iarr_all_xfscr,:,:,:) = 1. / (1. + vm * vm * rk_coef(istep) * dt * cg%w(wna%ind(icf))%arr(xdim : I_THREE*(scrind%stcosm - I_ONE) + xdim : I_THREE ,:,:,:)) * &
-            & (cg%w(scri)%arr(iarr_all_xfscr,:,:,:) + 4. / 3. * vm * vm * rk_coef(istep) * dt * cg%w(wna%ind(icf))%arr(xdim : I_THREE*(scrind%stcosm - I_ONE) + xdim : I_THREE ,:,:,:) * &
-            & cg%w(scri)%arr(iarr_all_escr,:,:,:) * (spread(cg%w(fldi)%arr(iarr_all_mx(1),:,:,:)/cg%w(fldi)%arr(iarr_all_dn(1),:,:,:), 1, scrind%stcosm) - &
-            & spread(sqrt(sum(cg%w(magi)%arr(xdim:zdim, :,:,:)**2,dim=1)/cg%w(fldi)%arr(iarr_all_dn(1),:,:,:)),1,scrind%stcosm) * cg%w(wna%ind(bgpc))%arr(:,:,:,:) /(abs(cg%w(wna%ind(bgpc))%arr(:,:,:,:) + smallbdotpc) )))
+         do i= 1, scrind%stcosm
+            cg%w(scri)%arr(iarr_all_xfscr(i),:,:,:) = 1. / (1. + vm * vm * rk_coef(istep) * dt * cg%w(wna%ind(icf))%arr(xdim  + I_THREE*(i - I_ONE)  ,:,:,:)) * &
+            & (cg%w(scri)%arr(iarr_all_xfscr(i),:,:,:) + 4. / 3. * vm * vm * rk_coef(istep) * dt * cg%w(wna%ind(icf))%arr(xdim + I_THREE*(i - I_ONE)  ,:,:,:) * &
+            & cg%w(scri)%arr(iarr_all_escr(i),:,:,:) * (cg%w(fldi)%arr(iarr_all_mx(1),:,:,:)/cg%w(fldi)%arr(iarr_all_dn(1),:,:,:) - &
+            & sqrt(sum(cg%w(magi)%arr(xdim:zdim, :,:,:)**2,dim=1)/cg%w(fldi)%arr(iarr_all_dn(1),:,:,:)) * cg%w(wna%ind(bgpc))%arr(i,:,:,:) /(abs(cg%w(wna%ind(bgpc))%arr(i,:,:,:) + smallbdotpc) )))
+         end do
       endif
       if (dom%has_dir(ydim)) then
-         cg%w(scri)%arr(iarr_all_yfscr,:,:,:) = 1. / (1. + vm * vm * rk_coef(istep) * dt * cg%w(wna%ind(icf))%arr(ydim : I_THREE*(scrind%stcosm - I_ONE) + ydim : I_THREE ,:,:,:)) * &
-         & (cg%w(scri)%arr(iarr_all_yfscr,:,:,:) + 4. / 3. * vm * vm * rk_coef(istep) * dt * cg%w(wna%ind(icf))%arr(ydim : I_THREE*(scrind%stcosm - I_ONE) + ydim : I_THREE ,:,:,:) * &
-         & cg%w(scri)%arr(iarr_all_escr,:,:,:) * (spread(cg%w(fldi)%arr(iarr_all_my(1),:,:,:)/cg%w(fldi)%arr(iarr_all_dn(1),:,:,:), 1, scrind%stcosm)))
+         do i= 1, scrind%stcosm
+            cg%w(scri)%arr(iarr_all_yfscr(i),:,:,:) = 1. / (1. + vm * vm * rk_coef(istep) * dt * cg%w(wna%ind(icf))%arr(ydim + I_THREE*(i - I_ONE),:,:,:)) * &
+            & (cg%w(scri)%arr(iarr_all_yfscr(i),:,:,:) + 4. / 3. * vm * vm * rk_coef(istep) * dt * cg%w(wna%ind(icf))%arr(ydim + I_THREE*(i - I_ONE),:,:,:) * &
+            & cg%w(scri)%arr(iarr_all_escr(i),:,:,:) * (cg%w(fldi)%arr(iarr_all_my(1),:,:,:)/cg%w(fldi)%arr(iarr_all_dn(1),:,:,:)))
+         end do
       endif
       if (dom%has_dir(zdim)) then
-         cg%w(scri)%arr(iarr_all_zfscr,:,:,:) = 1. / (1. + vm * vm * rk_coef(istep) * dt * cg%w(wna%ind(icf))%arr(zdim : I_THREE*(scrind%stcosm - I_ONE) + zdim : I_THREE ,:,:,:)) * &
-         & (cg%w(scri)%arr(iarr_all_zfscr,:,:,:) + 4. / 3. * vm * vm * rk_coef(istep) * dt * cg%w(wna%ind(icf))%arr(zdim : I_THREE*(scrind%stcosm - I_ONE) + zdim : I_THREE ,:,:,:) * &
-         & cg%w(scri)%arr(iarr_all_escr,:,:,:) * (spread(cg%w(fldi)%arr(iarr_all_mz(1),:,:,:)/cg%w(fldi)%arr(iarr_all_dn(1),:,:,:), 1, scrind%stcosm)))
+         cg%w(scri)%arr(iarr_all_zfscr(i),:,:,:) = 1. / (1. + vm * vm * rk_coef(istep) * dt * cg%w(wna%ind(icf))%arr(zdim + I_THREE*(scrind%stcosm - I_ONE)  ,:,:,:)) * &
+         & (cg%w(scri)%arr(iarr_all_zfscr(i),:,:,:) + 4. / 3. * vm * vm * rk_coef(istep) * dt * cg%w(wna%ind(icf))%arr(zdim + I_THREE*(scrind%stcosm - I_ONE)  ,:,:,:) * &
+         & cg%w(scri)%arr(iarr_all_escr(i),:,:,:) * (cg%w(fldi)%arr(iarr_all_mz(1),:,:,:)/cg%w(fldi)%arr(iarr_all_dn(1),:,:,:)))
       endif
       call derotate_along_magx(cg,fldi,iarr_all_mx,iarr_all_my,iarr_all_mz) !< derotated fluid velocity 
       call derotate_along_magx(cg,scri,iarr_all_xfscr,iarr_all_yfscr,iarr_all_zfscr) !< derotated Fc 

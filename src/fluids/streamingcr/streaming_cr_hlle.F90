@@ -257,8 +257,7 @@ subroutine riemann_hlle(ql, qr, int_coef, flx, dl)
    real                            :: vl, vr, tau, R
    integer                         :: i, j
 
-   do i = 1,size(flx,1)
-      do j = 1, scrind%stcosm
+   do concurrent(i = 1:size(flx,1), j = 1:scrind%stcosm)
          tau = dl * int_coef(i,j) * vm
          
          if (tau < 1e-3) then
@@ -278,8 +277,6 @@ subroutine riemann_hlle(ql, qr, int_coef, flx, dl)
 
          flx(i,I_ONE+I_FOUR * (j-1) :I_FOUR+I_FOUR * (j-1) ) =  (fl + fr ) /(2.0) - &
          &    vl /(2.0) * (qr(i,I_ONE+I_FOUR * (j-1) :I_FOUR+I_FOUR * (j-1))-ql(i,I_ONE+I_FOUR * (j-1) :I_FOUR+I_FOUR * (j-1)))
-
-      end do
    end do
 end subroutine riemann_hlle
 

@@ -54,6 +54,7 @@ contains
 #endif /* MAGNETIC */
 #ifdef STREAM_CR
       use scr_source,       only: apply_scr_source
+      use scr_helpers,      only: care_positives
 #endif /* STREAM_CR */
         implicit none
 
@@ -130,5 +131,8 @@ contains
             call my_deallocate(b)
 #endif /* MAGNETIC */
       enddo
+#ifdef STREAM_CR
+      call care_positives(cg,istep)
+#endif /* STREAM_CR */
    end subroutine apply_source
 end module unsplit_source

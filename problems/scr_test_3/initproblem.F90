@@ -68,7 +68,7 @@ contains
 
       implicit none
 
-      a =  2.0
+      a =  40.0
 
 
       if (master) then
@@ -153,7 +153,7 @@ contains
                         if (fl%is_magnetized) then
 
                            cg%b(xdim,i,j,k)   =  1.0
-                           cg%b(ydim,i,j,k)   =  0.0
+                           cg%b(ydim,i,j,k)   =  1.0
                            cg%b(zdim,i,j,k)   =  0.0
                            cg%u(fl%ien,i,j,k) = cg%u(fl%ien,i,j,k) + emag(cg%b(xdim,i,j,k), cg%b(ydim,i,j,k), cg%b(zdim,i,j,k))
 
@@ -177,7 +177,7 @@ contains
                   xi = cg%x(i)
                   do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
                      zk = cg%z(k)
-                     cg%scr(scr_fluid%iescr, i,j,k) = a - abs(xi)
+                     cg%scr(scr_fluid%iescr, i,j,k) = exp(-a*(xi*xi+yj*yj))
                      cg%scr(scr_fluid%ixfscr,i,j,k) = 0.0
                      cg%scr(scr_fluid%iyfscr,i,j,k) = 0.0
                      cg%scr(scr_fluid%izfscr,i,j,k) = 0.0

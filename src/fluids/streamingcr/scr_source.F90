@@ -92,7 +92,6 @@ contains
       call update_rotation_matrix(cg,istep)         !< rotating at n+1/2 using nth B field
       call rotate_along_magx(cg,fldi,iarr_all_mx,iarr_all_my,iarr_all_mz) !< rotated fluid velocity 
       call rotate_along_magx(cg,scri,iarr_all_xfscr,iarr_all_yfscr,iarr_all_zfscr) !< rotated Fc 
-      call rotate_along_magx(cg,wna%ind(gpc),iarr_all_gpcx,iarr_all_gpcy,iarr_all_gpcz) !< rotated ∇.Pc
 
       if (dom%has_dir(xdim)) then
             cg%w(scri)%arr(iarr_all_xfscr,:,:,:) = 1. / (1. + vm * vm * rk_coef(istep) * dt * cg%w(wna%ind(icf))%arr(xdim : I_THREE*(scrind%stcosm - I_ONE) + xdim : I_THREE ,:,:,:)) * &
@@ -112,7 +111,6 @@ contains
       endif
       call derotate_along_magx(cg,fldi,iarr_all_mx,iarr_all_my,iarr_all_mz) !< derotated fluid velocity 
       call derotate_along_magx(cg,scri,iarr_all_xfscr,iarr_all_yfscr,iarr_all_zfscr) !< derotated Fc 
-      call derotate_along_magx(cg,wna%ind(gpc),iarr_all_gpcx,iarr_all_gpcy,iarr_all_gpcz) !< derotated ∇.Pc
       if (enable_scr_feedback) then
         cg%w(fldi)%arr(iarr_all_en(1),:,:,:) = cg%w(fldi)%arr(iarr_all_en(1),:,:,:) + sum(tmp_scr(iarr_all_escr,:,:,:) - cg%w(scri)%arr(iarr_all_escr,:,:,:),dim=1)  
         cg%w(fldi)%arr(iarr_all_mx(1),:,:,:) = cg%w(fldi)%arr(iarr_all_mx(1),:,:,:) + sum(tmp_scr(iarr_all_xfscr,:,:,:) - cg%w(scri)%arr(iarr_all_xfscr,:,:,:),dim=1) / vm**2

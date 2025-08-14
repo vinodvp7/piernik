@@ -1,5 +1,5 @@
  $BASE_DOMAIN
-    n_d = 128,128, 1
+    n_d = 256,256, 1
     bnd_xl = 'per'
     bnd_xr = 'per'
     bnd_yl = 'per'
@@ -53,12 +53,11 @@
     smalld = 1.e-3
     smallei= 1.e-5
     limiter= 'vanleer'
-    solver_str = 'unsplit'
+    solver_str = 'riemann'
+    solver_type = 'unsplit'
     disallow_negatives = .false.
-    print_divb = 1
-    glm_alpha = 0.01
-    cfl_glm = 2.0
-    ch_grid = .false.
+    cfl_glm = 0.3
+    !ch_grid = .false.
 /
 
  $GRAVITY

@@ -76,8 +76,9 @@ module cg_list_bnd
       procedure          :: external_boundaries            !< Set up external boundary values
       procedure          :: bnd_u                          !< External (Non-MPI) boundary conditions for the fluid array: cg%u
       procedure          :: bnd_b                          !< External (Non-MPI) boundary conditions for the magnetic field array: cg%b
-      procedure          :: bnd_scr                          !< External (Non-MPI) boundary conditions for the magnetic field array: cg%b
-
+#ifdef STREAM_CR      
+      procedure          :: bnd_scr                          !< External (Non-MPI) boundary conditions for streaming cosmic rays cg%scr
+#endif /* STREAM_CR */
       !> \todo move routines for external guardcells for rank-4 arrays here as well (fluidboundaries and magboundaries)
    end type cg_list_bnd_t
 
@@ -1128,7 +1129,7 @@ contains
       end subroutine outflow_b
 
    end subroutine bnd_b
-
+#ifdef STREAM_CR
    subroutine bnd_scr(this, dir)
 
       use cg_cost_data,          only: I_OTHER
@@ -1318,4 +1319,5 @@ contains
       end subroutine sane_bnd
 
    end subroutine bnd_scr
+#endif /* STREAM_CR */
 end module cg_list_bnd

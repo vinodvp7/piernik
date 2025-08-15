@@ -42,7 +42,7 @@ module interpolations
    public :: set_interpolations, interpol
 
 #ifdef STREAM_CR
-   public :: interpol_scr
+   public :: interpol_scr, interpol_scr_edge
 #endif /* STREAM_CR */
 
    interface
@@ -368,5 +368,101 @@ contains
       qr(n-1, :) = q(n, :)
 
    end subroutine weno3
+#ifdef STREAM_CR
+subroutine interpol_scr_edge(u, ql, qr)
 
+   use fluxlimiters,       only: flimiter
+   use fluidindex,         only: flind
+   use initstreamingcr,    only: vm
+   use constants,          only: I_ONE, I_TWO, I_THREE, I_FOUR
+   use domain,             only: dom
+
+   implicit none
+
+   real, dimension(:,:), intent(in)  :: u
+   real, dimension(:,:), intent(out) :: ql
+   real, dimension(:,:), intent(out) :: qr
+   integer :: p
+
+   real, dimension(size(u,1), size(u,2)) :: q
+
+   ! Pack q in sweep order: (Ec, F_parallel, F_t1, F_t2); scale fluxes by vm^2
+   do p = 1, flind%stcosm
+      q(:, I_ONE   + (p-1)*I_FOUR) =  u(:, I_ONE   + (p-1)*I_FOUR)
+      q(:, I_TWO   + (p-1)*I_FOUR) =  u(:, I_TWO   + (p-1)*I_FOUR)/vm**2
+      q(:, I_THREE + (p-1)*I_FOUR) =  u(:, I_THREE + (p-1)*I_FOUR)/vm**2
+      q(:, I_FOUR  + (p-1)*I_FOUR) =  u(:, I_FOUR  + (p-1)*I_FOUR)/vm**2
+   end do
+
+   ! Standard PLM (your limiter choice is used here)
+   call interp(q, ql, qr, flimiter)
+
+   ! One-sided overwrite at the two physical interior interfaces
+   call cr_fix_edges_from_q(q, ql, qr, flind%stcosm, dom%nb)
+
+contains
+
+   pure function mc(a,b) result(phi)
+      real, intent(in) :: a,b
+      real :: phi
+      ! Monotonized–central limiter
+      phi = sign(1.0, a+b) * max( 0.0, min( 2.0*abs(a), 2.0*abs(b), 0.5*abs(a+b) ) )
+   end function mc
+
+   subroutine cr_fix_edges_from_q(q, ql, qr, nscr, nb)
+      use constants, only: I_ONE, I_TWO, I_FOUR
+      implicit none
+      real,    intent(in)    :: q(:,:)
+      real,    intent(inout) :: ql(:,:), qr(:,:)
+      integer, intent(in)    :: nscr, nb
+
+      integer :: ncell, nint, i0, i1, s, iE, iN
+      real    :: a, b, sE, sN
+
+      ncell = size(q,1)         ! ghosts + interior + ghosts
+      nint  = size(qr,1)        ! = ncell - 1
+      if (ncell < nb + 3) return
+
+      i0 = nb + 1               ! first interior cell index
+      i1 = ncell - nb           ! last  interior cell index
+
+      ! Guards (need i0+2 and i1-2 inside the interior set)
+      if (i0   < 1 .or. i0   > nint) return
+      if (i1-1 < 1 .or. i1-1 > nint) return
+      if (i0+2 > i1) return
+      if (i1-2 < i0) return
+
+      ! ---- Left physical interior interface (between i0 and i0+1):
+      ! overwrite LEFT state ql(i0,:) using a forward one-sided slope from cell i0.
+      do s = 1, nscr
+         iE = I_ONE + (s-1)*I_FOUR       ! Ec in sweep order
+         iN = I_TWO + (s-1)*I_FOUR       ! F_parallel in sweep order
+
+         a  = q(i0+1,iE) - q(i0  ,iE) ;  b = q(i0+2,iE) - q(i0+1,iE)
+         sE = mc(a,b)
+         a  = q(i0+1,iN) - q(i0  ,iN) ;  b = q(i0+2,iN) - q(i0+1,iN)
+         sN = mc(a,b)
+
+         ql(i0, iE) = q(i0, iE) + 0.5*sE
+         ql(i0, iN) = q(i0, iN) + 0.5*sN
+      end do
+
+      ! ---- Right physical interior interface (between i1-1 and i1):
+      ! overwrite RIGHT state qr(i1-1,:) using a backward one-sided slope from cell i1.
+      do s = 1, nscr
+         iE = I_ONE + (s-1)*I_FOUR
+         iN = I_TWO + (s-1)*I_FOUR
+
+         a  = q(i1  ,iE) - q(i1-1,iE) ;  b = q(i1-1,iE) - q(i1-2,iE)
+         sE = mc(a,b)
+         a  = q(i1  ,iN) - q(i1-1,iN) ;  b = q(i1-1,iN) - q(i1-2,iN)
+         sN = mc(a,b)
+
+         qr(i1-1, iE) = q(i1, iE) - 0.5*sE
+         qr(i1-1, iN) = q(i1, iN) - 0.5*sN
+      end do
+   end subroutine cr_fix_edges_from_q
+
+end subroutine interpol_scr_edge
+#endif /* STREAM_CR */
 end module interpolations

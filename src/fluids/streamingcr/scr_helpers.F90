@@ -99,9 +99,8 @@ contains
          cg%w(icfi)%arr(xdim + I_THREE*(i-1) :zdim + I_THREE*(i-1) ,:,:,:) = sigma(i)
       end do
 
-      write(115,*) abs(cg%w(wna%ind(bdotpscr))%arr(I_ONE : flind%stcosm : I_ONE,:,:,:) + eps)
       cg%w(icfi)%arr(xdim : I_THREE*(flind%stcosm - I_ONE) + xdim : I_THREE, :,:,:) = &
-      & 1.0/(1.0/cg%w(icfi)%arr(xdim : I_THREE*(flind%stcosm - I_ONE) + xdim : I_THREE, :,:,:) +&
+      & cg%w(icfi)%arr(xdim : I_THREE*(flind%stcosm - I_ONE) + xdim : I_THREE, :,:,:)/(1.0 + cg%w(icfi)%arr(xdim : I_THREE*(flind%stcosm - I_ONE) + xdim : I_THREE, :,:,:) * &
       & 4./3. * spread(sum( cg%w(magi)%arr(xdim:zdim, :,:,:)**2, dim=1) ,1 ,flind%stcosm) * &
       & cg%w(fldi)%arr(iarr_all_escr,:,:,:) /(abs(cg%w(wna%ind(bdotpscr))%arr(I_ONE : flind%stcosm : I_ONE,:,:,:) + eps) &                 
       & *spread(sqrt(cg%w(fldi)%arr(iarr_all_dn(1),:,:,:)),1,flind%stcosm)))      ! added a small epsilon to B.gradpc so that denominator is regularized

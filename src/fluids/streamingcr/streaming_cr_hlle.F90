@@ -132,7 +132,7 @@ contains
    subroutine solve_scr(ui, int_coef, eflx, flx, dl)
 
       use fluxtypes,      only: ext_fluxes
-      use interpolations, only: interpol_scr 
+      use interpolations, only: interpol_scr
       use dataio_pub,     only: die
 
       implicit none
@@ -269,7 +269,11 @@ subroutine riemann_hlle(ql, qr, int_coef, flx, dl)
    do i = 1,size(flx,1)
       do j = 1, flind%stcosm
          tau = dl * int_coef(i,j) * vm
-         R   = sqrt(((1.0 - exp(-tau*tau))/(tau*tau)))
+         if (tau <1e-2) then
+            R = 1 - tau*tau/4.0
+         else
+            R   = sqrt(((1.0 - exp(-tau*tau))/(tau*tau)))
+         endif
          vl  = min(vm, R * vm/(sqrt(3.0)) )
 
          vr  = - vl

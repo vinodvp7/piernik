@@ -162,7 +162,6 @@ contains
 #ifdef STREAM_CR
       call update_scr_interaction(cg, istep)
       call update_scr_fluid(cg,istep)
-      call care_positives(cg,istep)
 #endif /* STREAM_CR */
       call apply_flux(cg,istep,.true.)
       call apply_flux(cg,istep,.false.)

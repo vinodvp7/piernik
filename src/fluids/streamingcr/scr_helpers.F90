@@ -99,11 +99,16 @@ contains
       do i = 1, scrind%stcosm
          cg%w(icfi)%arr(xdim + I_THREE*(i-1) :zdim + I_THREE*(i-1) ,:,:,:) = sigma(i)
       end do
+
       cg%w(icfi)%arr(xdim : I_THREE*(scrind%stcosm - I_ONE) + xdim : I_THREE, :,:,:) = &
-      & 1.0/(1.0/cg%w(icfi)%arr(xdim : I_THREE*(scrind%stcosm - I_ONE) + xdim : I_THREE, :,:,:) +&                        !< 1/σ'
+      & cg%w(icfi)%arr(xdim : I_THREE*(scrind%stcosm - I_ONE) + xdim : I_THREE, :,:,:) *&                        !< 1/σ'
       & 4./3. * spread(sum( cg%w(magi)%arr(xdim:zdim, :,:,:)**2, dim=1) ,1 ,scrind%stcosm) * &                            !< 4/3 B^2 (Because after rotation Bx = magB)
       & cg%w(scri)%arr(iarr_all_escr,:,:,:) /(abs(cg%w(wna%ind(bgpc))%arr(I_ONE : scrind%stcosm : I_ONE,:,:,:) + smallbdotpc) &       !< Ec/(|B.∇Pc + ε|√ρ)           
-      & *spread(sqrt(cg%w(fldi)%arr(iarr_all_dn(1),:,:,:)),1,scrind%stcosm)))      ! added a small epsilon to B.gradpc so that denominator is regularized
+      & *spread(sqrt(cg%w(fldi)%arr(iarr_all_dn(1),:,:,:)),1,scrind%stcosm)) / &
+      & (cg%w(icfi)%arr(xdim : I_THREE*(scrind%stcosm - I_ONE) + xdim : I_THREE, :,:,:) +&                        !< 1/σ'
+      & 4./3. * spread(sum( cg%w(magi)%arr(xdim:zdim, :,:,:)**2, dim=1) ,1 ,scrind%stcosm) * &                            !< 4/3 B^2 (Because after rotation Bx = magB)
+      & cg%w(scri)%arr(iarr_all_escr,:,:,:) /(abs(cg%w(wna%ind(bgpc))%arr(I_ONE : scrind%stcosm : I_ONE,:,:,:) + smallbdotpc) &       !< Ec/(|B.∇Pc + ε|√ρ)           
+      & *spread(sqrt(cg%w(fldi)%arr(iarr_all_dn(1),:,:,:)),1,scrind%stcosm)) )     ! added a small epsilon to B.gradpc so that denominator is regularized
       
    end subroutine update_scr_interaction
 

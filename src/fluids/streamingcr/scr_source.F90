@@ -83,11 +83,11 @@ contains
       tmp_scr(:,:,:,:) = cg%w(scri)%arr(:,:,:,:)
 
       ! energy term done here
-      cg%w(scri)%arr(iarr_all_escr,:,:,:) = cg%w(scri)%arr(iarr_all_escr,:,:,:) + dt * rk_coef(istep) * &
-      & ( (spread(cg%w(fldi)%arr(iarr_all_mx(1),:,:,:) , 1 , scrind%stcosm) * cg%w(wna%ind(gpc))%arr(iarr_all_gpcx,:,:,:) + &
-      & spread(cg%w(fldi)%arr(iarr_all_my(1),:,:,:) , 1 , scrind%stcosm) * cg%w(wna%ind(gpc))%arr(iarr_all_gpcy,:,:,:) + & 
-      & spread(cg%w(fldi)%arr(iarr_all_mz(1),:,:,:) , 1 , scrind%stcosm) * cg%w(wna%ind(gpc))%arr(iarr_all_gpcz,:,:,:))/ spread(cg%w(fldi)%arr(iarr_all_dn(1),:,:,:), 1 ,scrind%stcosm) - &
-      & cg%w(wna%ind(bgpc))%arr(:,:,:,:) * cg%w(wna%ind(bgpc))%arr(:,:,:,:) /(abs(cg%w(wna%ind(bgpc))%arr(:,:,:,:) + smallbdotpc) * spread(sqrt(cg%w(fldi)%arr(iarr_all_dn(1),:,:,:)), 1 ,scrind%stcosm)))  ! + Q (needs to be added)
+      !cg%w(scri)%arr(iarr_all_escr,:,:,:) = cg%w(scri)%arr(iarr_all_escr,:,:,:) + dt * rk_coef(istep) * &
+      !& ( (spread(cg%w(fldi)%arr(iarr_all_mx(1),:,:,:) , 1 , scrind%stcosm) * cg%w(wna%ind(gpc))%arr(iarr_all_gpcx,:,:,:) + &
+      !& spread(cg%w(fldi)%arr(iarr_all_my(1),:,:,:) , 1 , scrind%stcosm) * cg%w(wna%ind(gpc))%arr(iarr_all_gpcy,:,:,:) + & 
+      !& spread(cg%w(fldi)%arr(iarr_all_mz(1),:,:,:) , 1 , scrind%stcosm) * cg%w(wna%ind(gpc))%arr(iarr_all_gpcz,:,:,:))/ spread(cg%w(fldi)%arr(iarr_all_dn(1),:,:,:), 1 ,scrind%stcosm) - &
+      !& cg%w(wna%ind(bgpc))%arr(:,:,:,:) * cg%w(wna%ind(bgpc))%arr(:,:,:,:) /(abs(cg%w(wna%ind(bgpc))%arr(:,:,:,:) + smallbdotpc) * spread(sqrt(cg%w(fldi)%arr(iarr_all_dn(1),:,:,:)), 1 ,scrind%stcosm)))  ! + Q (needs to be added)
 
       call update_rotation_matrix(cg,istep)         !< rotating at n+1/2 using nth B field
       call rotate_along_magx(cg,fldi,iarr_all_mx,iarr_all_my,iarr_all_mz) !< rotated fluid velocity 

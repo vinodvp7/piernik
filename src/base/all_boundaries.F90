@@ -190,37 +190,54 @@ contains
    end subroutine all_mag_boundaries
 #endif /* MAGNETIC */
 #ifdef STREAM_CR
-   subroutine all_scr_boundaries(istep)
+   subroutine all_scr_boundaries(dir, nocorners, istep)
 
-      use cg_leaves,        only: leaves
-!!$      use cg_list_global,   only: all_cg
-      use constants,        only: xdim, zdim, psi_n, BND_INVALID, PPP_SCR,psih_n,magh_n, first_stage,scrh
-      use domain,           only: dom
-      use global,           only: psi_bnd, integration_order
-      use named_array_list, only: wna, qna
-      use ppp,              only: ppp_main
+      use cg_leaves,          only: leaves
+!      use cg_level_finest,    only: finest
+      use constants,          only: xdim, zdim, scrh, first_stage
+      use global,             only: integration_order
+      use domain,             only: dom
+      use named_array_list,   only: wna
+      use ppp,                only: ppp_main
 
       implicit none
+
+      integer(kind=4), optional, intent(in) :: dir       !< select only this direction
+      logical,         optional, intent(in) :: nocorners !< .when .true. then don't care about proper edge and corner update
       integer,         optional, intent(in) :: istep
 
-      integer(kind=4) :: dir
-      character(len=*), parameter :: abm_label = "all_scr_boundaries"
+      integer(kind=4)                     :: d
+      character(len=*), parameter :: abf_label = "all_scr_boundaries"
 
-      call ppp_main%start(abm_label, PPP_SCR)
-
-
-      do dir = xdim, zdim
-         if (dom%has_dir(dir)) call leaves%bnd_scr(dir)
-      enddo
-
-      if (present(istep) .and. istep==first_stage(integration_order)) then
-         call leaves%leaf_arr4d_boundaries(wna%ind(scrh))
-      else
-         call leaves%leaf_arr4d_boundaries(wna%scr)
+      if (present(dir)) then
+         if (.not. dom%has_dir(dir)) return
       endif
 
+      call ppp_main%start(abf_label)
 
-      call ppp_main%stop(abm_label, PPP_SCR)
+!      call finest%level%restrict_to_base
+
+      ! should be more selective (modified leaves?)
+      if (present(istep) .and. istep==first_stage(integration_order)) then
+         call leaves%leaf_arr4d_boundaries(wna%ind(scrh) , dir=dir, nocorners=nocorners)
+         if (present(dir)) then
+            call leaves%bnd_scr(dir)
+         else
+            do d = xdim, zdim
+               if (dom%has_dir(d)) call leaves%bnd_scr(d)
+            enddo
+         endif
+      else
+         call leaves%leaf_arr4d_boundaries(wna%scr, dir=dir, nocorners=nocorners)
+         if (present(dir)) then
+            call leaves%bnd_scr(dir)
+         else
+            do d = xdim, zdim
+               if (dom%has_dir(d)) call leaves%bnd_scr(d)
+            enddo
+         endif
+      endif
+      call ppp_main%stop(abf_label)
 
    end subroutine all_scr_boundaries
 #endif /* STREAM_CR */

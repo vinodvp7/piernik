@@ -1138,7 +1138,7 @@ contains
       use dataio_pub,            only: msg, warn, die
       use domain,                only: dom, vel_outd
       use fluidboundaries_funcs, only: user_fluidbnd
-      use fluidindex,            only: iarr_all_escr, iarr_all_xfscr, iarr_all_yfscr, iarr_all_zfscr, scrind
+      use fluidindex,            only: iarr_all_escr
       use grid_cont,             only: grid_container
       use named_array_list,      only: wna
       use ppp,                   only: ppp_main
@@ -1151,12 +1151,13 @@ contains
       type(grid_container), pointer           :: cg
       integer(kind=4), dimension(ndims,LO:HI) :: l, r
       logical, save                           :: frun = .true.
-      integer(kind=4)                         :: side, ssign, ib, n, idxN
+      integer(kind=4)                         :: side, ssign, ib
       type(cg_list_element), pointer          :: cgl
-      character(len=*), parameter             :: bscr_label = "bnd_scr"
+      character(len=*), parameter             :: bu_label = "bnd_scr"
+
       if (.not. any([xdim, ydim, zdim] == dir)) call die("[cg_list_bnd:bnd_scr] Invalid direction.")
 
-      call ppp_main%start(bscr_label)
+      call ppp_main%start(bu_label)
 
       if (frun) then
          call sane_bnd
@@ -1177,56 +1178,34 @@ contains
                   ! Do nothing
                case (BND_USER)
                   call user_fluidbnd(dir, side, cg, wn=wna%fi)
-               case (BND_OUT)
-                  ssign = lh_2_pm1(side)
-                  r = cg%lhn
-                  r(dir,:) = cg%ijkse(dir,side)                 ! last interior slab
-
-                  do ib = 1_INT4, dom%nb
-                     l = r
-                     l(dir,:) = cg%ijkse(dir,side) + ssign*ib    ! ghost slab ib cells out
-                     cg%scr(:, l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = &
-                     & cg%scr(:, r(xdim,LO):r(xdim,HI), r(ydim,LO):r(ydim,HI), r(zdim,LO):r(zdim,HI))
-                  end do
-
-               case (BND_OUTD)
-               ! treat CRs same as outflow
-               ssign = lh_2_pm1(side)
-               r = cg%lhn
-               r(dir,:) = cg%ijkse(dir,side)
-               do ib = 1_INT4, dom%nb
-                  l = r
-                  l(dir,:) = cg%ijkse(dir,side) + ssign*ib
-                  cg%scr(:, l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = &
-                  & cg%scr(:, r(xdim,LO):r(xdim,HI), r(ydim,LO):r(ydim,HI), r(zdim,LO):r(zdim,HI))
-               end do
-
-               ! ----------------- REFLECTING (flip ONLY normal Fc) -------------
                case (BND_REF)
-               ssign = lh_2_pm1(side)
-               l = cg%lhn ; r = cg%lhn
-               do ib = 1_INT4, dom%nb
-                  l(dir,:) = cg%ijkse(dir,side) + ssign*ib
-                  r(dir,:) = cg%ijkse(dir,side) + ssign*(1_INT4-ib)
-
-                  ! copy all CR components first
-                  cg%scr(:, l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = &
-                  & cg%scr(:, r(xdim,LO):r(xdim,HI), r(ydim,LO):r(ydim,HI), r(zdim,LO):r(zdim,HI))
-
-                  ! flip the normal CR flux component per species
-                  do n = 1, scrind%stcosm
-                     select case (dir)
-                        case (xdim)
-                           idxN = iarr_all_xfscr(n)
-                        case (ydim)
-                           idxN = iarr_all_yfscr(n)
-                        case (zdim)
-                           idxN = iarr_all_zfscr(n)
-                     end select
-                     cg%scr(idxN, l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = &
-                     & - cg%scr(idxN, l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI))
-                  end do
-               end do
+                  ssign = lh_2_pm1(side)
+                  do ib=1_INT4, dom%nb
+                     l(dir,:) = cg%ijkse(dir,side)+ssign*ib ; r(dir,:) = cg%ijkse(dir,side)+ssign*(1_INT4-ib)
+                     cg%scr(:,l(xdim,LO):l(xdim,HI),l(ydim,LO):l(ydim,HI),l(zdim,LO):l(zdim,HI)) = cg%scr(:,r(xdim,LO):r(xdim,HI),r(ydim,LO):r(ydim,HI),r(zdim,LO):r(zdim,HI))
+                     cg%scr(iarr_all_escr+dir, l(xdim,LO):l(xdim,HI),l(ydim,LO):l(ydim,HI),l(zdim,LO):l(zdim,HI)) = -cg%scr(iarr_all_escr+dir,l(xdim,LO):l(xdim,HI),l(ydim,LO):l(ydim,HI),l(zdim,LO):l(zdim,HI))
+                  enddo
+               case (BND_OUT)
+                  r(dir,:) = cg%ijkse(dir,side)
+                  ssign = lh_2_pm1(side)
+                  do ib=1_INT4, dom%nb
+                     l(dir,:) = cg%ijkse(dir,side)+ssign*ib
+                     cg%scr(:,l(xdim,LO):l(xdim,HI),l(ydim,LO):l(ydim,HI),l(zdim,LO):l(zdim,HI)) = cg%scr(:,r(xdim,LO):r(xdim,HI),r(ydim,LO):r(ydim,HI),r(zdim,LO):r(zdim,HI))
+                  enddo
+               case (BND_OUTD)
+                  r(dir,:) = cg%ijkse(dir,side)
+                  ssign = lh_2_pm1(side)
+                  do ib=1_INT4, dom%nb
+                     l(dir,:) = cg%ijkse(dir,side)+ssign*ib
+                     cg%scr(:,l(xdim,LO):l(xdim,HI),l(ydim,LO):l(ydim,HI),l(zdim,LO):l(zdim,HI)) = cg%scr(:,r(xdim,LO):r(xdim,HI),r(ydim,LO):r(ydim,HI),r(zdim,LO):r(zdim,HI))
+                     !> \deprecated BEWARE: use of uninitialized value on first call (a side effect of r1726)
+                  enddo
+                  l(dir,:) = cg%ijkse(dir,side) - [dom%nb, 1_INT4] +(dom%nb+1_INT4)*(side-LO)
+                  if (side == LO) then
+                     cg%scr(iarr_all_escr+dir,l(xdim,LO):l(xdim,HI),l(ydim,LO):l(ydim,HI),l(zdim,LO):l(zdim,HI)) = min(cg%scr(iarr_all_escr+dir,l(xdim,LO):l(xdim,HI),l(ydim,LO):l(ydim,HI),l(zdim,LO):l(zdim,HI)), -vel_outd * cg%scr(iarr_all_escr,l(xdim,LO):l(xdim,HI),l(ydim,LO):l(ydim,HI),l(zdim,LO):l(zdim,HI)))
+                  else
+                     cg%scr(iarr_all_escr+dir,l(xdim,LO):l(xdim,HI),l(ydim,LO):l(ydim,HI),l(zdim,LO):l(zdim,HI)) = max(cg%scr(iarr_all_escr+dir,l(xdim,LO):l(xdim,HI),l(ydim,LO):l(ydim,HI),l(zdim,LO):l(zdim,HI)),  vel_outd * cg%scr(iarr_all_escr,l(xdim,LO):l(xdim,HI),l(ydim,LO):l(ydim,HI),l(zdim,LO):l(zdim,HI)))
+                  endif
                case default
                   write(msg,'("[cg_list_bnd:bnd_scr]: Unrecognized ",i1," boundary condition ",i3," not implemented in ",i1,"-direction")') side, cg%bnd(dir, side), dir
                   call warn(msg)
@@ -1238,7 +1217,7 @@ contains
          cgl => cgl%nxt
       enddo
 
-      call ppp_main%stop(bscr_label)
+      call ppp_main%stop(bu_label)
 
    contains
 

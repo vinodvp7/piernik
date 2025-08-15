@@ -37,7 +37,7 @@ $OUTPUT_CONTROL
    run_id = 'tst'
    dt_hdf = 0.05
    dt_res = 0.0
-   dt_log = 0.01
+   dt_log = 1e-20
    dt_tsl = 0.02
    vars(1:) = 'dens', 'ener', 'velx', 'pres', 'escr', 'xfscr', 'yfscr', 'zfscr', 'gradpcx', 'bdotgradpc', 'sigmax', 'gradpcy', 'gradpcz', 'magx', 'magy'
 /
@@ -56,7 +56,7 @@ $NUMERICAL_SETUP
   cfl     = 0.3
   smalld  = 1.e-5
   smallei = 1.e-5
-  limiter = 'moncen'
+  limiter = 'minmod'
   solver_type = 'unsplit'
   solver_str = 'riemann'
   integration_order = 2

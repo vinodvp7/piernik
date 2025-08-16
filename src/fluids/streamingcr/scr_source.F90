@@ -43,18 +43,19 @@ module scr_source
 contains
 
 
-   subroutine apply_source(cg,istep)
+   subroutine apply_scr_source(cg,istep)
       use grid_cont,        only: grid_container
       use named_array_list, only: wna, qna
-      use constants,        only: pdims, ORTHO1, ORTHO2, I_ONE, LO, HI, uh_n, &
-      &                           first_stage, xdim, ydim, zdim, ndims, int_coeff, I_THREE,rk_coef, bdotpscr
+      use constants,        only: pdims, ORTHO1, ORTHO2, I_ONE, LO, HI, &
+      &                           first_stage, xdim, ydim, zdim, ndims, int_coeff, I_THREE,rk_coef, bdotpscr, grad_pscr, uh_n, magh_n
       use global,           only: integration_order, dt
       use domain,           only: dom
-      use fluidindex,       only: iarr_all_swp, flind
       use fluxtypes,        only: ext_fluxes
       use diagnostics,      only: my_allocate, my_deallocate
-      use fluidindex,       only: iarr_all_fscrx, iarr_all_escr
+      use fluidindex,       only: iarr_all_fscrx, iarr_all_escr, iarr_all_dn, flind, &
+      &                           iarr_all_mx, iarr_all_my,iarr_all_mz, iarr_all_fscry, iarr_all_fscrz, iarr_all_en
       use initstreamingcr,  only: vm
+      use scr_helpers,      only: rotate_along_magx, derotate_along_magx, update_rotation_matrix
 
       implicit none
 
@@ -62,46 +63,60 @@ contains
       integer,                       intent(in) :: istep
 
       integer                                    :: i1, i2
-      integer(kind=4)                            :: uhi, ddim, scrb, scre, nscrd,bpci
+      integer(kind=4)                            :: ddim, fldi, magi, scrb, scre
       real, dimension(:,:),allocatable           :: u, int_s, int_coef, ue
-      real, dimension(:,:), pointer              :: pu, pb
-
+      real, dimension(:,:), pointer              :: pu, pb, pfld, ppc, pmag
+      real, dimension(:), pointer                :: pmagx
+      real, dimension(:,:,:,:),allocatable       :: tmp_scr
+      fldi   = wna%fi
+      magi   = wna%bi
+      if (istep == first_stage(integration_order) .or. integration_order < 2 )  then
+         fldi   = wna%ind(uh_n)
+         magi   = wna%ind(magh_n)
+      endif
       scrb = flind%scr(1)%beg
       scre = flind%scr(flind%stcosm)%end
-      nscrd = scre - scrb + I_ONE
-      uhi = wna%ind(uh_n)
-      bpci = wna%ind(bdotpscr)
-      do ddim=xdim,zdim
+      call my_allocate(tmp_scr, shape(cg%u(scrb:scre,:,:,:)))
+      tmp_scr(:,:,:,:) = cg%w(fldi)%arr(scrb:scre,:,:,:)
 
-         if (.not. dom%has_dir(ddim)) cycle
-         call my_allocate(u,[cg%n_(ddim), flind%stcosm])
-         call my_allocate(ue,[cg%n_(ddim), flind%stcosm])
-         call my_allocate(int_s, [ndims * flind%stcosm,cg%n_(ddim)])
-         call my_allocate(int_coef, [cg%n_(ddim) , flind%stcosm])        ! interaction coefficient along one dimension for all species
+      ! energy term done here
+      !cg%w(scri)%arr(iarr_all_escr,:,:,:) = cg%w(scri)%arr(iarr_all_escr,:,:,:) + dt * rk_coef(istep) * &
+      !& ( (spread(cg%w(fldi)%arr(iarr_all_mx(1),:,:,:) , 1 , flind%stcosm) * cg%w(wna%ind(grad_pscr))%arr(iarr_all_gpcx,:,:,:) + &
+      !& spread(cg%w(fldi)%arr(iarr_all_my(1),:,:,:) , 1 , flind%stcosm) * cg%w(wna%ind(grad_pscr))%arr(iarr_all_gpcy,:,:,:) + & 
+      !& spread(cg%w(fldi)%arr(iarr_all_mz(1),:,:,:) , 1 , flind%stcosm) * cg%w(wna%ind(grad_pscr))%arr(iarr_all_gpcz,:,:,:))/ spread(cg%w(fldi)%arr(iarr_all_dn(1),:,:,:), 1 ,flind%stcosm) - &
+      !& cg%w(wna%ind(bdotpscr))%arr(:,:,:,:) * cg%w(wna%ind(bdotpscr))%arr(:,:,:,:) /(abs(cg%w(wna%ind(bdotpscr))%arr(:,:,:,:) + smallbdotpc) * spread(sqrt(cg%w(fldi)%arr(iarr_all_dn(1),:,:,:)), 1 ,flind%stcosm)))  ! + Q (needs to be added)
 
-         do i2 = cg%ijkse(pdims(ddim, ORTHO2), LO), cg%ijkse(pdims(ddim, ORTHO2), HI)
-            do i1 = cg%ijkse(pdims(ddim, ORTHO1), LO), cg%ijkse(pdims(ddim, ORTHO1), HI)
+      call update_rotation_matrix(cg,istep)         !< rotating at n+1/2 using nth B field
+      call rotate_along_magx(cg,fldi,iarr_all_mx,iarr_all_my,iarr_all_mz) !< rotated fluid velocity 
+      call rotate_along_magx(cg,fldi,iarr_all_fscrx,iarr_all_fscry,iarr_all_fscrz) !< rotated Fc 
 
-               int_s       = cg%w(wna%ind(int_coeff))%get_sweep(ddim, i1, i2)
+      if (dom%has_dir(xdim)) then
+            cg%w(fldi)%arr(iarr_all_fscrx,:,:,:) = 1. / (1. + vm * vm * rk_coef(istep) * dt * cg%w(wna%ind(int_coeff))%arr(xdim : I_THREE*(flind%stcosm - I_ONE) + xdim : I_THREE ,:,:,:)) * &
+            & (cg%w(fldi)%arr(iarr_all_fscrx,:,:,:) + 4. / 3. * vm * vm * rk_coef(istep) * dt * cg%w(wna%ind(int_coeff))%arr(xdim : I_THREE*(flind%stcosm - I_ONE) + xdim : I_THREE ,:,:,:) * &
+            & cg%w(fldi)%arr(iarr_all_escr,:,:,:) * (spread(cg%w(fldi)%arr(iarr_all_mx(1),:,:,:)/cg%w(fldi)%arr(iarr_all_dn(1),:,:,:), 1, flind%stcosm) - &
+            & spread(sqrt(sum(cg%w(magi)%arr(xdim:zdim, :,:,:)**2,dim=1)/cg%w(fldi)%arr(iarr_all_dn(1),:,:,:)),1,flind%stcosm) * cg%w(wna%ind(bdotpscr))%arr(:,:,:,:) /(abs(cg%w(wna%ind(bdotpscr))%arr(:,:,:,:) + 1e-30) )))
+      endif
+      if (dom%has_dir(ydim)) then
+         cg%w(fldi)%arr(iarr_all_fscry,:,:,:) = 1. / (1. + vm * vm * rk_coef(istep) * dt * cg%w(wna%ind(int_coeff))%arr(ydim : I_THREE*(flind%stcosm - I_ONE) + ydim : I_THREE ,:,:,:)) * &
+         & (cg%w(fldi)%arr(iarr_all_fscry,:,:,:) + 4. / 3. * vm * vm * rk_coef(istep) * dt * cg%w(wna%ind(int_coeff))%arr(ydim : I_THREE*(flind%stcosm - I_ONE) + ydim : I_THREE ,:,:,:) * &
+         & cg%w(fldi)%arr(iarr_all_escr,:,:,:) * (spread(cg%w(fldi)%arr(iarr_all_my(1),:,:,:)/cg%w(fldi)%arr(iarr_all_dn(1),:,:,:), 1, flind%stcosm)))
+      endif
+      if (dom%has_dir(zdim)) then
+         cg%w(fldi)%arr(iarr_all_fscrz,:,:,:) = 1. / (1. + vm * vm * rk_coef(istep) * dt * cg%w(wna%ind(int_coeff))%arr(zdim : I_THREE*(flind%stcosm - I_ONE) + zdim : I_THREE ,:,:,:)) * &
+         & (cg%w(fldi)%arr(iarr_all_fscrz,:,:,:) + 4. / 3. * vm * vm * rk_coef(istep) * dt * cg%w(wna%ind(int_coeff))%arr(zdim : I_THREE*(flind%stcosm - I_ONE) + zdim : I_THREE ,:,:,:) * &
+         & cg%w(fldi)%arr(iarr_all_escr,:,:,:) * (spread(cg%w(fldi)%arr(iarr_all_mz(1),:,:,:)/cg%w(fldi)%arr(iarr_all_dn(1),:,:,:), 1, flind%stcosm)))
+      endif
+      call derotate_along_magx(cg,fldi,iarr_all_mx,iarr_all_my,iarr_all_mz) !< derotated fluid velocity 
+      call derotate_along_magx(cg,fldi,iarr_all_fscrx,iarr_all_fscry,iarr_all_fscrz) !< derotated Fc 
+      !if (enable_scr_feedback) then
+      !  cg%w(fldi)%arr(iarr_all_en(1),:,:,:) = cg%w(fldi)%arr(iarr_all_en(1),:,:,:) + sum(tmp_scr(iarr_all_escr,:,:,:) - cg%w(scri)%arr(iarr_all_escr,:,:,:),dim=1)  
+      !  cg%w(fldi)%arr(iarr_all_mx(1),:,:,:) = cg%w(fldi)%arr(iarr_all_mx(1),:,:,:) + sum(tmp_scr(iarr_all_fscrx,:,:,:) - cg%w(scri)%arr(iarr_all_fscrx,:,:,:),dim=1) / vm**2
+      !  cg%w(fldi)%arr(iarr_all_my(1),:,:,:) = cg%w(fldi)%arr(iarr_all_my(1),:,:,:) + sum(tmp_scr(iarr_all_fscry,:,:,:) - cg%w(scri)%arr(iarr_all_fscry,:,:,:),dim=1) / vm**2
+      !  cg%w(fldi)%arr(iarr_all_mz(1),:,:,:) = cg%w(fldi)%arr(iarr_all_mz(1),:,:,:) + sum(tmp_scr(iarr_all_fscrz,:,:,:) - cg%w(scri)%arr(iarr_all_fscrz,:,:,:),dim=1) / vm**2
+      !endif
 
-               int_coef(:,:) = transpose(int_s(ddim : I_THREE*(flind%stcosm - I_ONE) + ddim : I_THREE,:) )
-               pb => cg%w(bpci)%get_sweep(ddim, i1, i2)
-               pu => cg%w(wna%fi)%get_sweep(ddim,i1,i2)
-               if (istep == first_stage(integration_order) .or. integration_order < 2 ) then
-                  pu => cg%w(uhi)%get_sweep(ddim,i1,i2)
-               endif               
-               u(:,:)  = transpose(pu(iarr_all_fscrx,:))
-               ue(:,:) = transpose(pu(iarr_all_escr,:))
-               u(:,:)  = (u(:,:) - int_coef(:,:) * ue(:,:)* 4./3. * vm *vm *rk_coef(istep)*dt * transpose( merge( 0.0, sign(1.0,pb(:,:)), abs(pb(:,:)) < 1.0e-6 ) ) ) /( 1.0 + (int_coef(:,:)*vm*vm*rk_coef(istep)*dt ))
-
-               pu(iarr_all_fscrx,:) = transpose(u(:, :))
-            enddo
-         enddo
-         call my_deallocate(u); call my_deallocate(ue)
-         call my_deallocate(int_coef); call my_deallocate(int_s)
-      enddo
-
-   end subroutine apply_source
+      call my_deallocate(tmp_scr)
+   end subroutine apply_scr_source
 
 
 end module scr_source

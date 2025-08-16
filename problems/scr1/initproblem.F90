@@ -145,13 +145,13 @@ contains
                      cg%u(fl%imz,i,j,k) = 0.0
                      if (fl%has_energy) then
 
-                        cg%u(fl%ien,i,j,k) = 1.0
+                        cg%u(fl%ien,i,j,k) = 1.0/(fl%gam_1)
                         cg%u(fl%ien,i,j,k) = cg%u(fl%ien,i,j,k) + ekin(cg%u(fl%imx,i,j,k), cg%u(fl%imy,i,j,k), cg%u(fl%imz,i,j,k), cg%u(fl%idn,i,j,k))
 
                         if (fl%is_magnetized) then
 
                            cg%b(xdim,i,j,k)   =  1.0
-                           cg%b(ydim,i,j,k)   =  0.0
+                           cg%b(ydim,i,j,k)   =  1.0
                            cg%b(zdim,i,j,k)   =  0.0
                            cg%u(fl%ien,i,j,k) = cg%u(fl%ien,i,j,k) + emag(cg%b(xdim,i,j,k), cg%b(ydim,i,j,k), cg%b(zdim,i,j,k))
 
@@ -175,7 +175,7 @@ contains
                   xi = cg%x(i)
                   do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
                      zk = cg%z(k)
-                     cg%u(scr_fluid%iescr, i,j,k) = exp(-a*xi*xi)
+                     cg%u(scr_fluid%iescr, i,j,k) = exp(-a*xi*xi-a*yj*yj)
                      cg%u(scr_fluid%ifscrx,i,j,k) = 0.0
                      cg%u(scr_fluid%ifscry,i,j,k) = 0.0
                      cg%u(scr_fluid%ifscrz,i,j,k) = 0.0

@@ -70,7 +70,7 @@ contains
 
       nscr                    = 1
       ord_scr_grad            = 2
-      floorescr               = 0.0
+      floorescr               = 1e-6
       vm                      = 100.0
       use_floorescr           = .true.
       sigma(1:nscr)           = 0.0

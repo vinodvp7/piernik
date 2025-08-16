@@ -1,5 +1,5 @@
 $BASE_DOMAIN
-  n_d = 256,1,1
+  n_d = 256,256,1
   nb  = 4
   bnd_xl = 'out'
   bnd_xr = 'out'
@@ -9,7 +9,7 @@ $BASE_DOMAIN
   bnd_zr = 'out'
   xmin   = -1.0
   xmax   =  1.0
-  ymin   =  0.0
+  ymin   =  -1.0
   ymax   =  1.0
   zmin   =  0.0
   zmax   =  1.0
@@ -34,7 +34,7 @@ $END_CONTROL
 
 $OUTPUT_CONTROL
    problem_name = 'scr'
-   run_id = 'tst'
+   run_id = 'mp4'
    dt_hdf = 0.05
    dt_res = 0.0
    dt_log = 0.02
@@ -50,12 +50,13 @@ $STREAMING_CR
       vm                      = 100.0
       sigma(1)                = 1e8
       ord_scr_grad            = 4
+      floorescr               = 1e-6
 /
 $NUMERICAL_SETUP
-  cfl     = 0.1
+  cfl     = 0.5
   smalld  = 1.e-5
   smallei = 1.e-5
-  limiter = 'vanleer'
+  limiter = 'minmod'
   solver_type = 'unsplit'
   solver_str = 'riemann'
   integration_order = 2

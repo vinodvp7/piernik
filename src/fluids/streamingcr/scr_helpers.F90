@@ -337,19 +337,23 @@ contains
       use initstreamingcr, only: use_floorescr, floorescr
       use grid_cont, only: grid_container
       use fluidindex,    only: iarr_all_escr
-      use constants, only: first_stage
+      use constants, only: first_stage, uh_n, fluid_n
       use global, only: integration_order
-
+      use named_array_list, only: wna
       implicit none
 
       type(grid_container), pointer, intent(in) :: cg
       integer,                       intent(in) :: istep     
 
+      integer :: fldi
+      fldi   = wna%ind(fluid_n)
 
-      if (istep==first_stage(integration_order) .and. integration_order>1) return 
+      if (istep == first_stage(integration_order) .or. integration_order < 2 )  then
+         fldi   = wna%ind(uh_n)
+      endif
 
       if (use_floorescr) then
-            cg%u(iarr_all_escr,:,:,:) = max(floorescr,cg%u(iarr_all_escr,:,:,:)) 
+            cg%w(fldi)%arr(iarr_all_escr,:,:,:) = max(floorescr,cg%w(fldi)%arr(iarr_all_escr,:,:,:)) 
       endif
    end subroutine care_positives
 
@@ -398,4 +402,138 @@ contains
          &  cg%w(gpci)%arr(i : I_THREE*(flind%stcosm - I_ONE) + i : I_THREE,:,:,:) * spread(cg%w(magi)%arr(i,:,:,:),1,flind%stcosm)
       end do
       end subroutine update_gp
+
+subroutine update_rotation_matrix(cg, istep)
+
+      use grid_cont,          only: grid_container
+      use named_array_list,   only: wna
+      use constants,          only: xdim, ydim, zdim, first_stage, mag_n, magh_n, rot_mat, sphi, cphi, stheta, ctheta
+      use global,             only: integration_order
+
+      implicit none
+
+      type(grid_container), pointer, intent(in) :: cg
+      integer,                       intent(in) :: istep
+
+      integer                                   :: bhi
+      real :: tol2
+      tol2 = 1e-10      !< magic number basically to test if 0 then dont do expensive calculation below
+
+      bhi   = wna%ind(mag_n)
+      if (istep == first_stage(integration_order) .or. integration_order < 2 )  then
+         bhi   = wna%ind(magh_n)
+      endif
+      if ( maxval(sum( cg%w(bhi)%arr(xdim:ydim, :,:,:)**2, dim=1)) <= tol2 ) then
+         cg%w(wna%ind(rot_mat))%arr(cphi,:,:,:)   = 1.0 
+         cg%w(wna%ind(rot_mat))%arr(sphi,:,:,:)   = 0.0
+         cg%w(wna%ind(rot_mat))%arr(stheta,:,:,:) = 0.0
+      else
+         cg%w(wna%ind(rot_mat))%arr(cphi,:,:,:)   = cg%w(bhi)%arr(xdim,:,:,:) &
+         &                                      /sqrt( sum( cg%w(bhi)%arr(xdim:ydim, :,:,:)**2, dim=1))
+         cg%w(wna%ind(rot_mat))%arr(sphi,:,:,:)   = cg%w(bhi)%arr(ydim,:,:,:) &
+         &                                      /sqrt(sum( cg%w(bhi)%arr(xdim:ydim, :,:,:)**2, dim=1))
+         cg%w(wna%ind(rot_mat))%arr(stheta,:,:,:) = sqrt(sum( cg%w(bhi)%arr(xdim:ydim, :,:,:)**2, dim=1))&
+         &                                     /sqrt(sum( cg%w(bhi)%arr(xdim:zdim, :,:,:)**2, dim=1) )
+      endif
+      cg%w(wna%ind(rot_mat))%arr(ctheta,:,:,:) = cg%w(bhi)%arr(zdim,:,:,:) &
+      &                             /sqrt(sum( cg%w(bhi)%arr(xdim:zdim, :,:,:)**2, dim=1) )
+
+
+   end subroutine update_rotation_matrix
+
+   subroutine  rotate_along_magx(cg, icfi, ix, iy, iz)
+      use grid_cont,          only: grid_container
+      use named_array_list,   only: wna
+      use constants,          only: rot_mat, sphi, cphi, stheta, ctheta, &
+                                    xdim, ydim, zdim, LO, HI
+      use dataio_pub,         only: die
+
+      implicit none
+
+      type(grid_container), pointer, intent(in)    :: cg
+      integer,                       intent(in)    :: icfi          
+      integer,                       intent(in)    :: ix(:), iy(:), iz(:)
+
+      integer :: nvec, rmi, i, j, k, s
+      real    :: vx, vy, vz, cp, sp, ct, st
+
+      nvec = size(ix)
+      if (size(iy) /= nvec .or. size(iz) /= nvec) then
+         call die("[scr_helpers:rotate_along_magx] index-length mismatch") 
+      endif
+      rmi = wna%ind(rot_mat)
+
+      do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
+         do j = cg%lhn(ydim,LO), cg%lhn(ydim,HI)
+            do i = cg%lhn(xdim,LO), cg%lhn(xdim,HI)
+
+            cp = cg%w(rmi)%arr(cphi,  i,j,k)
+            sp = cg%w(rmi)%arr(sphi,  i,j,k)
+            ct = cg%w(rmi)%arr(ctheta,i,j,k)
+            st = cg%w(rmi)%arr(stheta,i,j,k)
+
+            do s = 1, nvec
+               vx = cg%w(icfi)%arr(ix(s), i,j,k)
+               vy = cg%w(icfi)%arr(iy(s), i,j,k)
+               vz = cg%w(icfi)%arr(iz(s), i,j,k)
+
+
+               cg%w(icfi)%arr(ix(s), i,j,k) =  st * cp * vx + st * sp * vy + ct*vz
+
+               cg%w(icfi)%arr(iy(s), i,j,k) =  - sp * vx + cp * vy
+
+               cg%w(icfi)%arr(iz(s), i,j,k) =  - ct * cp * vx - ct * sp * vy + st * vz
+            end do
+            end do
+         end do
+      end do
+   end subroutine  rotate_along_magx
+
+   subroutine  derotate_along_magx(cg, icfi, ix, iy, iz)
+      use grid_cont,          only: grid_container
+      use named_array_list,   only: wna
+      use constants,          only: rot_mat, sphi, cphi, stheta, ctheta, &
+                                    xdim, ydim, zdim, LO, HI
+      use dataio_pub,         only: die
+
+      implicit none
+
+      type(grid_container), pointer, intent(in)    :: cg
+      integer,                       intent(in)    :: icfi
+      integer,                       intent(in)    :: ix(:), iy(:), iz(:)
+
+      integer :: nvec, rmi, i, j, k, s
+      real    :: vxp, vyp, vzp, cp, sp, ct, st
+
+      nvec = size(ix)
+      if (size(iy) /= nvec .or. size(iz) /= nvec) then
+         call die("[scr_helpers:derotate_along_magx] index-length mismatch") 
+      endif
+      rmi = wna%ind(rot_mat)
+
+      do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
+         do j = cg%lhn(ydim,LO), cg%lhn(ydim,HI)
+            do i = cg%lhn(xdim,LO), cg%lhn(xdim,HI)
+
+            cp = cg%w(rmi)%arr(cphi,  i,j,k)
+            sp = cg%w(rmi)%arr(sphi,  i,j,k)
+            ct = cg%w(rmi)%arr(ctheta,i,j,k)
+            st = cg%w(rmi)%arr(stheta,i,j,k)
+
+            do s = 1, nvec
+               vxp = cg%w(icfi)%arr(ix(s), i,j,k)
+               vyp = cg%w(icfi)%arr(iy(s), i,j,k)
+               vzp = cg%w(icfi)%arr(iz(s), i,j,k)
+
+
+               cg%w(icfi)%arr(ix(s), i,j,k) = cp * st * vxp - sp * vyp - cp * ct * vzp
+
+               cg%w(icfi)%arr(iy(s), i,j,k) = sp * st * vxp + cp * vyp - sp * ct * vzp
+
+               cg%w(icfi)%arr(iz(s), i,j,k) = ct * vxp + st * vzp
+            end do
+            end do
+         end do
+      end do
+   end subroutine  derotate_along_magx
 end module scr_helpers

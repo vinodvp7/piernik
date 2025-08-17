@@ -243,6 +243,17 @@ module constants
    real, dimension(EULER:RK2_2), parameter :: rk_coef = [ one, &      !! EULER
         &                                                 half, one ] !! RK2
 
+
+   ! enumerate the position of cos and sin angle of rotation matrix useful for streaming CR
+#ifdef STREAM_CR
+   enum, bind(C)
+      enumerator :: cphi = 1      ! cos phi   : Bx/sqrt(Bx^2 + By^2)
+      enumerator :: sphi          ! sin phi   : By/sqrt(Bx^2 + By^2)
+      enumerator :: ctheta        ! cos theta : Bz/sqrt(Bx^2 + By^2 + Bz^2)
+      enumerator :: stheta        ! sin theta : sqrt(Bx^2 + By^2)/sqrt(Bx^2 + By^2 + Bz^2)
+   end enum
+#endif /* STREAM_CR */  
+
    ! 3D and 4D array names
    ! fluids
    character(len=dsetnamelen), parameter :: fluid_n = "fluid"   !< main fluid array
@@ -273,6 +284,17 @@ module constants
    character(len=dsetnamelen), parameter :: nbdn_n  = "nbdn"    !< density from particles
    character(len=dsetnamelen), parameter :: prth_n  = "prth"    !< histogram of particles on the grid
 #endif /* NBODY */
+#ifdef STREAM_CR
+   character(len=dsetnamelen), parameter :: scrn      = "scrn"      !< main scr fluid array
+   character(len=dsetnamelen), parameter :: scrh      = "scrh"      !< auxiliary array for half-step values of scr fluid array
+   character(len=dsetnamelen), parameter :: xscrflx   = "xscrflx"   !< main X face-flux array for scr fluid
+   character(len=dsetnamelen), parameter :: yscrflx   = "yscrflx"   !< main Y face-flux array for scr fluid
+   character(len=dsetnamelen), parameter :: zscrflx   = "zscrflx"   !< main Z face-flux array for scr fluid
+   character(len=dsetnamelen), parameter :: gpc       = "gpc"       !< array of gradient of Pc
+   character(len=dsetnamelen), parameter :: bgpc      = "bgpc"      !< array of B.gradient of Pc
+   character(len=dsetnamelen), parameter :: rtm       = "rtm"       !< rotation matrix for frame transformation where B is along Bx
+   character(len=dsetnamelen), parameter :: icf       = "icf"       !< interaction coefficient for streaming cosmic rays
+#endif /* STREAM_CR */ 
    ! misc
    character(len=dsetnamelen), parameter :: wcu_n   = "wcu"     !< (resistivity) COMMENT ME
    character(len=dsetnamelen), parameter :: cs_i2_n = "cs_iso2" !< map of imposed isothermal sound speed

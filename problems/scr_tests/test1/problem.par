@@ -1,0 +1,72 @@
+$BASE_DOMAIN
+  n_d = 256,1,1
+  nb  = 4
+  bnd_xl = 'out'
+  bnd_xr = 'out'
+  bnd_yl = 'out'
+  bnd_yr = 'out'
+  bnd_zl = 'out'
+  bnd_zr = 'out'
+  xmin   = -1.0
+  xmax   =  1.0
+  ymin   =  0.0
+  ymax   =  1.0
+  zmin   =  0.0
+  zmax   =  1.0
+/
+
+$MPI_BLOCKS
+/
+
+$UNITS
+/
+
+$RESTART_CONTROL
+   restart  = 'last'
+   res_id   = ''
+   nrestart = 0
+/
+
+$END_CONTROL
+  tend = 0.1
+  nend = 100000000
+/
+
+$OUTPUT_CONTROL
+   problem_name = 'scrtst1'
+   run_id = 't1d'
+   dt_hdf = 0.05
+   dt_res = 0.0
+   dt_log = 0.02
+   dt_tsl = 0.02
+   vars(1:) = 'dens', 'ener', 'velx', 'pres', 'escr', 'xfscr', 'yfscr', 'zfscr', 'gradpcx', 'bdotgradpc', 'sigmax', 'gradpcy', 'gradpcz'
+/
+
+$FLUID_IONIZED
+  gamma = 1.6667
+/
+$STREAMING_CR
+   nscr                    = 1
+   vm                      = 100.0
+   sigmax                  = 1e8                   
+   ord_scr_grad            = 4
+   disable_en_source       = .true.
+   disable_feedback        = .true.      ! feedback to MHD gas
+/
+$NUMERICAL_SETUP
+  cfl     = 0.4
+  smalld  = 1.e-5
+  smallei = 1.e-5
+  limiter = 'minmod'
+  solver_type = 'unsplit'
+  solver_str = 'riemann'
+  integration_order = 2
+/
+
+$PROBLEM_CONTROL
+   a  = 40.0
+   bx = 1.0
+/
+
+$AMR
+/

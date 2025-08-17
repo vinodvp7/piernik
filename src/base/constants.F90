@@ -293,8 +293,9 @@ module constants
    character(len=dsetnamelen), parameter :: gpc       = "gpc"       !< array of gradient of Pc
    character(len=dsetnamelen), parameter :: bgpc      = "bgpc"      !< array of B.gradient of Pc
    character(len=dsetnamelen), parameter :: rtm       = "rtm"       !< rotation matrix for frame transformation where B is along Bx
-   character(len=dsetnamelen), parameter :: icf       = "icf"       !< interaction coefficient for streaming cosmic rays
-#endif /* STREAM_CR */ 
+   character(len=dsetnamelen), parameter :: sgm_adv   = "sgm_adv"   !< interaction coefficient for streaming cosmic rays
+   character(len=dsetnamelen), parameter :: sgm_diff  = "sgm_diff"  !< interaction coefficient for streaming cosmic rays
+ #endif /* STREAM_CR */ 
    ! misc
    character(len=dsetnamelen), parameter :: wcu_n   = "wcu"     !< (resistivity) COMMENT ME
    character(len=dsetnamelen), parameter :: cs_i2_n = "cs_iso2" !< map of imposed isothermal sound speed

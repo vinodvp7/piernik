@@ -48,9 +48,9 @@ module initstreamingcr
    real                                    :: floorescr           !< floor value of streaming CR energy density
    real                                    :: vm                  !< maximum speed in the simulation which controls the streaming CR timestepping
    logical                                 :: use_floorescr       !< floor streaming CR energy density or not                               
-   real, dimension(10)                     :: sigmax              !< diffusion coefficient in the parallel direction \sigma_c_primed. Magic number 10 for maximum number of non-spectral species.You can always go beyond this by changing it. But rbuff limits this number even lower
-   real, dimension(10)                     :: sigmay              !< diffusion coefficient in the perpendicular direction \sigma_c_primed. Magic number 10 for maximum number of non-spectral species.You can always go beyond this by changing it. But rbuff limits this number even lower
-   real, dimension(10)                     :: sigmaz              !< diffusion coefficient in the perpendicular direction \sigma_c_primed. Magic number 10 for maximum number of non-spectral species.You can always go beyond this by changing it. But rbuff limits this number even lower   
+   real, dimension(10)                     :: sigma_paral         !< diffusion coefficient in the parallel direction \sigma_c_primed. Magic number 10 for maximum number of non-spectral species.You can always go beyond this by changing it. But rbuff limits this number even lower
+   real, dimension(10)                     :: sigma_perp1         !< diffusion coefficient in the perpendicular direction \sigma_c_primed. Magic number 10 for maximum number of non-spectral species.You can always go beyond this by changing it. But rbuff limits this number even lower
+   real, dimension(10)                     :: sigma_perp2         !< diffusion coefficient in the perpendicular direction \sigma_c_primed. Magic number 10 for maximum number of non-spectral species.You can always go beyond this by changing it. But rbuff limits this number even lower   
    integer                                 :: ord_scr_grad        !< order for gradient of Pc. Possible 2 and 4. 2 works for most cases. If 4 then nb > 2 else fall back to gradient order 2 
    logical                                 :: disable_en_source   !< Whether streaming cosmic ray energy source needs to be added 
    logical                                 :: disable_feedback    !< Whether streaming cosmic ray feedback momentum and energy change to the gas. If true and energy source false then only momentum will be feedback
@@ -72,8 +72,8 @@ contains
       implicit none
       integer(kind=4) :: nl,nn,icr
 
-      namelist /STREAMING_CR/ nscr, floorescr, use_floorescr, sigma,vm, ord_scr_grad, disable_en_source, &
-      &                       disable_feedback, disable_streaming
+      namelist /STREAMING_CR/ nscr, floorescr, use_floorescr, sigma_paral, sigma_perp1, sigma_perp2, &
+      &                       vm, ord_scr_grad, disable_en_source, disable_feedback, disable_streaming
                               
 
       nscr                     = 1
@@ -81,9 +81,9 @@ contains
       floorescr                = 1e-6
       vm                       = 100.0
       use_floorescr            = .true.
-      sigmax(1:nscr)           = 1e10
-      sigmay(1:nscr)           = 1e10
-      sigmaz(1:nscr)           = 1e10
+      sigma_paral(1:nscr)      = 1e10
+      sigma_perp1(1:nscr)      = 1e10
+      sigma_perp2(1:nscr)      = 1e10
       disable_en_source        = .false.
       disable_feedback         = .false.
       disable_streaming        = .false.
@@ -127,11 +127,11 @@ contains
          if (nn + 2 * nscr > ubound(rbuff, 1)) call die("[initstreamingcr:init_streamingcr] rbuff size exceeded.")
          if (nl  > ubound(lbuff, 1)) call die("[initstreamingcr:init_streamingcr] lbuff size exceeded.")
          
-         rbuff(nn+1:nn+nscr) = sigmax(1:nscr)
+         rbuff(nn+1:nn+nscr) = sigma_paral(1:nscr)
          nn = nn+nscr
-         rbuff(nn+1:nn+nscr) = sigmay(1:nscr)
+         rbuff(nn+1:nn+nscr) = sigma_perp1(1:nscr)
          nn = nn+nscr
-         rbuff(nn+1:nn+nscr) = sigmaz(1:nscr)
+         rbuff(nn+1:nn+nscr) = sigma_perp2(1:nscr)
       end if
 
       call piernik_MPI_Bcast(ibuff)
@@ -153,12 +153,13 @@ contains
          disable_streaming   = lbuff(4)          
 
          nn                  = ibuff(ubound(ibuff, 1)    )    ! this must match the last rbuff() index above
-         nl                  = ibuff(ubound(ibuff, 1) - 1)    ! this must match the last lbuff() index above  
-         sigmax(1:nscr)      = rbuff(nn+1:nn+nscr)
+         nl                  = ibuff(ubound(ibuff, 1) - 1)    ! this must match the last lbuff() index above 
+          
+         sigma_paral(1:nscr)      = rbuff(nn+1:nn+nscr)
          nn = nn + nscr
-         sigmay(1:nscr)      = rbuff(nn+1:nn+nscr)
+         sigma_perp1(1:nscr)      = rbuff(nn+1:nn+nscr)
          nn = nn + nscr
-         sigmaz(1:nscr)      = rbuff(nn+1:nn+nscr)
+         sigma_perp2(1:nscr)      = rbuff(nn+1:nn+nscr)
 
       end if
 

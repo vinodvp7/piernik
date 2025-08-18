@@ -62,7 +62,7 @@ contains
       type(grid_container), pointer, intent(in) :: cg
       integer,                       intent(in) :: istep
 
-      integer                                    :: i1, i2
+      integer                                    :: i1, i2,i
       integer(kind=4)                            :: scri, ddim, fldi
       real, dimension(:,:),allocatable           :: u, vdiff, vdiffx, uscr
       real, dimension(:,:), pointer              :: pu, pscr
@@ -128,6 +128,9 @@ contains
                tflux(:,2:) = transpose(flux(:, iarr_all_scr_swp(ddim,:)))
                tflux(:,1) = 0.0
                pflux(:,:) = tflux
+               do i=lbound(pflux,2),ubound(pflux,2)
+                  write(115,*) pflux(2,i)
+               enddo
             enddo
          enddo
          call my_deallocate(uscr); call my_deallocate(u)

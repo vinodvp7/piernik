@@ -29,7 +29,7 @@ $RESTART_CONTROL
 
 $END_CONTROL
   tend = 0.1
-  nend = 100000000
+  nend = 1
 /
 
 $OUTPUT_CONTROL
@@ -60,7 +60,7 @@ $NUMERICAL_SETUP
   limiter = 'minmod'
   solver_type = 'unsplit'
   solver_str = 'riemann'
-  integration_order = 2
+  integration_order = 1
 /
 
 $PROBLEM_CONTROL

@@ -394,7 +394,7 @@ contains
 #endif /* COSM_RAYS */
 #ifdef STREAM_CR
       use initstreamingcr,    only: nscr
-      use constants,          only: gpc, bgpc, icf, ndims
+      use constants,          only: gpc, bgpc, sgm_adv, sgm_diff, ndims
       use named_array_list,   only: wna
       use fluidindex,         only: scrind
 #endif /* STREAM_CR */
@@ -566,15 +566,23 @@ contains
 
          case ('sigmax_01':'sigmax_99')                              !> xth component of σ
             read(var, '(A7,I2)') aux, is     ! 'sigmax_' + nn
-            tab(:,:,:) = cg%w(wna%ind(icf))%arr( (is-1)*ndims + xdim, RNG )
+            tab(:,:,:) = (cg%w(wna%ind(sgm_diff))%arr( (is-1)*ndims + xdim, RNG ) * &
+            &             cg%w(wna%ind(sgm_adv))%arr( (is-1)*ndims + xdim, RNG ) ) / &
+            & (cg%w(wna%ind(sgm_diff))%arr( (is-1)*ndims + xdim, RNG ) + &
+            &             cg%w(wna%ind(sgm_adv))%arr( (is-1)*ndims + xdim, RNG ) )
 
          case ('sigmay_01':'sigmay_99')                              !> yth component of σ
             read(var, '(A7,I2)') aux, is
-            tab(:,:,:) = cg%w(wna%ind(icf))%arr( (is-1)*ndims + ydim, RNG )
-
+            tab(:,:,:) = (cg%w(wna%ind(sgm_diff))%arr( (is-1)*ndims + ydim, RNG ) * &
+            &             cg%w(wna%ind(sgm_adv))%arr( (is-1)*ndims + ydim, RNG ) ) / &
+            & (cg%w(wna%ind(sgm_diff))%arr( (is-1)*ndims + ydim, RNG ) + &
+            &             cg%w(wna%ind(sgm_adv))%arr( (is-1)*ndims + ydim, RNG ) )
          case ('sigmaz_01':'sigmaz_99')                              !> zth component of σ
             read(var, '(A7,I2)') aux, is
-            tab(:,:,:) = cg%w(wna%ind(icf))%arr( (is-1)*ndims + zdim, RNG )
+            tab(:,:,:) = (cg%w(wna%ind(sgm_diff))%arr( (is-1)*ndims + zdim, RNG ) * &
+            &             cg%w(wna%ind(sgm_adv))%arr( (is-1)*ndims + zdim, RNG ) ) / &
+            & (cg%w(wna%ind(sgm_diff))%arr( (is-1)*ndims + zdim, RNG ) + &
+            &             cg%w(wna%ind(sgm_adv))%arr( (is-1)*ndims + zdim, RNG ) )
 #endif /* STREAM_CR */
 #ifdef TRACER
          case ("trcr")

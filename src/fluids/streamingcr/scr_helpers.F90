@@ -431,6 +431,7 @@ contains
             end do
          end do
       endif
+      write(222,*) cg%w(wna%ind(v_diff))%arr(1,:,:,:) 
    end subroutine update_vdiff
 
    subroutine care_positives(cg, istep)

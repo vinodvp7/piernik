@@ -295,6 +295,8 @@ module constants
    character(len=dsetnamelen), parameter :: rtm       = "rtm"       !< rotation matrix for frame transformation where B is along Bx
    character(len=dsetnamelen), parameter :: sgm_adv   = "sgm_adv"   !< interaction coefficient for streaming cosmic rays
    character(len=dsetnamelen), parameter :: sgm_diff  = "sgm_diff"  !< interaction coefficient for streaming cosmic rays
+   character(len=dsetnamelen), parameter :: v_diff    = "v_diff"  !< interaction coefficient for streaming cosmic rays
+
 #endif /* STREAM_CR */ 
    ! misc
    character(len=dsetnamelen), parameter :: wcu_n   = "wcu"     !< (resistivity) COMMENT ME

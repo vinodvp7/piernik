@@ -244,7 +244,7 @@ contains
 #endif /* MAGNETIC */
 #ifdef STREAM_CR
       use constants,        only: scrn, scrh, xscrflx, yscrflx, zscrflx, rtm, gpc, bgpc, &
-      &                           I_FOUR, sgm_adv, sgm_diff
+      &                           I_FOUR, sgm_adv, sgm_diff, v_diff
       use initstreamingcr,  only: nscr
 #endif /* STREAM_CR */
 
@@ -311,6 +311,7 @@ contains
       call this%reg_var(rtm,     vital = .false.,  dim4 = I_FOUR, ord_prolong = ord_fluid_prolong, restart_mode = AT_NO_B )         !! Array to store rotation matirx component cos(phi) / sin(phi) / cos(theta) / sin(theta)
       call this%reg_var(sgm_adv, vital = .false.,  dim4 = ndims * nscr, ord_prolong = ord_fluid_prolong, restart_mode = AT_NO_B )   !! Array to store interaction coefficient for each streaming CR species
       call this%reg_var(sgm_diff,vital = .false.,  dim4 = ndims * nscr, ord_prolong = ord_fluid_prolong, restart_mode = AT_NO_B )   !! Array to store interaction coefficient for each streaming CR species
+      call this%reg_var(v_diff,  vital = .false.,  dim4 = ndims * nscr, ord_prolong = ord_fluid_prolong, restart_mode = AT_NO_B )   !! Array to store interaction coefficient for each streaming CR species
 
       call set_scr_names
 #endif /* STREAM_CR */

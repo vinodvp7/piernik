@@ -90,6 +90,101 @@ contains
 
    end subroutine
 
+   subroutine  rotate_along_magx(cg, icfi, ix, iy, iz)
+      use grid_cont,          only: grid_container
+      use named_array_list,   only: wna
+      use constants,          only: rtm, sphi, cphi, stheta, ctheta, &
+                                    xdim, ydim, zdim, LO, HI
+      use dataio_pub,         only: die
+
+      implicit none
+
+      type(grid_container), pointer, intent(in)    :: cg
+      integer,                       intent(in)    :: icfi          
+      integer,                       intent(in)    :: ix(:), iy(:), iz(:)
+
+      integer :: nvec, rmi, i, j, k, s
+      real    :: vx, vy, vz, cp, sp, ct, st
+
+      nvec = size(ix)
+      if (size(iy) /= nvec .or. size(iz) /= nvec) then
+         call die("[scr_helpers:rotate_along_magx] index-length mismatch") 
+      endif
+      rmi = wna%ind(rtm)
+
+      do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
+         do j = cg%lhn(ydim,LO), cg%lhn(ydim,HI)
+            do i = cg%lhn(xdim,LO), cg%lhn(xdim,HI)
+
+            cp = cg%w(rmi)%arr(cphi,  i,j,k)
+            sp = cg%w(rmi)%arr(sphi,  i,j,k)
+            ct = cg%w(rmi)%arr(ctheta,i,j,k)
+            st = cg%w(rmi)%arr(stheta,i,j,k)
+
+            do s = 1, nvec
+               vx = cg%w(icfi)%arr(ix(s), i,j,k)
+               vy = cg%w(icfi)%arr(iy(s), i,j,k)
+               vz = cg%w(icfi)%arr(iz(s), i,j,k)
+
+
+               cg%w(icfi)%arr(ix(s), i,j,k) =  st * cp * vx + st * sp * vy + ct*vz
+
+               cg%w(icfi)%arr(iy(s), i,j,k) =  - sp * vx + cp * vy
+
+               cg%w(icfi)%arr(iz(s), i,j,k) =  - ct * cp * vx - ct * sp * vy + st * vz
+            end do
+            end do
+         end do
+      end do
+   end subroutine  rotate_along_magx
+
+   subroutine  derotate_along_magx(cg, icfi, ix, iy, iz)
+      use grid_cont,          only: grid_container
+      use named_array_list,   only: wna
+      use constants,          only: rtm, sphi, cphi, stheta, ctheta, &
+                                    xdim, ydim, zdim, LO, HI
+      use dataio_pub,         only: die
+
+      implicit none
+
+      type(grid_container), pointer, intent(in)    :: cg
+      integer,                       intent(in)    :: icfi
+      integer,                       intent(in)    :: ix(:), iy(:), iz(:)
+
+      integer :: nvec, rmi, i, j, k, s
+      real    :: vxp, vyp, vzp, cp, sp, ct, st
+
+      nvec = size(ix)
+      if (size(iy) /= nvec .or. size(iz) /= nvec) then
+         call die("[scr_helpers:derotate_along_magx] index-length mismatch") 
+      endif
+      rmi = wna%ind(rtm)
+
+      do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
+         do j = cg%lhn(ydim,LO), cg%lhn(ydim,HI)
+            do i = cg%lhn(xdim,LO), cg%lhn(xdim,HI)
+
+            cp = cg%w(rmi)%arr(cphi,  i,j,k)
+            sp = cg%w(rmi)%arr(sphi,  i,j,k)
+            ct = cg%w(rmi)%arr(ctheta,i,j,k)
+            st = cg%w(rmi)%arr(stheta,i,j,k)
+
+            do s = 1, nvec
+               vxp = cg%w(icfi)%arr(ix(s), i,j,k)
+               vyp = cg%w(icfi)%arr(iy(s), i,j,k)
+               vzp = cg%w(icfi)%arr(iz(s), i,j,k)
+
+
+               cg%w(icfi)%arr(ix(s), i,j,k) = cp * st * vxp - sp * vyp - cp * ct * vzp
+
+               cg%w(icfi)%arr(iy(s), i,j,k) = sp * st * vxp + cp * vyp - sp * ct * vzp
+
+               cg%w(icfi)%arr(iz(s), i,j,k) = ct * vxp + st * vzp
+            end do
+            end do
+         end do
+      end do
+   end subroutine  derotate_along_magx
 !>
 !! This subroutine is used to set the value of sigma_diffusion and sigma_advection
 !! Inside it used a second order midpoint scheme to calculate grad Pc 
@@ -261,4 +356,75 @@ contains
          end do
       end do
    end subroutine update_bdotgradpc
+
+   subroutine update_vdiff(cg, istep)
+
+      use grid_cont,          only: grid_container
+      use named_array_list,   only: wna
+      use constants,          only: xdim, ydim, zdim, first_stage, sgm_adv, sgm_diff, v_diff, scrh, uh_n
+      use global,             only: integration_order
+      use fluidindex,         only: scrind, iarr_all_gpcx, iarr_all_gpcy, iarr_all_gpcz, iarr_all_escr, iarr_all_dn
+      use initstreamingcr,    only: disable_streaming, tau_asym, vm, disable_stabilizer, gamma_scr
+      use domain,             only: dom
+
+      implicit none
+
+      type(grid_container), pointer, intent(in) :: cg
+      integer,                       intent(in) :: istep
+
+      integer :: i, scri, fldi
+   
+      scri   = wna%ind(scrh)
+      fldi   = wna%ind(uh_n)
+      if (istep == first_stage(integration_order) .or. integration_order < 2 )  then
+         scri   = wna%scr
+         fldi   = wna%fi
+      endif
+
+      if (.not. disable_streaming) then
+         do i = xdim,zdim
+            cg%w(wna%ind(sgm_diff))%arr(i : 3*(scrind%stcosm - 1) + i : 3 ,:,:,: ) = &
+            & cg%w(wna%ind(sgm_diff))%arr(i : 3*(scrind%stcosm - 1) + i : 3 ,:,:,: ) * &
+            & cg%w(wna%ind(sgm_adv))%arr(i : 3*(scrind%stcosm - 1) + i : 3 ,:,:,: ) / &
+            & (cg%w(wna%ind(sgm_diff))%arr(i : 3*(scrind%stcosm - 1) + i : 3 ,:,:,: ) + &
+            &  cg%w(wna%ind(sgm_diff))%arr(i : 3*(scrind%stcosm - 1) + i : 3 ,:,:,: ))
+         end do
+      end if
+
+      associate( sd => cg%w(wna%ind(sgm_diff))%arr, &
+                 v  => cg%w(wna%ind(v_diff  ))%arr )
+
+         do i = xdim, zdim
+            if (dom%has_dir(i)) then
+               v(i:3*(scrind%stcosm-1)+i:3,:,:,:) = sd(i:3*(scrind%stcosm-1)+i:3,:,:,:) * cg%dl(i)
+               v(i:3*(scrind%stcosm-1)+i:3,:,:,:) = v(i:3*(scrind%stcosm-1)+i:3,:,:,:)**2 * 1.5
+
+               where ( v(i:3*(scrind%stcosm-1)+i:3,:,:,:) < tau_asym )
+                  v(i:3*(scrind%stcosm-1)+i:3,:,:,:) = sqrt( max(0.0, 1.0 - 0.5*v(i:3*(scrind%stcosm-1)+i:3,:,:,:)) )
+               elsewhere
+                  v(i:3*(scrind%stcosm-1)+i:3,:,:,:) = sqrt( (1.0 - exp(-v(i:3*(scrind%stcosm-1)+i:3,:,:,:))) / &
+                                                             v(i:3*(scrind%stcosm-1)+i:3,:,:,:) ) 
+               end where
+
+               v(i:3*(scrind%stcosm-1)+i:3,:,:,:) = v(i:3*(scrind%stcosm-1)+i:3,:,:,:) * sqrt(1.0/3.0) * vm
+            else
+               v(i:3*(scrind%stcosm-1)+i:3,:,:,:) = 0.0
+            end if
+         end do
+      end associate
+
+      call derotate_along_magx(cg, wna%ind(v_diff),iarr_all_gpcx,iarr_all_gpcy,iarr_all_gpcz)
+
+      cg%w(wna%ind(v_diff))%arr(:,:,:,:) = abs(cg%w(wna%ind(v_diff))%arr(:,:,:,:) )
+
+      if (.not. disable_stabilizer) then
+         do ns = 1, scrind%stcosm
+            do i = xdim, zdim
+               cg%w(wna%ind(v_diff))%arr(3*ns + i,,:,:,:)  = cg%w(wna%ind(v_diff))%arr(3*ns + i,:,:,:) +&
+               & sqrt(gamma_scr(ns) * 1.0/3.0 * cg%w(scri)%arr(iarr_all_escr(ns),:,:,:)/&
+               &                                  cg%w(scri)%arr(iarr_all_dn(1),:,:,:))
+            end do
+         end do
+      endif
+   end subroutine update_vdiff
 end module scr_helpers

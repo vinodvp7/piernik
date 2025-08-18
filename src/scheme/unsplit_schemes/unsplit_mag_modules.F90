@@ -48,6 +48,9 @@ contains
       use fluxtypes,        only: ext_fluxes
       use unsplit_source,   only: apply_source
       use diagnostics,      only: my_allocate, my_deallocate
+#ifdef STREAM_CR
+      use scr_helpers,      only: update_rotation_matrix, update_interaction_term
+#endif /* STREAM_CR */
 
       implicit none
 
@@ -156,6 +159,10 @@ contains
          call my_deallocate(b); call my_deallocate(b_psi); call my_deallocate(tbflux)
          call my_deallocate(bflux)
       enddo
+#ifdef STREAM_CR
+      call update_interaction_term(cg, istep, .false.)
+      call update_rotation_matrix(cg, istep)
+#endif /* STREAM_CR */
       call apply_flux(cg,istep,.true.)
       call apply_flux(cg,istep,.false.)
       call update_psi(cg,istep)

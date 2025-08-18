@@ -57,6 +57,7 @@ module initstreamingcr
    logical                                 :: disable_streaming   !< Whether cosmic rays stream along B 
    
    real, parameter                         :: tau_asym = 1e-3     ! < Used in the calculation of R in scr_hlle where below this value the function is taylor expanded in tau
+   real, parameter                         :: sigma_huge = 1e10
 contains
 
    subroutine init_streamingcr

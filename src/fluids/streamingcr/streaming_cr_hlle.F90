@@ -81,9 +81,10 @@ contains
       do ddim=xdim,zdim
 
          if (.not. dom%has_dir(ddim)) cycle
-         call my_allocate(u,[cg%n_(ddim), size(cg%scr,1,kind=4) + 1])
-         call my_allocate(flux,[size(u, 1,kind=4)-I_ONE,size(u, 2,kind=4)-I_ONE])
-         call my_allocate(tflux,[size(u, 2,kind=4)-I_ONE,size(u, 1,kind=4)])
+         call my_allocate(uscr,[cg%n_(ddim), size(cg%scr,1,kind=4) + 1])
+         call my_allocate(u,[cg%n_(ddim), size(cg%u,1,kind=4)])
+         call my_allocate(flux,[size(uscr, 1,kind=4)-I_ONE,size(uscr, 2,kind=4)-I_ONE])
+         call my_allocate(tflux,[size(uscr, 2,kind=4)-I_ONE,size(uscr, 1,kind=4)])
          call my_allocate(vdiff, [ndims * scrind%stcosm,cg%n_(ddim)])
          call my_allocate(vdiffx, [cg%n_(ddim) , scrind%stcosm])        ! interaction coefficient along one dimension for all species
 
@@ -112,6 +113,7 @@ contains
 
                u(:, iarr_all_swp(ddim,:)) = transpose(pu(:,:))
                vx = u(:, iarr_all_mx(1)) / u(:, iarr_all_dn(1))
+
                uscr(:, iarr_all_scr_swp(ddim,:)) = transpose(pscr(:,:))
 
                uscr(:,size(cg%scr,1,kind=4) + 1) = vx(:)              ! last column is fluid velocity
@@ -119,7 +121,7 @@ contains
 
                call cg%set_fluxpointers(ddim, i1, i2, eflx)
 
-               call solve_scr(u, vdiffx, eflx, flux)
+               call solve_scr(uscr, vdiffx, eflx, flux)
 
                call cg%save_outfluxes(ddim, i1, i2, eflx)
 
@@ -128,7 +130,7 @@ contains
                pflux(:,:) = tflux
             enddo
          enddo
-         call my_deallocate(u)
+         call my_deallocate(uscr); call my_deallocate(uscr)
          call my_deallocate(flux) 
          call my_deallocate(tflux)
          call my_deallocate(vdiffx); call my_deallocate(vdiff)
@@ -153,7 +155,7 @@ contains
       real, dimension(size(ui, 1)-1, size(ui, 2)), target :: ql, qr
 
       ! updates required for higher order of integration will likely have shorter length
-      if (size(flx,dim=1) /= size(ui, 1)-1 .or. size(flx,dim=2) /= size(ui, 2)  ) then
+      if (size(flx,dim=1) /= size(ui, 1)-1 .or. size(flx,dim=2) /= size(ui, 2)-1 ) then
          call die("[streaming_cr_hlle:solve_scr] flux array dimension does not match the expected dimensions")
       endif
 

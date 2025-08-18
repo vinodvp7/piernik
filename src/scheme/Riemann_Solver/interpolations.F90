@@ -141,7 +141,6 @@ contains
       use fluxlimiters,       only: flimiter, blimiter
       use fluidindex,         only: scrind
       use initstreamingcr,    only: vm
-      use constants,          only: I_ONE, I_TWO, I_THREE, I_FOUR
 
       implicit none
 
@@ -154,11 +153,12 @@ contains
       real, dimension(size(u, 1), size(u, 2)) :: q
 
       do p = 1, scrind%stcosm
-         q(:,  I_ONE + (p-I_ONE)*I_FOUR)   =  u(:,  I_ONE   + (p-I_ONE)*I_FOUR)
-         q(:,  I_TWO + (p-I_ONE)*I_FOUR)   =  u(:,  I_TWO   + (p-I_ONE)*I_FOUR)/vm**2
-         q(:,  I_THREE + (p-I_ONE)*I_FOUR) =  u(:,  I_THREE + (p-I_ONE)*I_FOUR)/vm**2
-         q(:,  I_FOUR + (p-I_ONE)*I_FOUR)  =  u(:,  I_FOUR  + (p-I_ONE)*I_FOUR)/vm**2
+         q(:,1 + (p-1)*4) = u(:,1 + (p-1)*4)
+         q(:,2 + (p-1)*4) = u(:,2 + (p-1)*4)
+         q(:,3 + (p-1)*4) = u(:,3 + (p-1)*4)
+         q(:,4 + (p-1)*4) = u(:,4 + (p-1)*4)
       enddo
+         q(:,size(u,2))   = u(:,size(u,2))             ! last component is fluid velocity
 
       call interp(q,   ql,   qr,   flimiter)
 

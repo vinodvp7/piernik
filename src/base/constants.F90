@@ -244,15 +244,15 @@ module constants
         &                                                 half, one ] !! RK2
 
 
-#ifdef STREAM_CR
    ! enumerate the position of cos and sin angle of rotation matrix useful for streaming CR
+#ifdef STREAM_CR
    enum, bind(C)
       enumerator :: cphi = 1      ! cos phi   : Bx/sqrt(Bx^2 + By^2)
       enumerator :: sphi          ! sin phi   : By/sqrt(Bx^2 + By^2)
       enumerator :: ctheta        ! cos theta : Bz/sqrt(Bx^2 + By^2 + Bz^2)
       enumerator :: stheta        ! sin theta : sqrt(Bx^2 + By^2)/sqrt(Bx^2 + By^2 + Bz^2)
    end enum
-#endif /* STREAM_CR */
+#endif /* STREAM_CR */  
 
    ! 3D and 4D array names
    ! fluids
@@ -293,7 +293,10 @@ module constants
    character(len=dsetnamelen), parameter :: gpc       = "gpc"       !< array of gradient of Pc
    character(len=dsetnamelen), parameter :: bgpc      = "bgpc"      !< array of B.gradient of Pc
    character(len=dsetnamelen), parameter :: rtm       = "rtm"       !< rotation matrix for frame transformation where B is along Bx
-   character(len=dsetnamelen), parameter :: icf       = "icf"       !< interaction coefficient for streaming cosmic rays
+   character(len=dsetnamelen), parameter :: sgm_adv   = "sgm_adv"   !< interaction coefficient for streaming cosmic rays
+   character(len=dsetnamelen), parameter :: sgm_diff  = "sgm_diff"  !< interaction coefficient for streaming cosmic rays
+   character(len=dsetnamelen), parameter :: v_diff    = "v_diff"  !< interaction coefficient for streaming cosmic rays
+
 #endif /* STREAM_CR */ 
    ! misc
    character(len=dsetnamelen), parameter :: wcu_n   = "wcu"     !< (resistivity) COMMENT ME
@@ -439,8 +442,6 @@ module constants
       enumerator :: PPP_PROB  = int(B"001000000000", kind=4)  ! problem
       enumerator :: PPP_DEBUG = int(B"010000000000", kind=4)  ! debug
       enumerator :: PPP_AUX   = int(B"100000000000", kind=4)  ! auxiliary (unused by default)
-      enumerator :: PPP_SCR   = int(B"100000000001", kind=4)  ! Streaming cosmic rays
-
    end enum
 
    ! OS type

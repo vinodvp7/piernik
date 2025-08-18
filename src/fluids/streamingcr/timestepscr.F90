@@ -44,58 +44,50 @@ contains
 !>
 !! \brief This routine finds the minimum timestep allowed by the explicit CR transport scheme across ALL grid patches and MPI processes.
 !<
-   subroutine timestep_scr(dt)
 
-      use allreduce,         only: piernik_MPI_Allreduce
-      use cg_leaves,         only: leaves
-      use cg_list,           only: cg_list_element
-      use constants,         only: xdim, ydim, zdim, pMIN
-      use global,            only: cfl
-      use grid_cont,         only: grid_container
-      use initstreamingcr,   only: vm
-      use domain,            only: dom
+subroutine timestep_scr(dt)
+   use allreduce,       only: piernik_MPI_Allreduce
+   use cg_leaves,       only: leaves
+   use cg_list,         only: cg_list_element
+   use constants,       only: xdim, ydim, zdim, pMIN
+   use global,          only: cfl
+   use grid_cont,       only: grid_container
+   use initstreamingcr, only: vm
+   use domain,          only: dom
+   use iso_fortran_env, only: dp => real64
+   implicit none
 
-      implicit none
+   real(dp), intent(inout) :: dt
 
-      real, intent(inout) :: dt
+   real(dp) :: dt_local_min, dt_patch
+   type(cg_list_element), pointer :: cgl
+   type(grid_container),  pointer :: cg
+   integer :: dir
 
-      ! Local variables
-      real :: dt_local_min      !< The minimum dt on this MPI process
-      real :: dt_patch          !< The dt for a single grid patch
-      type(cg_list_element), pointer :: cgl
-      type(grid_container),  pointer :: cg
-      integer :: i
-      ! Initialize the local minimum dt to a very large number
-      dt_local_min = huge(1.0)
-      dt_patch     = huge(1.0)
-      ! 1. LOOP OVER ALL LOCAL GRID PATCHES ('leaves')
-      cgl => leaves%first
-      do while (associated(cgl))
-         cg => cgl%cg
+   dt_local_min = huge(1.0_dp)
 
-         ! Calculate the timestep for this specific patch based on the CFL condition
-         ! for the constant signal speed 'vm'.
-         do i = xdim, zdim
-            if (.not. dom%has_dir(i)) cycle
-            dt_patch = min(dt_patch, cg%dl(i) / (vm/sqrt(3.0)) )
-         end do
-         ! Update the running minimum for this MPI process
-         dt_local_min = min(dt_local_min, dt_patch)
+   cgl => leaves%first
+   do while (associated(cgl))
+      cg => cgl%cg
 
-         ! Move to the next grid patch in the list
-         cgl => cgl%nxt
+      ! reset per patch
+      dt_patch = huge(1.0_dp)
+
+      do dir = xdim, zdim
+         if (.not. dom%has_dir(dir)) cycle
+         ! isotropic closure: sqrt(f_ii)=1/sqrt(3)
+         dt_patch = min(dt_patch, cg%dl(dir) / (vm / sqrt(3.0_dp)))
       end do
 
-      ! 2. PERFORM MPI REDUCTION TO FIND THE GLOBAL MINIMUM
-      ! This finds the minimum value of 'dt_local_min' across ALL MPI processes
-      ! and returns the result to all processes.
-      call piernik_MPI_Allreduce(dt_local_min, pMIN)
+      dt_local_min = min(dt_local_min, dt_patch)
 
-      ! 3. UPDATE THE MAIN TIMESTEP
-      ! The main timestep 'dt' is the minimum of its current value and the
-      ! globally correct timestep required by this module.
-      dt = cfl*min(dt, dt_local_min)
+      cgl => cgl%nxt
+   end do
 
-   end subroutine timestep_scr
+   ! global min over ranks, in place
+   call piernik_MPI_Allreduce(dt_local_min, pMIN)
+
+   dt =  min(dt, dt_local_min)
+end subroutine timestep_scr
 
 end module timestepscr

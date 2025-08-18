@@ -49,9 +49,10 @@ contains
       use unsplit_source,   only: apply_source
       use diagnostics,      only: my_allocate, my_deallocate
 #ifdef STREAM_CR
-      use scr_helpers,        only: update_scr_interaction, care_positives
+      use scr_helpers,        only: update_rotation_matrix, update_interaction_term, care_positives
       use streaming_cr_hlle,  only: update_scr_fluid
 #endif /* STREAM_CR */
+
       implicit none
 
       type(grid_container), pointer, intent(in) :: cg
@@ -160,8 +161,10 @@ contains
          call my_deallocate(bflux)
       enddo
 #ifdef STREAM_CR
-      call update_scr_interaction(cg, istep)
-      call update_scr_fluid(cg,istep)
+      call update_interaction_term(cg, istep, .false.)
+      call update_rotation_matrix(cg, istep)
+      call update_scr_fluid(cg, istep)
+      call care_positives(cg, istep)
 #endif /* STREAM_CR */
       call apply_flux(cg,istep,.true.)
       call apply_flux(cg,istep,.false.)

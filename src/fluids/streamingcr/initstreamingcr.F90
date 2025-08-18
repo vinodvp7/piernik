@@ -44,14 +44,21 @@ module initstreamingcr
    public ! QA_WARN no secrets are kept here
    private :: cbuff_len ! QA_WARN prevent reexport
    ! namelist parameters
-   integer(kind=4)                         :: nscr             !< number of non-spectral streaming CR components
-   real                                    :: floorescr        !< floor value of streaming CR energy density
-   real                                    :: vm               !< maximum speed in the simulation which controls the streaming CR timestepping
-   logical                                 :: use_floorescr    !< floor streaming CR energy density or not                               
-   real, dimension(99)                     :: sigma            !< diffusion coefficient \sigma_c_primed. Magic number 99 for maximum number of non-spectral species.You can always go beyond this by changing it. But rbuff limits this number even lower
-   integer                                 :: ord_scr_grad     !< order for gradient of Pc. Possible 2 and 4. 2 works for most cases. If 4 then nb > 2 else fall back to gradient order 2 
-   real                                    :: smallbdotpc      !< maximum speed in the simulation which controls the streaming CR timestepping
-   logical                                 :: enable_scr_feedback !< Whether streaming cosmic ray feedback momentum and energy change to the gas
+   integer(kind=4)                         :: nscr                !< number of non-spectral streaming CR components
+   real                                    :: floorescr           !< floor value of streaming CR energy density
+   real                                    :: vm                  !< maximum speed in the simulation which controls the streaming CR timestepping
+   logical                                 :: use_floorescr       !< floor streaming CR energy density or not                               
+   real, dimension(10)                     :: gamma_scr           !< Adiabatic coefficient of streaming cosmic ray species 
+   real, dimension(10)                     :: sigma_paral         !< diffusion coefficient in the parallel direction \sigma_c_primed. Magic number 10 for maximum number of non-spectral species.You can always go beyond this by changing it. But rbuff limits this number even lower
+   real, dimension(10)                     :: sigma_perp1         !< diffusion coefficient in the perpendicular direction \sigma_c_primed. Magic number 10 for maximum number of non-spectral species.You can always go beyond this by changing it. But rbuff limits this number even lower
+   real, dimension(10)                     :: sigma_perp2         !< diffusion coefficient in the perpendicular direction \sigma_c_primed. Magic number 10 for maximum number of non-spectral species.You can always go beyond this by changing it. But rbuff limits this number even lower   
+   integer                                 :: ord_scr_grad        !< order for gradient of Pc. Possible 2 and 4. 2 works for most cases. If 4 then nb > 2 else fall back to gradient order 2 
+   logical                                 :: disable_en_source   !< Whether streaming cosmic ray energy source needs to be added 
+   logical                                 :: disable_feedback    !< Whether streaming cosmic ray feedback momentum and energy change to the gas. If true and energy source false then only momentum will be feedback
+   logical                                 :: disable_streaming   !< Whether cosmic rays stream along B 
+   logical                                 :: disable_stabilizer  ! < whether to add cr sound speed when calculating v_diff
+   real, parameter                         :: tau_asym = 1e-3     ! < Used in the calculation of R in scr_hlle where below this value the function is taylor expanded in tau
+   real, parameter                         :: sigma_huge = 1e10
 contains
 
    subroutine init_streamingcr
@@ -67,17 +74,24 @@ contains
       implicit none
       integer(kind=4) :: nl,nn,icr
 
-      namelist /STREAMING_CR/ nscr, floorescr, use_floorescr, sigma,vm, ord_scr_grad, smallbdotpc, enable_scr_feedback
+      namelist /STREAMING_CR/ nscr, floorescr, use_floorescr, sigma_paral, sigma_perp1, sigma_perp2, &
+      &                       vm, ord_scr_grad, disable_en_source, disable_feedback, disable_streaming,&
+      &                       gamma_scr, disable_stabilizer
                               
 
-      nscr                    = 1
-      ord_scr_grad            = 2
-      floorescr               = 1e-6
-      vm                      = 100.0
-      use_floorescr           = .true.
-      sigma(1:nscr)           = 1.0
-      smallbdotpc             = 1e-30
-      enable_scr_feedback     = .true.
+      nscr                     = 1
+      ord_scr_grad             = 2
+      floorescr                = 1e-6
+      vm                       = 100.0
+      use_floorescr            = .true.
+      gamma_scr(1:nscr)        = 4./3.
+      sigma_paral(1:nscr)      = 1e10
+      sigma_perp1(1:nscr)      = 1e10
+      sigma_perp2(1:nscr)      = 1e10
+      disable_en_source        = .false.
+      disable_feedback         = .false.
+      disable_streaming        = .false.
+      disable_stabilizer       = .false.
 
       if (master) then
          if (.not.nh%initialized) call nh%init()
@@ -104,12 +118,14 @@ contains
          ibuff(2) = ord_scr_grad
          rbuff(1) = floorescr   
          rbuff(2) = vm       
-         rbuff(3) = smallbdotpc
 
          lbuff(1) = use_floorescr 
-         lbuff(2) = enable_scr_feedback 
-            
-         nl       = 2                                     ! this must match the last lbuff() index above
+         lbuff(2) = disable_en_source
+         lbuff(3) = disable_feedback
+         lbuff(4) = disable_streaming 
+         lbuff(5) = disable_stabilizer
+
+         nl       = 5                                     ! this must match the last lbuff() index above
          nn       = count(rbuff(:) < huge(1.), kind=4)    ! this must match the last rbuff() index above
          ibuff(ubound(ibuff, 1)    ) = nn
          ibuff(ubound(ibuff, 1) - 1) = nl
@@ -117,8 +133,13 @@ contains
          if (nn + 2 * nscr > ubound(rbuff, 1)) call die("[initstreamingcr:init_streamingcr] rbuff size exceeded.")
          if (nl  > ubound(lbuff, 1)) call die("[initstreamingcr:init_streamingcr] lbuff size exceeded.")
          
-         rbuff(nn+1      :nn+  nscr) = sigma(1:nscr)
-      
+         rbuff(nn+1:nn+nscr) = sigma_paral(1:nscr)
+         nn = nn+nscr
+         rbuff(nn+1:nn+nscr) = sigma_perp1(1:nscr)
+         nn = nn+nscr
+         rbuff(nn+1:nn+nscr) = sigma_perp2(1:nscr)
+         nn = nn+nscr
+         rbuff(nn+1:nn+nscr) = gamma_scr(1:nscr)
       end if
 
       call piernik_MPI_Bcast(ibuff)
@@ -133,15 +154,23 @@ contains
 
          floorescr       = rbuff(1)   
          vm              = rbuff(2)        
-         smallbdotpc     = rbuff(3)
 
          use_floorescr       = lbuff(1) 
-         enable_scr_feedback = lbuff(2)
+         disable_en_source   = lbuff(2)
+         disable_feedback    = lbuff(3)
+         disable_streaming   = lbuff(4)          
+         disable_stabilizer  = lbuff(5)  
 
          nn                  = ibuff(ubound(ibuff, 1)    )    ! this must match the last rbuff() index above
-         nl                  = ibuff(ubound(ibuff, 1) - 1)    ! this must match the last lbuff() index above  
-         sigma(1:nscr)  = rbuff(nn+1      :nn+  nscr)
-
+         nl                  = ibuff(ubound(ibuff, 1) - 1)    ! this must match the last lbuff() index above 
+          
+         sigma_paral(1:nscr)  = rbuff(nn+1:nn+nscr)
+         nn = nn + nscr
+         sigma_perp1(1:nscr)  = rbuff(nn+1:nn+nscr)
+         nn = nn + nscr
+         sigma_perp2(1:nscr)  = rbuff(nn+1:nn+nscr)
+         nn = nn + nscr
+         gamma_scr(1:nscr)    = rbuff(nn+1:nn+nscr)
       end if
 
    end subroutine init_streamingcr

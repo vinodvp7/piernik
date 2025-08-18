@@ -38,7 +38,7 @@ module scr_helpers
 
    private
 
-   public :: update_rotation_matrix, update_interaction_term, update_vdiff
+   public :: update_rotation_matrix, update_interaction_term, update_vdiff, care_positives
 
 contains
 
@@ -432,4 +432,30 @@ contains
          end do
       endif
    end subroutine update_vdiff
+
+   subroutine care_positives(cg, istep)
+      
+      use initstreamingcr,       only: use_floorescr, floorescr
+      use grid_cont,             only: grid_container
+      use fluidindex,            only: iarr_all_escr
+      use constants,             only: first_stage, scrh
+      use global,                only: integration_order
+      use named_array_list,      only: wna
+      
+      implicit none
+
+      type(grid_container), pointer, intent(in) :: cg
+      integer,                       intent(in) :: istep   
+      integer :: scri
+
+      scri   = wna%ind(scrh)
+      if (istep == first_stage(integration_order) .or. integration_order < 2 )  then
+         scri   = wna%scr
+      endif
+
+
+      if (use_floorescr) then
+            cg%w(scri)%arr(iarr_all_escr,:,:,:) = max(floorescr,cg%w(scri)%arr(iarr_all_escr,:,:,:)) 
+      endif
+   end subroutine care_positives
 end module scr_helpers

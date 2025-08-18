@@ -53,6 +53,9 @@ contains
 #ifdef MAGNETIC
       use all_boundaries, only: all_mag_boundaries
 #endif /* MAGNETIC */
+#ifdef STREAM_CR
+      use all_boundaries, only: all_scr_boundaries
+#endif /* STREAM_CR */
 
       implicit none
 
@@ -65,21 +68,31 @@ contains
             do ub_i=xdim,zdim
                if (.not. dom%has_dir(ub_i)) cycle
                call all_fluid_boundaries(nocorners = .true., dir = ub_i, istep=istep)
+#ifdef STREAM_CR
+               call all_scr_boundaries(nocorners = .true., dir = ub_i, istep=istep) ! ToDo: take care of psi boundaries
+#endif /* STREAM_CR */
             enddo
          else
-         call all_fluid_boundaries(nocorners = .true.,istep=istep)
+            call all_fluid_boundaries(nocorners = .true.,istep=istep)
+#ifdef STREAM_CR
+            call all_scr_boundaries(nocorners = .true.,istep=istep) ! ToDo: take care of psi boundaries
+#endif /* STREAM_CR */
          endif
       else
             call all_fluid_boundaries(istep=istep)
+#ifdef STREAM_CR
+            call all_scr_boundaries(istep=istep) ! ToDo: take care of psi boundaries
+#endif /* STREAM_CR */
       endif
       if (divB_0_method == DIVB_HDC) then
 #ifdef MAGNETIC
             call all_mag_boundaries(istep) ! ToDo: take care of psi boundaries
 #endif /* MAGNETIC */
+
       endif
 
    end subroutine update_boundaries
-
+   
    subroutine unsplit_sweep()
 
       use cg_cost_data,      only: I_MHD, I_REFINE

@@ -130,7 +130,7 @@ contains
                pflux(:,:) = tflux
             enddo
          enddo
-         call my_deallocate(uscr); call my_deallocate(uscr)
+         call my_deallocate(uscr); call my_deallocate(u)
          call my_deallocate(flux) 
          call my_deallocate(tflux)
          call my_deallocate(vdiffx); call my_deallocate(vdiff)
@@ -276,34 +276,37 @@ subroutine riemann_hlle(ql, qr, vdiff, flx)
    vl(:) = ql(:,nvar)                   ! last term is vxl
    vr(:) = qr(:,nvar)                   ! last term is vrl
 
-   do concurrent(i = 1:size(flx,1), j = 1:scrind%stcosm)
-
+   do j = 1,scrind%stcosm
       vdiff_l(2:) = vdiff(1:nx-1,j)
       vdiff_l(1)  = vdiff(1,j)
       vdiff_r(2:) = vdiff(2:nx,j)
       vdiff_r(1)  = vdiff(1,j)
 
-      mean_adv  = 0.5 * ( vl + vr)
-      mean_diff = 0.5 * (vdiff_l + vdiff_r) 
+      do i = 1,size(flx,1)
 
-      al = min((mean_adv - mean_diff),(vl - vdiff_l))
-      ar = max((mean_adv + mean_diff),(vr + vdiff_r))
+         mean_adv  = 0.5 * ( vl(i) + vr(i))
+         mean_diff = 0.5 * (vdiff_l(i) + vdiff_r(i)) 
 
-      ar = min(ar,vm/sqrt(3.0))
-      al = max(al,-vm/sqrt(3.0))
+         al = min((mean_adv(i)  - mean_diff(i) ),(vl(i)  - vdiff_l(i) ))
+         ar = max((mean_adv(i)  + mean_diff(i) ),(vr(i)  + vdiff_r(i) ))
 
-      bp = max(ar, 0.0)   
-      bm = min(al, 0.0)
-      fl(1) = ql(i,2 + 4 * (j-1)) * vm  - bm(i) * ql(i,1)
-      fr(1) = qr(i,2 + 4 * (j-1)) * vm  - bp(i) * qr(i,1)
-      fl(2) = vm / 3.0  * ql(i,1 + 4 * (j-1)) - bm(i) * ql(i,2)
-      fr(2) = vm / 3.0  * qr(i,1 + 4 * (j-1)) - bp(i) * qr(i,2)
-      fl(3) =  - bm(i) * ql(i,3) ; fr(3) = - bp(i) * qr(i,3) 
-      fr(4) =  - bm(i) * ql(i,4) ; fr(4) = - bp(i) * qr(i,4) 
-      tmp = 0.0
-      if (abs(bp(i) - bm(i)) > 1e-20) tmp = 0.5*(bp(i) + bm(i))/(bp(i) - bm(i))
-      flx(i,1+4*(j-1):4+4*(j-1)) = 0.5 * (fl + fr) + (fl - fr) * tmp
+         ar = min(ar,vm/sqrt(3.0))
+         al = max(al,-vm/sqrt(3.0))
 
+         bp = max(ar, 0.0)   
+         bm = min(al, 0.0)
+
+         fl(1) = ql(i,2 + 4 * (j-1)) * vm  - bm(i) * ql(i,1+ 4 * (j-1))
+         fr(1) = qr(i,2 + 4 * (j-1)) * vm  - bp(i) * qr(i,1+ 4 * (j-1))
+         fl(2) = vm / 3.0  * ql(i,1 + 4 * (j-1)) - bm(i) * ql(i,2+ 4 * (j-1))
+         fr(2) = vm / 3.0  * qr(i,1 + 4 * (j-1)) - bp(i) * qr(i,2+ 4 * (j-1))
+         fl(3) =  - bm(i) * ql(i,3+ 4 * (j-1)) ; fr(3) = - bp(i) * qr(i,3+ 4 * (j-1)) 
+         fr(4) =  - bm(i) * ql(i,4+ 4 * (j-1)) ; fr(4) = - bp(i) * qr(i,4+ 4 * (j-1)) 
+         tmp = 0.0
+         if (abs(bp(i) - bm(i)) > 1e-20) tmp = 0.5*(bp(i) + bm(i))/(bp(i) - bm(i))
+         flx(i,1+4*(j-1):4+4*(j-1)) = 0.5 * (fl + fr) + (fl - fr) * tmp
+
+      end do
    end do
 end subroutine riemann_hlle
 

@@ -38,7 +38,7 @@ module scr_helpers
 
    private
 
-   public :: update_rotation_matrix, update_interaction_term, update_vdiff, care_positives
+   public :: update_rotation_matrix, update_interaction_term, update_vdiff, care_positives,sanitize_scr_helper_container
 
 contains
 
@@ -392,7 +392,7 @@ contains
             & cg%w(wna%ind(sgm_diff))%arr(i : 3*(scrind%stcosm - 1) + i : 3 ,:,:,: ) * &
             & cg%w(wna%ind(sgm_adv))%arr(i : 3*(scrind%stcosm - 1) + i : 3 ,:,:,: ) / &
             & (cg%w(wna%ind(sgm_diff))%arr(i : 3*(scrind%stcosm - 1) + i : 3 ,:,:,: ) + &
-            &  cg%w(wna%ind(sgm_diff))%arr(i : 3*(scrind%stcosm - 1) + i : 3 ,:,:,: ))
+            &  cg%w(wna%ind(sgm_adv))%arr(i : 3*(scrind%stcosm - 1) + i : 3 ,:,:,: ))
          end do
       end if
 
@@ -431,7 +431,6 @@ contains
             end do
          end do
       endif
-      write(222,*) cg%w(wna%ind(v_diff))%arr(1,:,:,:) 
    end subroutine update_vdiff
 
    subroutine care_positives(cg, istep)
@@ -459,4 +458,27 @@ contains
             cg%w(scri)%arr(iarr_all_escr,:,:,:) = max(floorescr,cg%w(scri)%arr(iarr_all_escr,:,:,:)) 
       endif
    end subroutine care_positives
+
+
+
+   subroutine sanitize_scr_helper_container(cg)
+      use grid_cont,          only: grid_container
+      use named_array_list,   only: wna
+      use constants,          only: gpc, scrh, bgpc, uh_n, fluid_n, sgm_adv, sgm_diff
+
+      implicit none
+
+      type(grid_container), pointer, intent(in) :: cg
+
+      cg%w(wna%ind(scrh))%arr(:,:,:,:) = cg%scr(:,:,:,:)
+      
+      cg%w(wna%ind(bgpc))%arr(:,:,:,:) = 0.0
+
+      cg%w(wna%ind(sgm_adv))%arr(:,:,:,:) = 0.0
+      cg%w(wna%ind(sgm_diff))%arr(:,:,:,:) = 0.0
+
+      cg%w(wna%ind(gpc))%arr(:,:,:,:) = 0.0
+
+   end subroutine sanitize_scr_helper_container
+
 end module scr_helpers

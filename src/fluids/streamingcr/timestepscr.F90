@@ -64,19 +64,19 @@ subroutine timestep_scr(dt)
    type(grid_container),  pointer :: cg
    integer :: dir
 
-   dt_local_min = huge(1.0_dp)
+   dt_local_min = huge(1.0)
 
    cgl => leaves%first
    do while (associated(cgl))
       cg => cgl%cg
 
       ! reset per patch
-      dt_patch = huge(1.0_dp)
+      dt_patch = huge(1.0)
 
       do dir = xdim, zdim
          if (.not. dom%has_dir(dir)) cycle
          ! isotropic closure: sqrt(f_ii)=1/sqrt(3)
-         dt_patch = min(dt_patch, cg%dl(dir) / (vm / sqrt(3.0_dp)))
+         dt_patch = min(dt_patch, cg%dl(dir) / (vm / sqrt(3.0)))
       end do
 
       dt_local_min = min(dt_local_min, dt_patch)
@@ -87,7 +87,7 @@ subroutine timestep_scr(dt)
    ! global min over ranks, in place
    call piernik_MPI_Allreduce(dt_local_min, pMIN)
 
-   dt =  min(dt, dt_local_min)
+   dt =  cfl* min(dt, dt_local_min)
 end subroutine timestep_scr
 
 end module timestepscr

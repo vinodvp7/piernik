@@ -47,47 +47,42 @@ contains
       use grid_cont,        only: grid_container
       use named_array_list, only: wna, qna
       use constants,        only: pdims, ORTHO1, ORTHO2, I_ONE, LO, HI, scrh, &
-      &                           first_stage, xdim, ydim, zdim, ndims, v_diff, I_THREE, uh_n
+      &                           first_stage, xdim, ydim, zdim, ndims, I_THREE,v_diff, uh_n
       use global,           only: integration_order,nstep
       use domain,           only: dom
-      use fluidindex,       only: iarr_all_swp, scrind
+      use fluidindex,       only: iarr_all_swp, scrind, iarr_all_dn, iarr_all_mx,iarr_all_scr_swp
       use fluxtypes,        only: ext_fluxes
       use diagnostics,      only: my_allocate, my_deallocate
-      use fluidindex,       only: iarr_all_scr_swp, iarr_all_dn, iarr_all_mx, iarr_all_swp
       use initstreamingcr,  only: vm
-      use scr_helpers,      only: update_vdiff
 
       implicit none
 
       type(grid_container), pointer, intent(in) :: cg
       integer,                       intent(in) :: istep
 
-      integer                                    :: i1, i2,i
-      integer(kind=4)                            :: scri, ddim, fldi
-      real, dimension(:,:),allocatable           :: u, vdiff, vdiffx, uscr
-      real, dimension(:,:), pointer              :: pu, pscr
-      real, allocatable, target                  :: vx(:)
+      integer                                    :: i1, i2
+      integer(kind=4)                            :: uhi, ddim,scri
+      real, dimension(:,:),allocatable           :: u, int_s, int_coef, uf,vdiff,vdiff1d
+      real, dimension(:,:), pointer              :: pu,pf
+      real, allocatable                          :: vx(:)
       real, dimension(:,:), pointer              :: pflux
       real, dimension(:),   pointer              :: cs2
       real, dimension(:,:),allocatable           :: flux
       real, dimension(:,:),allocatable           :: tflux
       type(ext_fluxes)                           :: eflx
 
-      call update_vdiff(cg, istep)
-
+      uhi  = wna%ind(uh_n)
       scri = wna%ind(scrh)
-      fldi = wna%ind(uh_n)
-
       do ddim=xdim,zdim
 
          if (.not. dom%has_dir(ddim)) cycle
-         call my_allocate(uscr,[cg%n_(ddim), size(cg%scr,1,kind=4) + 1])
-         call my_allocate(u,[cg%n_(ddim), size(cg%u,1,kind=4)])
-         call my_allocate(flux,[size(uscr, 1,kind=4)-I_ONE,size(uscr, 2,kind=4)-I_ONE])
-         call my_allocate(tflux,[size(uscr, 2,kind=4)-I_ONE,size(uscr, 1,kind=4)])
+         call my_allocate(uf,[cg%n_(ddim), size(cg%u,1,kind=4)])
+         call my_allocate(u,[cg%n_(ddim), size(cg%scr,1,kind=4)])
+         call my_allocate(flux,[size(u, 1,kind=4)-I_ONE,size(u, 2,kind=4)])
+         call my_allocate(tflux,[size(u, 2,kind=4),size(u, 1,kind=4)])
          call my_allocate(vdiff, [ndims * scrind%stcosm,cg%n_(ddim)])
-         call my_allocate(vdiffx, [cg%n_(ddim) , scrind%stcosm])        ! interaction coefficient along one dimension for all species
-
+         call my_allocate(vdiff1d, [cg%n_(ddim) , scrind%stcosm])        ! interaction coefficient along one dimension for all species
+         call my_allocate(vx,[cg%n_(ddim)])
          do i2 = cg%ijkse(pdims(ddim, ORTHO2), LO), cg%ijkse(pdims(ddim, ORTHO2), HI)
             do i1 = cg%ijkse(pdims(ddim, ORTHO1), LO), cg%ijkse(pdims(ddim, ORTHO1), HI)
 
@@ -101,47 +96,41 @@ contains
 
                vdiff = cg%w(wna%ind(v_diff))%get_sweep(ddim, i1, i2)
 
-               vdiffx(:,:) = transpose(vdiff(ddim:3*(scrind%stcosm-1)+ddim:3,:) )
+               vdiff1d(:,:) = transpose(vdiff(ddim : I_THREE*(scrind%stcosm - I_ONE) + ddim : I_THREE,:) )
 
-               pscr => cg%w(scri)%get_sweep(ddim,i1,i2)
-               pu   => cg%w(fldi)%get_sweep(ddim,i1,i2)
+               pu => cg%w(scri)%get_sweep(ddim,i1,i2)
+               pf => cg%w(uhi)%get_sweep(ddim,i1,i2)
 
                if (istep == first_stage(integration_order) .or. integration_order < 2 ) then
-                  pscr => cg%w(wna%scr)%get_sweep(ddim,i1,i2)
-                  pu   => cg%w(wna%fi)%get_sweep(ddim,i1,i2)
+                  pu => cg%w(wna%scr)%get_sweep(ddim,i1,i2)
+                  pf => cg%w(wna%fi)%get_sweep(ddim,i1,i2)
                endif
 
-               u(:, iarr_all_swp(ddim,:)) = transpose(pu(:,:))
-               vx = u(:, iarr_all_mx(1)) / u(:, iarr_all_dn(1))
-
-               uscr(:, iarr_all_scr_swp(ddim,:)) = transpose(pscr(:,:))
-
-               uscr(:,size(cg%scr,1,kind=4) + 1) = vx(:)              ! last column is fluid velocity
+               u(:, iarr_all_scr_swp(ddim,:)) = transpose(pu(:,:))
+               uf(:, iarr_all_swp(ddim,:)) = transpose(pf(:,:))
+               vx(:) = uf(:,iarr_all_mx(1))/uf(:,iarr_all_dn(1))
 
 
                call cg%set_fluxpointers(ddim, i1, i2, eflx)
 
-               call solve_scr(uscr, vdiffx, eflx, flux)
+               call solve_scr(u, vdiff1d,eflx, flux,vx)
 
                call cg%save_outfluxes(ddim, i1, i2, eflx)
 
                tflux(:,2:) = transpose(flux(:, iarr_all_scr_swp(ddim,:)))
                tflux(:,1) = 0.0
                pflux(:,:) = tflux
-               do i=lbound(pflux,2),ubound(pflux,2)
-                  write(115,*) pflux(2,i)
-               enddo
             enddo
          enddo
-         call my_deallocate(uscr); call my_deallocate(u)
+         call my_deallocate(u);  call my_deallocate(uf)
          call my_deallocate(flux) 
-         call my_deallocate(tflux)
-         call my_deallocate(vdiffx); call my_deallocate(vdiff)
+         call my_deallocate(tflux); call my_deallocate(vx)
+         call my_deallocate(vdiff1d); call my_deallocate(vdiff)
       enddo
       call apply_flux(cg,istep)
    end subroutine update_scr_fluid
 
-   subroutine solve_scr(ui, vdiffx, eflx, flx)
+   subroutine solve_scr(ui, vdiff, eflx, flx, vx)
 
       use fluxtypes,      only: ext_fluxes
       use interpolations, only: interpol_scr
@@ -150,21 +139,23 @@ contains
       implicit none
 
       real, dimension(:,:),        intent(in)    :: ui           !< cell-centered intermediate fluid states
-      real, dimension(:,:),        intent(in)    :: vdiffx       !< square of local isothermal sound speed
+      real, dimension(:,:),        intent(in)    :: vdiff   !< square of local isothermal sound speed
       type(ext_fluxes),            intent(inout) :: eflx         !< external fluxes
       real, dimension(:,:),        intent(inout) :: flx          !< Output flux of a 1D chain of a domain at a fixed ortho location of that dimension
+      real, dimension(:),          intent(in)    :: vx
 
       ! left and right states at interfaces 1 .. n-1
-      real, dimension(size(ui, 1)-1, size(ui, 2)), target :: ql, qr
-
+      real, dimension(size(ui, 1)-1, size(ui, 2) + 1), target :: ql, qr   ! +1 to include  vx as well
+      real, dimension(size(ui,1),size(ui,2) +1 ) :: uu
       ! updates required for higher order of integration will likely have shorter length
-      if (size(flx,dim=1) /= size(ui, 1)-1 .or. size(flx,dim=2) /= size(ui, 2)-1 ) then
+      if (size(flx,dim=1) /= size(ui, 1)-1 .or. size(flx,dim=2) /= size(ui, 2)  ) then
          call die("[streaming_cr_hlle:solve_scr] flux array dimension does not match the expected dimensions")
       endif
+      uu(:,1:size(ui, 2)) = ui(:,:)
+      uu(:,size(ui, 2)+1) = vx(:)
+      call interpol_scr(uu, ql, qr)
 
-      call interpol_scr(ui, ql, qr)
-
-      call riemann_hlle(ql, qr, vdiffx, flx) ! Now we advance the left and right states by a timestep.
+      call riemann_hlle(ql, qr, vdiff, flx) ! Now we advance the left and right states by a timestep.
 
       if (associated(eflx%li)) flx(eflx%li%index, :) = eflx%li%uflx
       if (associated(eflx%ri)) flx(eflx%ri%index, :) = eflx%ri%uflx
@@ -304,7 +295,7 @@ subroutine riemann_hlle(ql, qr, vdiff, flx)
          fl(2) = vm / 3.0  * ql(i,1 + 4 * (j-1)) - bm(i) * ql(i,2+ 4 * (j-1))
          fr(2) = vm / 3.0  * qr(i,1 + 4 * (j-1)) - bp(i) * qr(i,2+ 4 * (j-1))
          fl(3) =  - bm(i) * ql(i,3+ 4 * (j-1)) ; fr(3) = - bp(i) * qr(i,3+ 4 * (j-1)) 
-         fr(4) =  - bm(i) * ql(i,4+ 4 * (j-1)) ; fr(4) = - bp(i) * qr(i,4+ 4 * (j-1)) 
+         fl(4) =  - bm(i) * ql(i,4+ 4 * (j-1)) ; fr(4) = - bp(i) * qr(i,4+ 4 * (j-1)) 
          tmp = 0.0
          if (abs(bp(i) - bm(i)) > 1e-20) tmp = 0.5*(bp(i) + bm(i))/(bp(i) - bm(i))
          flx(i,1+4*(j-1):4+4*(j-1)) = 0.5 * (fl + fr) + (fl - fr) * tmp

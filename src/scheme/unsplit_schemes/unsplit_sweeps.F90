@@ -111,6 +111,9 @@ contains
       use pppmpi,            only: req_ppp
       use sources,           only: prepare_sources
       use solvecg_unsplit,   only: solve_cg_unsplit
+#ifdef STREAM_CR
+      use scr_helpers,           only: sanitize_scr_helper_container
+#endif /* STREAM_CR */
 
       implicit none
 
@@ -135,6 +138,9 @@ contains
       cgl => leaves%first
       do while (associated(cgl))
          call prepare_sources(cgl%cg)
+#ifdef STREAM_CR
+         call  sanitize_scr_helper_container(cgl%cg)
+#endif /* STREAM_CR */
          cgl => cgl%nxt
       enddo
       call ppp_main%stop(init_src_label)

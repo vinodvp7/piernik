@@ -47,13 +47,13 @@ contains
       use grid_cont,        only: grid_container
       use named_array_list, only: wna, qna
       use constants,        only: pdims, ORTHO1, ORTHO2, I_ONE, LO, HI, scrh, &
-      &                           first_stage, xdim, ydim, zdim, ndims, v_diff, I_THREE
+      &                           first_stage, xdim, ydim, zdim, ndims, v_diff, I_THREE, uh_n
       use global,           only: integration_order,nstep
       use domain,           only: dom
       use fluidindex,       only: iarr_all_swp, scrind
       use fluxtypes,        only: ext_fluxes
       use diagnostics,      only: my_allocate, my_deallocate
-      use fluidindex,       only: iarr_all_scr_swp
+      use fluidindex,       only: iarr_all_scr_swp, iarr_all_dn, iarr_all_mx, iarr_all_swp
       use initstreamingcr,  only: vm
       use scr_helpers,      only: update_vdiff
 
@@ -63,9 +63,10 @@ contains
       integer,                       intent(in) :: istep
 
       integer                                    :: i1, i2
-      integer(kind=4)                            :: uhi, ddim
-      real, dimension(:,:),allocatable           :: u, vdiff, vdiffx
-      real, dimension(:,:), pointer              :: pu
+      integer(kind=4)                            :: scri, ddim, fldi
+      real, dimension(:,:),allocatable           :: u, vdiff, vdiffx, uscr
+      real, dimension(:,:), pointer              :: pu, pscr
+      real, allocatable, target                  :: vx(:)
       real, dimension(:,:), pointer              :: pflux
       real, dimension(:),   pointer              :: cs2
       real, dimension(:,:),allocatable           :: flux
@@ -74,7 +75,8 @@ contains
 
       call update_vdiff(cg, istep)
 
-      uhi = wna%ind(scrh)
+      scri = wna%ind(scrh)
+      fldi = wna%ind(uh_n)
 
       do ddim=xdim,zdim
 
@@ -100,14 +102,24 @@ contains
 
                vdiffx(:,:) = transpose(vdiff(ddim:3*(scrind%stcosm-1)+ddim:3,:) )
 
-               pu => cg%w(uhi)%get_sweep(ddim,i1,i2)
-               if (istep == first_stage(integration_order) .or. integration_order < 2 ) pu => cg%w(wna%scr)%get_sweep(ddim,i1,i2)
-               
-               u(:, iarr_all_scr_swp(ddim,:)) = transpose(pu(:,:))
+               pscr => cg%w(scri)%get_sweep(ddim,i1,i2)
+               pu   => cg%w(fldi)%get_sweep(ddim,i1,i2)
+
+               if (istep == first_stage(integration_order) .or. integration_order < 2 ) then
+                  pscr => cg%w(wna%scr)%get_sweep(ddim,i1,i2)
+                  pu   => cg%w(wna%fi)%get_sweep(ddim,i1,i2)
+               endif
+
+               u(:, iarr_all_swp(ddim,:)) = transpose(pu(:,:))
+               vx = u(:, iarr_all_mx(1)) / u(:, iarr_all_dn(1))
+               uscr(:, iarr_all_scr_swp(ddim,:)) = transpose(pscr(:,:))
+
+               uscr(:,size(cg%scr,1,kind=4) + 1) = vx(:)              ! last column is fluid velocity
+
 
                call cg%set_fluxpointers(ddim, i1, i2, eflx)
 
-               call solve_scr(u, vdiffx,eflx, flux, cg%dl(ddim))
+               call solve_scr(u, vdiffx, eflx, flux)
 
                call cg%save_outfluxes(ddim, i1, i2, eflx)
 
@@ -119,13 +131,12 @@ contains
          call my_deallocate(u)
          call my_deallocate(flux) 
          call my_deallocate(tflux)
-         call my_deallocate(vdiffx); call my_deallocate(int_s)
+         call my_deallocate(vdiffx); call my_deallocate(vdiff)
       enddo
       call apply_flux(cg,istep)
-      call update_gpc(cg,istep)
    end subroutine update_scr_fluid
 
-   subroutine solve_scr(ui, int_coef, eflx, flx, dl)
+   subroutine solve_scr(ui, vdiffx, eflx, flx)
 
       use fluxtypes,      only: ext_fluxes
       use interpolations, only: interpol_scr
@@ -134,10 +145,9 @@ contains
       implicit none
 
       real, dimension(:,:),        intent(in)    :: ui           !< cell-centered intermediate fluid states
-      real, dimension(:,:),        intent(in)    :: int_coef   !< square of local isothermal sound speed
+      real, dimension(:,:),        intent(in)    :: vdiffx       !< square of local isothermal sound speed
       type(ext_fluxes),            intent(inout) :: eflx         !< external fluxes
       real, dimension(:,:),        intent(inout) :: flx          !< Output flux of a 1D chain of a domain at a fixed ortho location of that dimension
-      real,                        intent(in)    :: dl
 
       ! left and right states at interfaces 1 .. n-1
       real, dimension(size(ui, 1)-1, size(ui, 2)), target :: ql, qr
@@ -149,7 +159,7 @@ contains
 
       call interpol_scr(ui, ql, qr)
 
-      call riemann_hlle(ql, qr, int_coef, flx,dl) ! Now we advance the left and right states by a timestep.
+      call riemann_hlle(ql, qr, vdiffx, flx) ! Now we advance the left and right states by a timestep.
 
       if (associated(eflx%li)) flx(eflx%li%index, :) = eflx%li%uflx
       if (associated(eflx%ri)) flx(eflx%ri%index, :) = eflx%ri%uflx
@@ -257,40 +267,41 @@ subroutine riemann_hlle(ql, qr, vdiff, flx)
    real, dimension(4)         :: fl, fr
 
    real, dimension(size(ql,1))     :: vl, vr, mean_adv, mean_diff, al, ar, bp, bm, vdiff_l, vdiff_r
-   integer :: nvar, nx
+   integer :: nvar, nx, i, j
    real:: tmp
    nx = size(ql,1)
    nvar = size(ql,2)
    vl(:) = ql(:,nvar)                   ! last term is vxl
    vr(:) = qr(:,nvar)                   ! last term is vrl
 
-   vdiff_l(2:) = vdiff(1:nx-1)
-   vdiff_l(1)  = vdiff(1)
-   vdiff_r(2:) = vdiff(2:nx)
-   vdiff_r(1)  = vdiff(1)
-
-   mean_adv  = 0.5 * ( vl + vr)
-   mean_diff = 0.5 * (vdiff_l + vdiff_r) 
-
-   al = min((mean_adv - mean_diff),(vl - vdiff_l))
-   ar = max((mean_adv + mean_diff),(vr + vdiff_r))
-
-   ar = min(ar,vm/sqrt(3.0))
-   al = max(al,-vm/sqrt(3.0))
-
-   bp = max(ar, 0.0)   
-   bm = min(al, 0.0)
-
    do concurrent(i = 1:size(flx,1), j = 1:scrind%stcosm)
-         fl(1) = ql(i,2 + 4 * (j-1)) * vm  - bm(i) * ql(i,1)
-         fr(1) = qr(i,2 + 4 * (j-1)) * vm  - bp(i) * qr(i,1)
-         fl(2) = vm / 3.0  * ql(i,1 + 4 * (j-1)) - bm(i) * ql(i,2)
-         fr(2) = vm / 3.0  * qr(i,1 + 4 * (j-1)) - bp(i) * qr(i,2)
-         fl(3) = 0.0 - bm(i) * ql(i,3) ; fr(3) = 0.0 - bp(i) * qr(i,3) 
-         fr(4) = 0.0 - bm(i) * ql(i,4) ; fr(4) = 0.0 - bp(i) * qr(i,4) 
-         tmp = 0.0
-         if (abs(bp(i) - bm(i)) > 1e-20) tmp = 0.5*(bp(i) + bm(i))/(bp(i) - bm(i))
-         flx(i,1+4*(j-1):4+4*(j-1)) = 0.5 * (fl + fr) + (fl - fr) * tmp
+
+      vdiff_l(2:) = vdiff(1:nx-1,j)
+      vdiff_l(1)  = vdiff(1,j)
+      vdiff_r(2:) = vdiff(2:nx,j)
+      vdiff_r(1)  = vdiff(1,j)
+
+      mean_adv  = 0.5 * ( vl + vr)
+      mean_diff = 0.5 * (vdiff_l + vdiff_r) 
+
+      al = min((mean_adv - mean_diff),(vl - vdiff_l))
+      ar = max((mean_adv + mean_diff),(vr + vdiff_r))
+
+      ar = min(ar,vm/sqrt(3.0))
+      al = max(al,-vm/sqrt(3.0))
+
+      bp = max(ar, 0.0)   
+      bm = min(al, 0.0)
+      fl(1) = ql(i,2 + 4 * (j-1)) * vm  - bm(i) * ql(i,1)
+      fr(1) = qr(i,2 + 4 * (j-1)) * vm  - bp(i) * qr(i,1)
+      fl(2) = vm / 3.0  * ql(i,1 + 4 * (j-1)) - bm(i) * ql(i,2)
+      fr(2) = vm / 3.0  * qr(i,1 + 4 * (j-1)) - bp(i) * qr(i,2)
+      fl(3) =  - bm(i) * ql(i,3) ; fr(3) = - bp(i) * qr(i,3) 
+      fr(4) =  - bm(i) * ql(i,4) ; fr(4) = - bp(i) * qr(i,4) 
+      tmp = 0.0
+      if (abs(bp(i) - bm(i)) > 1e-20) tmp = 0.5*(bp(i) + bm(i))/(bp(i) - bm(i))
+      flx(i,1+4*(j-1):4+4*(j-1)) = 0.5 * (fl + fr) + (fl - fr) * tmp
+
    end do
 end subroutine riemann_hlle
 

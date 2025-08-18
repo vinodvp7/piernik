@@ -38,7 +38,7 @@ module scr_helpers
 
    private
 
-   public :: update_rotation_matrix, update_interaction_term
+   public :: update_rotation_matrix, update_interaction_term, update_vdiff
 
 contains
 
@@ -194,7 +194,8 @@ contains
 
       use grid_cont,          only: grid_container
       use named_array_list,   only: wna
-      use constants,          only: xdim, ydim, zdim, first_stage, magh_n, uh_n, scrh, sgm_adv, sgm_diff 
+      use constants,          only: xdim, ydim, zdim, first_stage, magh_n, uh_n, scrh, sgm_adv, sgm_diff,&
+      &                             bgpc
       use global,             only: integration_order
       use initstreamingcr,    only: sigma_paral, sigma_huge, sigma_perp1, sigma_perp2,&
       &                             disable_streaming, vm
@@ -206,7 +207,7 @@ contains
       integer,                       intent(in) :: istep
       logical,                       intent(in) :: at_source
 
-      integer :: sgmd, sgma, magi, scri, fldi
+      integer :: sgmd, sgma, magi, scri, fldi, ns
 
       sgmd = wna%ind(sgm_diff)
       sgma = wna%ind(sgm_adv)
@@ -222,9 +223,11 @@ contains
 
       if (.not. at_source) call update_bdotgradpc(cg, istep)
 
-      cg%w(sgmd)%arr(xdim : 3*(scrind%stcosm - 1) + xdim ,:,:,:) = sigma_paral(:)
-      cg%w(sgmd)%arr(ydim : 3*(scrind%stcosm - 1) + ydim ,:,:,:) = sigma_perp1(:)
-      cg%w(sgmd)%arr(zdim : 3*(scrind%stcosm - 1) + zdim ,:,:,:) = sigma_perp2(:)
+      do ns = 1, scrind%stcosm
+         cg%w(sgmd)%arr(3*(ns - 1) + xdim ,:,:,:) = sigma_paral(ns)
+         cg%w(sgmd)%arr(3*(ns - 1) + ydim ,:,:,:) = sigma_perp1(ns)
+         cg%w(sgmd)%arr(3*(ns - 1) + zdim ,:,:,:) = sigma_perp2(ns)
+      end do
 
       if (disable_streaming) then
          cg%w(sgma)%arr(xdim : 3*(scrind%stcosm - 1) + xdim ,:,:,:) = sigma_huge
@@ -232,7 +235,7 @@ contains
          do ns = 1, scrind%stcosm 
             cg%w(sgma)%arr(3*(ns - 1) + xdim ,:,:,:) = &
          &  abs(cg%w(wna%ind(bgpc))%arr(ns,:,:,:)) * sqrt(cg%w(fldi)%arr(iarr_all_dn(1) ,:,:,:)) * vm / &
-         &  (4.0/3.0 * cg%w(bhi)%arr(xdim:zdim, :,:,:)**2 * cg%w(scri)%arr(iarr_all_escr(ns),:,:,:))   
+         &  (4.0/3.0 * sum(cg%w(magi)%arr(xdim:zdim, :,:,:)**2, dim=1) * cg%w(scri)%arr(iarr_all_escr(ns),:,:,:))   
          end do
       endif
 
@@ -245,16 +248,18 @@ contains
 
       use grid_cont,          only: grid_container
       use named_array_list,   only: wna
-      use constants,          only: xdim, ydim, zdim, first_stage, magh_n, scrh, gpc, bgpc
+      use constants,          only: xdim, ydim, zdim, first_stage, magh_n, scrh, gpc, bgpc, &
+      &                             HI, LO
       use global,             only: integration_order
-      use fluidindex,         only: scrind
+      use fluidindex,         only: scrind, iarr_all_escr
+      use domain,             only: dom
 
       implicit none
 
       type(grid_container), pointer, intent(in) :: cg
       integer,                       intent(in) :: istep
 
-      integer :: magi, scri, gpci, nx, ny, nz
+      integer :: magi, scri, gpci, nx, ny, nz, i, j, k, ns
 
       magi   = wna%ind(magh_n)
       scri   = wna%ind(scrh)
@@ -372,7 +377,7 @@ contains
       type(grid_container), pointer, intent(in) :: cg
       integer,                       intent(in) :: istep
 
-      integer :: i, scri, fldi
+      integer :: i, scri, fldi, ns
    
       scri   = wna%ind(scrh)
       fldi   = wna%ind(uh_n)
@@ -420,7 +425,7 @@ contains
       if (.not. disable_stabilizer) then
          do ns = 1, scrind%stcosm
             do i = xdim, zdim
-               cg%w(wna%ind(v_diff))%arr(3*ns + i,,:,:,:)  = cg%w(wna%ind(v_diff))%arr(3*ns + i,:,:,:) +&
+               cg%w(wna%ind(v_diff))%arr(3*ns + i,:,:,:)  = cg%w(wna%ind(v_diff))%arr(3*ns + i,:,:,:) +&
                & sqrt(gamma_scr(ns) * 1.0/3.0 * cg%w(scri)%arr(iarr_all_escr(ns),:,:,:)/&
                &                                  cg%w(scri)%arr(iarr_all_dn(1),:,:,:))
             end do

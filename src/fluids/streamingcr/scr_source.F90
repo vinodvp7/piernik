@@ -234,7 +234,10 @@ contains
       iarr_all_fscr(ydim,:) = iarr_all_yfscr(:)
       iarr_all_fscr(zdim,:) = iarr_all_zfscr(:)
       T=> null()
-
+      magi   = wna%bi
+      if (istep == first_stage(integration_order) .or. integration_order < 2 )  then
+         magi   = wna%ind(magh_n)
+      endif
       active = [ dom%has_dir(xdim), dom%has_dir(ydim), dom%has_dir(zdim) ]
 
       F(xdim)%flx => cg%scrfx  ;  F(ydim)%flx => cg%scrgy   ;  F(zdim)%flx => cg%scrhz
@@ -271,7 +274,7 @@ contains
          do i = xdim,zdim
             cg%w( wna%ind(bgpc))%arr(ns,:,:,:) = &
             &  cg%w( wna%ind(bgpc))%arr(ns,:,:,:) + &
-            &  cg%w(gpci)%arr(3*(ns - 1) + i ,:,:,:) * cg%w(magi)%arr(i,:,:,:)
+            &  cg%w(wna%ind(gpc))%arr(3*(ns - 1) + i ,:,:,:) * cg%w(magi)%arr(i,:,:,:)
          end do
       end do
 

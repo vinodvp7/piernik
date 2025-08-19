@@ -426,7 +426,7 @@ contains
       if (.not. disable_stabilizer) then
          do ns = 1, scrind%stcosm
             do i = xdim, zdim
-               cg%w(wna%ind(v_diff))%arr(3*ns + i,:,:,:)  = cg%w(wna%ind(v_diff))%arr(3*ns + i,:,:,:) +&
+               cg%w(wna%ind(v_diff))%arr(3*(ns-1) + i,:,:,:)  = cg%w(wna%ind(v_diff))%arr(3*(ns-1) + i,:,:,:) +&
                & sqrt(gamma_scr(ns) * 1.0/3.0 * cg%w(scri)%arr(iarr_all_escr(ns),:,:,:)/&
                &                                  cg%w(scri)%arr(iarr_all_dn(1),:,:,:))
             end do

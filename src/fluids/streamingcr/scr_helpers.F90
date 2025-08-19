@@ -38,7 +38,8 @@ module scr_helpers
 
    private
 
-   public :: update_rotation_matrix, update_interaction_term, update_vdiff, care_positives,sanitize_scr_helper_container
+   public :: update_rotation_matrix, update_interaction_term, update_vdiff, care_positives,sanitize_scr_helper_container,&
+   &         rot_to_b, rot_from_b
 
 contains
 
@@ -480,5 +481,33 @@ contains
       cg%w(wna%ind(gpc))%arr(:,:,:,:) = 0.0
 
    end subroutine sanitize_scr_helper_container
+
+   pure elemental subroutine rot_to_b(vx,vy,vz, cp,sp,ct,st)
+      real, intent(inout) :: vx,vy,vz      ! overwritten in-place
+      real, intent(in)    :: cp,sp,ct,st   ! rotation angles
+      real :: tmpx,tmpy,tmpz
+
+      tmpx =  st*cp*vx + st*sp*vy + ct*vz
+      tmpy =     -sp*vx +     cp*vy
+      tmpz = -ct*cp*vx - ct*sp*vy + st*vz
+
+      vx = tmpx
+      vy = tmpy
+      vz = tmpz
+   end subroutine rot_to_b
+
+   pure elemental subroutine rot_from_b(vx,vy,vz, cp,sp,ct,st)
+      real, intent(inout) :: vx,vy,vz
+      real, intent(in)    :: cp,sp,ct,st
+      real :: tmpx,tmpy,tmpz
+
+      tmpx =  cp*st*vx - sp*vy - cp*ct*vz
+      tmpy =  sp*st*vx + cp*vy - sp*ct*vz
+      tmpz =       ct*vx        +      st*vz
+
+      vx = tmpx
+      vy = tmpy
+      vz = tmpz
+   end subroutine rot_from_b
 
 end module scr_helpers

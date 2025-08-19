@@ -78,7 +78,7 @@ contains
 #endif /* !MAGNETIC */
       uhi = wna%ind(uh_n)
 #ifdef STREAM_CR
-    !  call apply_scr_source(cg,istep)              !< Call streaming CR source term 
+      !call apply_scr_source(cg,istep)              !< Call streaming CR source term 
 #endif /* STREAM_CR */
       do ddim=xdim,zdim
          if (.not. dom%has_dir(ddim)) cycle

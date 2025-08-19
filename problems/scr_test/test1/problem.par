@@ -1,5 +1,5 @@
 $BASE_DOMAIN
-  n_d = 256,1,1
+  n_d = 1024,1,1
   nb  = 4
   bnd_xl = 'out'
   bnd_xr = 'out'
@@ -29,13 +29,13 @@ $RESTART_CONTROL
 
 $END_CONTROL
   tend = 0.1
-  nend = 100
+  nend = 100000
 /
 
 $OUTPUT_CONTROL
    problem_name = 'scrtst1'
    run_id = 't1d'
-   dt_hdf = 5.4126587736527405E-04
+   dt_hdf = 0.05
    dt_res = 0.0
    dt_log = 0.02
    dt_tsl = 0.02
@@ -52,16 +52,16 @@ $STREAMING_CR
    ord_scr_grad            = 4
    disable_en_source       = .true.
    disable_feedback        = .true.      ! feedback to MHD gas
-   disable_stabilizer     = .true.
+   disable_stabilizer      = .true.
 /
 $NUMERICAL_SETUP
-  cfl     = 0.4
+  cfl     = 0.2
   smalld  = 1.e-5
   smallei = 1.e-5
   limiter = 'minmod'
   solver_type = 'unsplit'
   solver_str = 'riemann'
-  integration_order = 1
+  integration_order = 2
 /
 
 $PROBLEM_CONTROL

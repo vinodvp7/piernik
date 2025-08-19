@@ -69,9 +69,9 @@ contains
       implicit none
 
       a  = 40.0
-      b  = 0.0
+      b  = 40.0
       bx = 1.0
-      by = 0.0
+      by = 1.0
 
       if (master) then
 

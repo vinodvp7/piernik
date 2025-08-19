@@ -160,6 +160,9 @@ contains
          call my_deallocate(b); call my_deallocate(b_psi); call my_deallocate(tbflux)
          call my_deallocate(bflux)
       enddo
+      call apply_flux(cg,istep,.true.)
+      call apply_flux(cg,istep,.false.)
+      call update_psi(cg,istep)
 #ifdef STREAM_CR
       call update_interaction_term(cg, istep, .false.)
       call update_rotation_matrix(cg, istep)
@@ -167,9 +170,6 @@ contains
       call update_scr_fluid(cg, istep)
       !call care_positives(cg, istep)
 #endif /* STREAM_CR */
-      call apply_flux(cg,istep,.true.)
-      call apply_flux(cg,istep,.false.)
-      call update_psi(cg,istep)
       call apply_source(cg,istep)
       nullify(cs2)
 

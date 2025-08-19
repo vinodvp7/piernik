@@ -49,14 +49,15 @@ module initstreamingcr
    real                                    :: vm                  !< maximum speed in the simulation which controls the streaming CR timestepping
    logical                                 :: use_floorescr       !< floor streaming CR energy density or not                               
    real, dimension(10)                     :: gamma_scr           !< Adiabatic coefficient of streaming cosmic ray species 
-   real, dimension(10)                     :: sigma_paral         !< diffusion coefficient in the parallel direction \sigma_c_primed. Magic number 10 for maximum number of non-spectral species.You can always go beyond this by changing it. But rbuff limits this number even lower
-   real, dimension(10)                     :: sigma_perp1         !< diffusion coefficient in the perpendicular direction \sigma_c_primed. Magic number 10 for maximum number of non-spectral species.You can always go beyond this by changing it. But rbuff limits this number even lower
-   real, dimension(10)                     :: sigma_perp2         !< diffusion coefficient in the perpendicular direction \sigma_c_primed. Magic number 10 for maximum number of non-spectral species.You can always go beyond this by changing it. But rbuff limits this number even lower   
+   real, dimension(10)                     :: sigmax              !< diffusion coefficient in the parallel direction \sigma_c_primed. Magic number 10 for maximum number of non-spectral species.You can always go beyond this by changing it. But rbuff limits this number even lower
+   real, dimension(10)                     :: sigmay              !< diffusion coefficient in the perpendicular direction \sigma_c_primed. Magic number 10 for maximum number of non-spectral species.You can always go beyond this by changing it. But rbuff limits this number even lower
+   real, dimension(10)                     :: sigmaz              !< diffusion coefficient in the perpendicular direction \sigma_c_primed. Magic number 10 for maximum number of non-spectral species.You can always go beyond this by changing it. But rbuff limits this number even lower   
    integer                                 :: ord_scr_grad        !< order for gradient of Pc. Possible 2 and 4. 2 works for most cases. If 4 then nb > 2 else fall back to gradient order 2 
    logical                                 :: disable_en_source   !< Whether streaming cosmic ray energy source needs to be added 
    logical                                 :: disable_feedback    !< Whether streaming cosmic ray feedback momentum and energy change to the gas. If true and energy source false then only momentum will be feedback
    logical                                 :: disable_streaming   !< Whether cosmic rays stream along B 
    logical                                 :: disable_stabilizer  ! < whether to add cr sound speed when calculating v_diff
+   logical                                 :: sigmax_parallel     ! < whether to add cr sound speed when calculating v_diff
    real, parameter                         :: tau_asym = 1e-3     ! < Used in the calculation of R in scr_hlle where below this value the function is taylor expanded in tau
    real, parameter                         :: sigma_huge = 1e10
 contains
@@ -74,9 +75,9 @@ contains
       implicit none
       integer(kind=4) :: nl,nn,icr
 
-      namelist /STREAMING_CR/ nscr, floorescr, use_floorescr, sigma_paral, sigma_perp1, sigma_perp2, &
+      namelist /STREAMING_CR/ nscr, floorescr, use_floorescr, sigmax, sigmay, sigmaz, &
       &                       vm, ord_scr_grad, disable_en_source, disable_feedback, disable_streaming,&
-      &                       gamma_scr, disable_stabilizer
+      &                       gamma_scr, disable_stabilizer, sigmax_parallel
                               
 
       nscr                     = 1
@@ -85,14 +86,15 @@ contains
       vm                       = 100.0
       use_floorescr            = .true.
       gamma_scr(1:nscr)        = 4./3.
-      sigma_paral(1:nscr)      = 1e10
-      sigma_perp1(1:nscr)      = 1e10
-      sigma_perp2(1:nscr)      = 1e10
+      sigmax(1:nscr)           = 1e10
+      sigmay(1:nscr)           = 1e10
+      sigmaz(1:nscr)           = 1e10
       disable_en_source        = .false.
       disable_feedback         = .false.
       disable_streaming        = .false.
       disable_stabilizer       = .false.
-
+      sigmax_parallel          = .false.
+      
       if (master) then
          if (.not.nh%initialized) call nh%init()
          open(newunit=nh%lun, file=nh%tmp1, status="unknown")
@@ -124,8 +126,9 @@ contains
          lbuff(3) = disable_feedback
          lbuff(4) = disable_streaming 
          lbuff(5) = disable_stabilizer
+         lbuff(6) = sigmax_parallel
 
-         nl       = 5                                     ! this must match the last lbuff() index above
+         nl       = 6                                     ! this must match the last lbuff() index above
          nn       = count(rbuff(:) < huge(1.), kind=4)    ! this must match the last rbuff() index above
          ibuff(ubound(ibuff, 1)    ) = nn
          ibuff(ubound(ibuff, 1) - 1) = nl
@@ -133,11 +136,11 @@ contains
          if (nn + 2 * nscr > ubound(rbuff, 1)) call die("[initstreamingcr:init_streamingcr] rbuff size exceeded.")
          if (nl  > ubound(lbuff, 1)) call die("[initstreamingcr:init_streamingcr] lbuff size exceeded.")
          
-         rbuff(nn+1:nn+nscr) = sigma_paral(1:nscr)
+         rbuff(nn+1:nn+nscr) = sigmax(1:nscr)
          nn = nn+nscr
-         rbuff(nn+1:nn+nscr) = sigma_perp1(1:nscr)
+         rbuff(nn+1:nn+nscr) = sigmay(1:nscr)
          nn = nn+nscr
-         rbuff(nn+1:nn+nscr) = sigma_perp2(1:nscr)
+         rbuff(nn+1:nn+nscr) = sigmaz(1:nscr)
          nn = nn+nscr
          rbuff(nn+1:nn+nscr) = gamma_scr(1:nscr)
       end if
@@ -160,15 +163,16 @@ contains
          disable_feedback    = lbuff(3)
          disable_streaming   = lbuff(4)          
          disable_stabilizer  = lbuff(5)  
+         sigmax_parallel     = lbuff(6)  
 
          nn                  = ibuff(ubound(ibuff, 1)    )    ! this must match the last rbuff() index above
          nl                  = ibuff(ubound(ibuff, 1) - 1)    ! this must match the last lbuff() index above 
           
-         sigma_paral(1:nscr)  = rbuff(nn+1:nn+nscr)
+         sigmax(1:nscr)  = rbuff(nn+1:nn+nscr)
          nn = nn + nscr
-         sigma_perp1(1:nscr)  = rbuff(nn+1:nn+nscr)
+         sigmay(1:nscr)  = rbuff(nn+1:nn+nscr)
          nn = nn + nscr
-         sigma_perp2(1:nscr)  = rbuff(nn+1:nn+nscr)
+         sigmaz(1:nscr)  = rbuff(nn+1:nn+nscr)
          nn = nn + nscr
          gamma_scr(1:nscr)    = rbuff(nn+1:nn+nscr)
       end if

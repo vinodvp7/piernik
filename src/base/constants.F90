@@ -273,6 +273,16 @@ module constants
    character(len=dsetnamelen), parameter :: nbdn_n  = "nbdn"    !< density from particles
    character(len=dsetnamelen), parameter :: prth_n  = "prth"    !< histogram of particles on the grid
 #endif /* NBODY */
+#ifdef STREAM_CR
+   character(len=dsetnamelen), parameter :: xsflx_n   = "xsflx"      !< X faced flux of streaming CR
+   character(len=dsetnamelen), parameter :: ysflx_n   = "ysflx"      !< Y faced flux of streaming CR
+   character(len=dsetnamelen), parameter :: zsflx_n   = "zsflx"      !< Z faced flux of streaming CR
+
+   character(len=dsetnamelen), parameter :: gpcr  = "gpcr"      !< gradient of Pc
+   character(len=dsetnamelen), parameter :: rtmt  = "rtmt"      !< Rotation matrix sine/cosine phi/theta
+   character(len=dsetnamelen), parameter :: sgmn  = "sgmn"      !< interaction coeffcient
+   character(len=dsetnamelen), parameter :: vdiff = "vdiff"     !< Diffusion velocity
+#endif /* STREAM_CR */
    ! misc
    character(len=dsetnamelen), parameter :: wcu_n   = "wcu"     !< (resistivity) COMMENT ME
    character(len=dsetnamelen), parameter :: cs_i2_n = "cs_iso2" !< map of imposed isothermal sound speed

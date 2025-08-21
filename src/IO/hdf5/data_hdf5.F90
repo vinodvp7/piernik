@@ -134,6 +134,23 @@ contains
             f%fu = "\rm{erg}/\rm{cm}^3"
             f%f2cgs = 1.0 / (erg/cm**3)
 #endif /* COSM_RAYS */
+#ifdef STREAM_CR
+         case ("escr")
+            f%fu = "\rm{erg}/\rm{cm}^3"
+            f%f2cgs = 1.0 / (erg/cm**3)
+         case ("xfscr","yfscr","zfscr")
+            f%fu = "\rm{erg}/\rm{cm}^2/\rm{s}"
+            f%f2cgs = 1.0 / (erg/(cm**2 * sek))
+         case ("xsigma","ysigma","zsigma")
+            f%fu = "\rm{erg}/\rm{cm}^3"
+            f%f2cgs = 1.0 / (erg/cm**3)
+         case ("rot_cosp","rot_sinp","rot_cost","rot_sint") ! Dimensionless sine and cosine elements in the 
+            f%fu = ""                                       ! rotation matrix
+            f%f2cgs = 1.0 
+         case ("gradpcx","gradpcy","gradpcz")
+            f%fu = "\rm{erg}/\rm{cm}^4"
+            f%f2cgs = 1.0 / (erg/cm**4)
+#endif /* STREAM_CR */
 #ifdef CRESP
          ! ToDo: Adopt for wider range
          case ("cr_e-n01" : "cr_e-n99")
@@ -369,6 +386,10 @@ contains
 #ifndef ISO
       use units,            only: kboltz, mH
 #endif /* !ISO */
+#ifdef STREAM_CR
+      use constants,        only: xdim, ydim, zdim, rtmt, gpcr, sgmn, vdiff, ndims
+      use named_array_list, only: wna
+#endif /* STREAM_CR */
 
       implicit none
 
@@ -497,6 +518,36 @@ contains
          case ("trcr")
             tab(:,:,:) = cg%u(flind%trc%beg, RNG)
 #endif /* TRACER */
+#ifdef STREAM_CR
+         case ("escr")
+            tab(:,:,:) = cg%u(flind%all_fluids(flind%fluids)%fl%end + 1, RNG)
+         case ("xfscr")
+            tab(:,:,:) = cg%u(flind%all_fluids(flind%fluids)%fl%end + 2, RNG)
+         case ("yfscr")
+            tab(:,:,:) = cg%u(flind%all_fluids(flind%fluids)%fl%end + 3, RNG)
+         case ("zfscr")
+            tab(:,:,:) = cg%u(flind%all_fluids(flind%fluids)%fl%end + 4, RNG)
+         case ("xsigma")
+            tab(:,:,:) = cg%w(wna%ind(sgmn))%arr(xdim, RNG)
+         case ("ysigma")
+            tab(:,:,:) = cg%w(wna%ind(sgmn))%arr(ydim, RNG)
+         case ("zsigma")
+            tab(:,:,:) = cg%w(wna%ind(sgmn))%arr(zdim, RNG)
+         case ("rot_cosp")
+            tab(:,:,:) = cg%w(wna%ind(rtmt))%arr(1, RNG)
+         case ("rot_sinp")
+            tab(:,:,:) = cg%w(wna%ind(rtmt))%arr(2, RNG)
+         case ("rot_cost")
+            tab(:,:,:) = cg%w(wna%ind(rtmt))%arr(3, RNG)
+         case ("rot_sint")
+            tab(:,:,:) = cg%w(wna%ind(rtmt))%arr(4, RNG)
+         case ("gradpcx")
+            tab(:,:,:) = cg%w(wna%ind(gpcr))%arr(xdim, RNG)
+         case ("gradpcy")
+            tab(:,:,:) = cg%w(wna%ind(gpcr))%arr(ydim, RNG)
+         case ("gradpcz")
+            tab(:,:,:) = cg%w(wna%ind(gpcr))%arr(zdim, RNG)
+#endif /* STREAM_CR */
          case ("dend", "deni", "denn")
             if (associated(fl_dni)) tab(:,:,:) = cg%u(fl_dni%idn, RNG)
          case ("vlxd", "vlxn", "vlxi", "vlyd", "vlyn", "vlyi", "vlzd", "vlzn", "vlzi")

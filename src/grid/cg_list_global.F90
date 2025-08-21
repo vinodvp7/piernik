@@ -242,6 +242,9 @@ contains
       &                     psi_n, psih_n, xbflx_n, ybflx_n, zbflx_n, psiflx_n
       use global,     only: cc_mag, ord_mag_prolong
 #endif /* MAGNETIC */
+#ifdef STREAM_CR
+      use constants,  only: xsflx_n, ysflx_n, zsflx_n, rtmt, gpcr, sgmn, vdiff, ndims
+#endif /* STREAM_CR */
 
       implicit none
 
@@ -258,9 +261,13 @@ contains
       if (code_progress < PIERNIK_INIT_FLUIDS) call die("[cg_list_global:register_fluids] Fluids are not yet initialized")
 
       call this%reg_var(wa_n, multigrid=.true.)  !! Auxiliary array. Multigrid required only for CR diffusion
-      call this%reg_var(fluid_n, vital = .true., restart_mode = AT_NO_B,  dim4 = flind%all, ord_prolong = ord_fluid_prolong) !! Main array of all fluids' components, "u"
-      call this%reg_var(uh_n,                                             dim4 = flind%all, ord_prolong = ord_fluid_prolong) !! Main array of all fluids' components (for t += dt/2)
-
+#ifdef STREAM_CR
+      call this%reg_var(fluid_n, vital = .true., restart_mode = AT_NO_B,  dim4 = flind%all + 4, ord_prolong = ord_fluid_prolong) !! Main array of all fluids' components, "u"
+      call this%reg_var(uh_n,                                             dim4 = flind%all + 4, ord_prolong = ord_fluid_prolong) !! Main array of all fluids' components (for t += dt/2)
+#else /* !STREAM_CR */
+      call this%reg_var(fluid_n, vital = .true., restart_mode = AT_NO_B,  dim4 = flind%all, ord_prolong = ord_fluid_prolong) !! Main array of all fluids' components, "u" + streaming CR
+      call this%reg_var(uh_n,                                             dim4 = flind%all, ord_prolong = ord_fluid_prolong) !! Main array of all fluids' components + streaming CR (for t += dt/2)
+#endif /* !STREAM_CR */
       if (which_solver_type == UNSPLIT) then
          call this%reg_var(xflx_n, vital = .false., restart_mode = AT_NO_B, dim4 = flind%all, ord_prolong = ord_fluid_prolong)   !! X Face-Fluid flux array
          call this%reg_var(yflx_n, vital = .false., restart_mode = AT_NO_B, dim4 = flind%all, ord_prolong = ord_fluid_prolong)   !! Y Face-Fluid flux array
@@ -275,7 +282,16 @@ contains
 #ifdef CRESP
       call set_cresp_names
 #endif /* CRESP */
+#ifdef STREAM_CR
+               call this%reg_var(xsflx_n, vital = .false., restart_mode = AT_NO_B, dim4 = 4, ord_prolong = ord_fluid_prolong)  !! X Face-SCR flux array
+               call this%reg_var(ysflx_n, vital = .false., restart_mode = AT_NO_B, dim4 = 4, ord_prolong = ord_fluid_prolong)  !! Y Face-SCR flux array
+               call this%reg_var(zsflx_n, vital = .false., restart_mode = AT_NO_B, dim4 = 4, ord_prolong = ord_fluid_prolong)  !! Z Face-SCR flux array
 
+               call this%reg_var(gpcr,  vital = .false., restart_mode = AT_NO_B, dim4 = ndims, ord_prolong = ord_fluid_prolong) !! Gradient of Pc
+               call this%reg_var(rtmt,  vital = .false., restart_mode = AT_NO_B, dim4 = 4, ord_prolong = ord_fluid_prolong)     !! Rotation matrix sine/cosine elements
+               call this%reg_var(sgmn,  vital = .false., restart_mode = AT_NO_B, dim4 = ndims, ord_prolong = ord_fluid_prolong) !! Interaction coefficient
+               call this%reg_var(vdiff, vital = .false., restart_mode = AT_NO_B, dim4 = ndims, ord_prolong = ord_fluid_prolong) !! Diffusion speed
+#endif /* STREAM_CR */
 #ifdef MAGNETIC
       call this%reg_var(mag_n,  vital = .true.,  dim4 = ndims, ord_prolong = ord_mag_prolong, restart_mode = AT_OUT_B, position=pia)  !! Main array of magnetic field's components, "b"
       call this%reg_var(magh_n, vital = .false., dim4 = ndims) !! Array for copy of magnetic field's components, "b" used in half-timestep in RK2

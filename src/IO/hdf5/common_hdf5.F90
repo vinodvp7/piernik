@@ -281,6 +281,36 @@ contains
                   endif
                enddo
 #endif /* COSM_RAYS */
+#ifdef STREAM_CR
+            case ('escr')
+               call append_var("escr")
+            case ('xfscr')
+               call append_var("xfscr")
+            case ('yfscr')
+               call append_var("yfscr")
+            case ('zfscr')
+               call append_var("zfscr")
+            case ('xsigma')
+               call append_var("xsigma")
+            case ('ysigma')
+               call append_var("ysigma")
+            case ('zsigma')
+               call append_var("zsigma")
+            case ('rot_cosp')
+               call append_var("cosp")
+            case ('rot_sinp')
+               call append_var("sinp")
+            case ('rot_cost')
+               call append_var("cost")
+            case ('rot_sint')
+               call append_var("sint")
+            case ('gradpcx')
+               call append_var("gradpcx")
+            case ('gradpcy')
+               call append_var("gradpcy")
+            case ('gradpcz')
+               call append_var("gradpcz")
+#endif /* STREAM_CR */
 #ifdef CRESP
             case ('cren') !< CRESP number density fields
                do k = 1, ncrb

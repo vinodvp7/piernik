@@ -44,7 +44,7 @@ contains
                                   psi_n, psih_n, psidim, cs_i2_n, first_stage, xdim, ydim, zdim, I_ONE
       use global,           only: integration_order
       use domain,           only: dom
-      use fluidindex,       only: iarr_all_swp, iarr_mag_swp
+      use fluidindex,       only: iarr_all_swp, iarr_mag_swp, flind
       use fluxtypes,        only: ext_fluxes
       use unsplit_source,   only: apply_source
       use diagnostics,      only: my_allocate, my_deallocate
@@ -55,7 +55,7 @@ contains
       integer,                       intent(in) :: istep
 
       integer                                    :: i1, i2
-      integer(kind=4)                            :: uhi, bhi, psii, psihi, ddim
+      integer(kind=4)                            :: uhi, bhi, psii, psihi, ddim, flb, fle, nfld
       real, dimension(:,:),allocatable           :: u
       real, dimension(:,:),allocatable           :: b
       real, dimension(:,:),allocatable           :: b_psi                ! This will carry both b and psi so it will have one extra size in dim=2
@@ -70,6 +70,10 @@ contains
       real, dimension(:,:),allocatable           :: tbflux                ! to temporarily store transpose of bflux
       type(ext_fluxes)                           :: eflx
       integer                                    :: i_cs_iso2
+      
+      flb = flind%all_fluids(1)%fl%beg
+      fle = flind%all_fluids(flind%fluids)%fl%end
+      nfld = fle - flb + I_ONE
 
       uhi = wna%ind(uh_n)
       bhi = wna%ind(magh_n)
@@ -87,7 +91,7 @@ contains
       do ddim=xdim,zdim
         if (.not. dom%has_dir(ddim)) cycle
 
-         call my_allocate(u,[cg%n_(ddim), size(cg%u,1, kind=4)])
+         call my_allocate(u,[cg%n_(ddim), nfld])
          call my_allocate(b,[cg%n_(ddim), size(cg%b,1, kind=4)])
          call my_allocate(b_psi,[size(b,1, kind=4), size(b,2, kind=4) + I_ONE ])
          call my_allocate(flux,[size(u, 1, kind=4)-I_ONE,size(u, 2, kind=4)])
@@ -124,7 +128,7 @@ contains
                endif
 
 
-               u(:, iarr_all_swp(ddim,:)) = transpose(pu(:,:))
+               u(:, iarr_all_swp(ddim,:)) = transpose(pu(flb:fle,:))
                b(:, iarr_mag_swp(ddim,:)) = transpose(pb(:,:))
 
                b_psi(:, xdim:zdim) = b(:,:) ; b_psi(:,psidim) = ppsi(:)
@@ -141,7 +145,7 @@ contains
 
                tflux(:,2:) = transpose(flux(:, iarr_all_swp(ddim,:)))
                tflux(:,1) = 0.0
-               pflux(:,:) = tflux
+               pflux(flb:fle,:) = tflux
 
 
                tbflux(:,2:) = transpose(bflux(:, iarr_mag_swp(ddim,:)))
@@ -216,6 +220,7 @@ contains
       use named_array_list,   only: wna
       use constants,          only: xdim, ydim, zdim, last_stage, rk_coef, &
                                      uh_n, I_ONE, ndims, magh_n
+      use fluidindex,         only: flind
 
       implicit none
 
@@ -229,7 +234,7 @@ contains
 
       logical                     :: active(ndims)
       integer                     :: L0(ndims), U0(ndims), L(ndims), U(ndims), shift(ndims)
-      integer                     :: afdim, uhi, bhi
+      integer                     :: afdim, uhi, bhi, flb, fle
       real, pointer               :: T(:,:,:,:)
       type(fxptr)                 :: F(ndims)
 
@@ -237,7 +242,8 @@ contains
       active = [ dom%has_dir(xdim), dom%has_dir(ydim), dom%has_dir(zdim) ]
 
       if (mag) then
-
+         flb = lbound(cg%bfx ,1)
+         fle = lbound(cg%bfx ,1)
          F(xdim)%flx => cg%bfx   ;  F(ydim)%flx => cg%bgy   ;  F(zdim)%flx => cg%bhz
 
          L0 = [ lbound(cg%w(wna%bi)%arr,2), lbound(cg%w(wna%bi)%arr,3), lbound(cg%w(wna%bi)%arr,4) ]
@@ -251,6 +257,8 @@ contains
             T => cg%w(bhi)%arr
          endif
       else
+         flb = flind%all_fluids(1)%fl%beg
+         fle = flind%all_fluids(flind%fluids)%fl%end
          F(xdim)%flx => cg%fx   ;  F(ydim)%flx => cg%gy   ;  F(zdim)%flx => cg%hz
 
          L0 = [ lbound(cg%w(wna%fi)%arr,2), lbound(cg%w(wna%fi)%arr,3), lbound(cg%w(wna%fi)%arr,4) ]
@@ -260,7 +268,7 @@ contains
          if (istep==last_stage(integration_order) .or. integration_order==I_ONE) then
             T => cg%w(wna%fi)%arr
          else
-            cg%w(uhi)%arr(:,:,:,:) = cg%w(wna%fi)%arr(:,:,:,:)
+            cg%w(uhi)%arr(flb:fle,:,:,:) = cg%w(wna%fi)%arr(flb:fle,:,:,:)
             T => cg%w(uhi)%arr
          endif
       endif
@@ -270,7 +278,7 @@ contains
          call bounds_for_flux(L0,U0,active,afdim,L,U)
 
          shift = 0 ;  shift(afdim) = I_ONE
-         T(:, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) = T(:, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) &
+         T(flb:fle, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) = T(flb:fle, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) &
             + dt / cg%dl(afdim) * rk_coef(istep) * ( &
                F(afdim)%flx(:, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) - &
                F(afdim)%flx(:, L(xdim)+shift(xdim):U(xdim)+shift(xdim), &

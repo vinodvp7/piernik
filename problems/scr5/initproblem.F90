@@ -114,7 +114,7 @@ contains
       use constants,   only: xdim, ydim, zdim, LO, HI
       use dataio_pub,  only: die
       use fluidindex,  only: flind
-      use fluidtypes,  only: component_fluid, component_scr
+      use fluidtypes,  only: component_fluid
       use func,        only: ekin, emag
       use grid_cont,   only: grid_container
 #ifndef ISO
@@ -123,7 +123,6 @@ contains
       implicit none
 
       class(component_fluid), pointer  :: fl
-      class(component_scr),allocatable :: scr_fluid
       integer                          :: i, j, k
       real                             :: xi, yj, zk, vx, vy, vz, rho, pre, bx, by, bz
       type(cg_list_element),  pointer  :: cgl

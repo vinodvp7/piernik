@@ -243,7 +243,7 @@ contains
       use global,     only: cc_mag, ord_mag_prolong
 #endif /* MAGNETIC */
 #ifdef STREAM_CR
-      use constants,  only: xsflx_n, ysflx_n, zsflx_n, rtmt, gpcr, sgmn, vdiff, ndims
+      use constants,  only:  rtmt, gpcr, sgmn, vdiff, ndims
 #endif /* STREAM_CR */
 
       implicit none
@@ -269,9 +269,15 @@ contains
       call this%reg_var(uh_n,                                             dim4 = flind%all, ord_prolong = ord_fluid_prolong) !! Main array of all fluids' components + streaming CR (for t += dt/2)
 #endif /* !STREAM_CR */
       if (which_solver_type == UNSPLIT) then
+#ifdef STREAM_CR
+         call this%reg_var(xflx_n, vital = .false., restart_mode = AT_NO_B, dim4 = flind%all+ 4, ord_prolong = ord_fluid_prolong)   !! X Face-Fluid flux array
+         call this%reg_var(yflx_n, vital = .false., restart_mode = AT_NO_B, dim4 = flind%all+ 4, ord_prolong = ord_fluid_prolong)   !! Y Face-Fluid flux array
+         call this%reg_var(zflx_n, vital = .false., restart_mode = AT_NO_B, dim4 = flind%all+ 4, ord_prolong = ord_fluid_prolong)   !! Z Face-Fluid flux array
+#else /* !STREAM_CR */
          call this%reg_var(xflx_n, vital = .false., restart_mode = AT_NO_B, dim4 = flind%all, ord_prolong = ord_fluid_prolong)   !! X Face-Fluid flux array
          call this%reg_var(yflx_n, vital = .false., restart_mode = AT_NO_B, dim4 = flind%all, ord_prolong = ord_fluid_prolong)   !! Y Face-Fluid flux array
          call this%reg_var(zflx_n, vital = .false., restart_mode = AT_NO_B, dim4 = flind%all, ord_prolong = ord_fluid_prolong)   !! Z Face-Fluid flux array
+#endif /* !STREAM_CR */
          call set_flux_names
       endif
 
@@ -283,10 +289,6 @@ contains
       call set_cresp_names
 #endif /* CRESP */
 #ifdef STREAM_CR
-               call this%reg_var(xsflx_n, vital = .false., restart_mode = AT_NO_B, dim4 = 4, ord_prolong = ord_fluid_prolong)  !! X Face-SCR flux array
-               call this%reg_var(ysflx_n, vital = .false., restart_mode = AT_NO_B, dim4 = 4, ord_prolong = ord_fluid_prolong)  !! Y Face-SCR flux array
-               call this%reg_var(zsflx_n, vital = .false., restart_mode = AT_NO_B, dim4 = 4, ord_prolong = ord_fluid_prolong)  !! Z Face-SCR flux array
-
                call this%reg_var(gpcr,  vital = .false., restart_mode = AT_NO_B, dim4 = ndims, ord_prolong = ord_fluid_prolong) !! Gradient of Pc
                call this%reg_var(rtmt,  vital = .false., restart_mode = AT_NO_B, dim4 = 4, ord_prolong = ord_fluid_prolong)     !! Rotation matrix sine/cosine elements
                call this%reg_var(sgmn,  vital = .false., restart_mode = AT_NO_B, dim4 = ndims, ord_prolong = ord_fluid_prolong) !! Interaction coefficient

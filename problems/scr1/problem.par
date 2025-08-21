@@ -39,7 +39,7 @@ $OUTPUT_CONTROL
    dt_res = 0.0
    dt_log = 0.02
    dt_tsl = 0.02
-   vars(1:) = 'dens', 'escr', 'xfscr', 'yfscr', 'zfscr', 'gradpcx','xsigma', 'gradpcy', 'gradpcz', 'ysigma'
+   vars(1:) = 'dens', 'escr', 'xfscr', 'yfscr', 'zfscr', 'gradpcx','xsigma', 'gradpcy', 'gradpcz', 'ysigma','vdiffx'
 /
 
 $FLUID_IONIZED

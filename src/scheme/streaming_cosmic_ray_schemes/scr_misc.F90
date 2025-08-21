@@ -29,7 +29,7 @@ module scr_misc
    implicit none
 
    private
-   public :: update_sigma, sanitize_cr_grid
+   public :: update_sigma, sanitize_cr_grid, update_vdiff
 
 contains
 
@@ -216,5 +216,54 @@ contains
       cg%w(wna%ind(gpcr))%arr(:,:,:,:) = 0.0
 
    end subroutine sanitize_cr_grid
+
+   subroutine update_vdiff(cg, istep)
+
+      use grid_cont,          only: grid_container
+      use named_array_list,   only: wna
+      use constants,          only: xdim, ydim, zdim, first_stage, gpcr, &
+      &                             HI, LO, uh_n, vdiff, sgmn
+      use global,             only: integration_order
+      use fluidindex,         only: flind
+      use domain,             only: dom
+      use initscr,            only: vm, tau_asym
+
+      implicit none
+
+      type(grid_container), pointer, intent(in) :: cg
+      integer,                       intent(in) :: istep
+
+      integer :: uhi, gpci, nx, ny, nz, i, j, k, ecid, ddim
+      real, dimension(:,:,:,:), pointer              :: vd, sg
+
+      uhi   = wna%ind(uh_n)
+      if (istep == first_stage(integration_order) .or. integration_order < 2 )  then
+         uhi   = wna%fi
+      endif
+
+      gpci = wna%ind(gpcr)
+      nx   = cg%n_(xdim)
+      ny   = cg%n_(ydim)
+      nz   = cg%n_(zdim)
+      ecid = flind%all_fluids(flind%fluids)%fl%end + 1
+
+      vd=>cg%w(wna%ind(vdiff))%arr 
+      sg=>cg%w(wna%ind(sgmn))%arr 
+
+      do ddim =xdim,zdim
+
+         vd(ddim, :,:,:) = 1.5 *  sg(ddim, :,:,:)**2 * (cg%dl(ddim) * vm)**2
+
+         where ( vd(ddim,:,:,:) < tau_asym)
+            vd(ddim,:,:,:) = sqrt(1.0 - 0.5 * vd(ddim,:,:,:) )
+         else where
+            vd(ddim,:,:,:) = sqrt((1.0 - exp(- vd(ddim,:,:,:)))/vd(ddim,:,:,:) )
+         end where
+
+         vd(ddim,:,:,:) = vd(ddim,:,:,:) * sqrt(1.0/3.0) * vm 
+
+      end do
+
+   end subroutine update_vdiff
 
 end module scr_misc

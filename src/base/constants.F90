@@ -274,10 +274,6 @@ module constants
    character(len=dsetnamelen), parameter :: prth_n  = "prth"    !< histogram of particles on the grid
 #endif /* NBODY */
 #ifdef STREAM_CR
-   character(len=dsetnamelen), parameter :: xsflx_n   = "xsflx"      !< X faced flux of streaming CR
-   character(len=dsetnamelen), parameter :: ysflx_n   = "ysflx"      !< Y faced flux of streaming CR
-   character(len=dsetnamelen), parameter :: zsflx_n   = "zsflx"      !< Z faced flux of streaming CR
-
    character(len=dsetnamelen), parameter :: gpcr  = "gpcr"      !< gradient of Pc
    character(len=dsetnamelen), parameter :: rtmt  = "rtmt"      !< Rotation matrix sine/cosine phi/theta
    character(len=dsetnamelen), parameter :: sgmn  = "sgmn"      !< interaction coeffcient

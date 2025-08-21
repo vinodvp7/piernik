@@ -67,7 +67,10 @@ module fluidindex
    integer(kind=4), allocatable, dimension(:), target :: iarr_all_crs   !< array of indexes pointing to ener. densities of all CR-components
    integer(kind=4), allocatable, dimension(:), target :: iarr_all_trc   !< array of indexes pointing to tracers
    integer(kind=4), allocatable, dimension(:,:) :: iarr_all_swp         !< array (size = flind) of all fluid indexes in the order depending on sweeps direction
-
+#ifdef STREAM_CR
+   integer(kind=4), allocatable, dimension(:,:) :: iarr_all_scr_swp         !< array (size = flind) of all fluid indexes in the order depending on sweeps direction
+   integer(kind=4), allocatable, dimension(:,:) :: iarr_all_scr_flux_swp         !< array (size = flind) of all fluid indexes in the order depending on sweeps direction
+#endif /* STREAM_CR */
    integer(kind=4), allocatable, dimension(:)   :: iarr_all_mag         !< array (size = nmag) of all magnetic field components
    integer(kind=4), allocatable, dimension(:,:) :: iarr_mag_swp         !< array (size = nmag) of all mag. field indexes in the order depending on sweeps direction
 
@@ -126,10 +129,13 @@ contains
       use inittracer,     only: tracer_index, iarr_trc
 #endif /* TRACER */
 
+
       implicit none
 
       integer :: i
-
+#ifdef STREAM_CR
+       integer :: eicd
+#endif /* STREAM_CR */
       i_sg = 0
 
       if (has_ion) then
@@ -238,6 +244,18 @@ contains
          flind%all_fluids(i)%fl => flind%dst
          i = i + 1
       endif
+#ifdef STREAM_CR
+      allocate(iarr_all_scr_swp(ndims,4))
+      allocate(iarr_all_scr_flux_swp(ndims,4))
+
+      eicd = flind%all_fluids(flind%fluids)%fl%end + 1
+      iarr_all_scr_swp(xdim,:) = [eicd + 1, eicd + 2, eicd + 3, eicd + 4]
+      iarr_all_scr_swp(ydim,:) = [eicd + 1, eicd + 3, eicd + 2, eicd + 4]
+      iarr_all_scr_swp(zdim,:) = [eicd + 1, eicd + 4, eicd + 3, eicd + 2]
+      iarr_all_scr_flux_swp(xdim,:) = [1, 2, 3, 4]
+      iarr_all_scr_flux_swp(ydim,:) = [1, 3, 2, 4]
+      iarr_all_scr_flux_swp(zdim,:) = [1, 4, 3, 2]
+#endif /* STREAM_CR */
    end subroutine fluid_index
 
    subroutine cleanup_fluidindex
@@ -264,6 +282,12 @@ contains
       call my_deallocate(iarr_all_crs)
 
       call my_deallocate(iarr_all_trc)
+
+#ifdef STREAM_CR
+      call my_deallocate(iarr_all_scr_swp)
+      call my_deallocate(iarr_all_scr_flux_swp)
+
+#endif /* STREAM_CR */
 
       do i = lbound(flind%all_fluids, dim=1), ubound(flind%all_fluids, dim=1)
          deallocate(flind%all_fluids(i)%fl%iarr)

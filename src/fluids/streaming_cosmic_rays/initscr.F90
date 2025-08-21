@@ -60,7 +60,6 @@ contains
 
       implicit none
       integer(kind=4) :: nl,nn,icr
-
       namelist /STREAMING_CR/ vm, sigmax, sigmay, sigmaz, disable_en_source, disable_feedback, disable_streaming
                               
 
@@ -130,7 +129,7 @@ contains
          nn                  = ibuff(ubound(ibuff, 1)    )    ! this must match the last rbuff() index above
          nl                  = ibuff(ubound(ibuff, 1) - 1)    ! this must match the last lbuff() index above 
       end if
-
+      
    end subroutine init_scr
 
 end module initscr

@@ -73,11 +73,7 @@ module grid_cont_na
       real, dimension(:,:,:,:), pointer :: bgy     => null()  !< Main array of Y-faced flux field components
       real, dimension(:,:,:,:), pointer :: bhz     => null()  !< Main array of Z-faced flux field components
       real, dimension(:,:,:,:), pointer :: psiflx  => null()  !< Main array of Z-faced flux field components
-#ifdef STREAM_CR
-      real, dimension(:,:,:,:), pointer :: sfx     => null()  !< Main array of Z-faced flux field components
-      real, dimension(:,:,:,:), pointer :: sgy     => null()  !< Main array of Z-faced flux field components
-      real, dimension(:,:,:,:), pointer :: shz     => null()  !< Main array of Z-faced flux field components
-#endif /* STREAM_CR */
+
    contains
 
       procedure :: cleanup_na            !< Deallocate all internals
@@ -161,11 +157,6 @@ contains
       if (wna%ybflx  > INVALID)  this%bgy     => this%w(wna%ybflx)%arr
       if (wna%zbflx  > INVALID)  this%bhz     => this%w(wna%zbflx)%arr
       if (wna%psiflx > INVALID)  this%psiflx  => this%w(wna%psiflx)%arr
-#ifdef STREAM_CR
-      if (wna%xsflx   > INVALID)  this%sfx      => this%w(wna%xsflx)%arr
-      if (wna%ysflx   > INVALID)  this%sgy      => this%w(wna%ysflx)%arr
-      if (wna%zsflx   > INVALID)  this%shz      => this%w(wna%zsflx)%arr
-#endif /* STREAM_CR */
       if (qna%wai > INVALID) this%wa => this%q(qna%wai)%arr
 
 #ifdef ISO
@@ -271,12 +262,5 @@ contains
             this%bhz(:,:,:,:)    = 0.0
             this%psiflx(:,:,:,:) = 0.0
       endif
-#ifdef STREAM_CR
-      if (associated(this%sfx) .and. associated(this%sgy) .and. associated(this%shz)) then
-            this%sfx(:,:,:,:) = 0.0
-            this%sgy(:,:,:,:) = 0.0
-            this%shz(:,:,:,:) = 0.0
-      endif
-#endif /* STREAM_CR*/
    end subroutine cleanup_flux
 end module grid_cont_na

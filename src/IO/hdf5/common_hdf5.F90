@@ -310,6 +310,12 @@ contains
                call append_var("gradpcy")
             case ('gradpcz')
                call append_var("gradpcz")
+            case ('vdiffx')
+               call append_var("vdiffx")
+            case ('vdiffy')
+               call append_var("vdiffy")
+            case ('vdiffz')
+               call append_var("vdiffz")
 #endif /* STREAM_CR */
 #ifdef CRESP
             case ('cren') !< CRESP number density fields

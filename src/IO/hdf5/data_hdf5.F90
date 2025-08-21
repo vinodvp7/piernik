@@ -150,6 +150,9 @@ contains
          case ("gradpcx","gradpcy","gradpcz")
             f%fu = "\rm{erg}/\rm{cm}^4"
             f%f2cgs = 1.0 / (erg/cm**4)
+         case ("vdiffx","vdiffy","vdiffz")
+            f%fu = "\rm{cm}/\rm{s}"
+            f%f2cgs = 1.0 / (cm/sek)
 #endif /* STREAM_CR */
 #ifdef CRESP
          ! ToDo: Adopt for wider range
@@ -387,7 +390,7 @@ contains
       use units,            only: kboltz, mH
 #endif /* !ISO */
 #ifdef STREAM_CR
-      use constants,        only: xdim, ydim, zdim, rtmt, gpcr, sgmn, vdiff, ndims
+      use constants,        only: xdim, ydim, zdim, rtmt, gpcr, sgmn, vdiff, ndims, vdiff
       use named_array_list, only: wna
 #endif /* STREAM_CR */
 
@@ -547,6 +550,12 @@ contains
             tab(:,:,:) = cg%w(wna%ind(gpcr))%arr(ydim, RNG)
          case ("gradpcz")
             tab(:,:,:) = cg%w(wna%ind(gpcr))%arr(zdim, RNG)
+         case ("vdiffx")
+            tab(:,:,:) = cg%w(wna%ind(vdiff))%arr(xdim, RNG)
+         case ("vdiffy")
+            tab(:,:,:) = cg%w(wna%ind(vdiff))%arr(ydim, RNG)
+         case ("vdiffz")
+            tab(:,:,:) = cg%w(wna%ind(vdiff))%arr(zdim, RNG)
 #endif /* STREAM_CR */
          case ("dend", "deni", "denn")
             if (associated(fl_dni)) tab(:,:,:) = cg%u(fl_dni%idn, RNG)

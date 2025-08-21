@@ -49,7 +49,8 @@ contains
       use unsplit_source,   only: apply_source
       use diagnostics,      only: my_allocate, my_deallocate
 #ifdef STREAM_CR
-      use scr_misc,         only: update_sigma
+      use scr_misc,         only: update_sigma, update_vdiff
+      use streaming_cr_hlle, only: update_scr_fluid
 #endif /* STREAM_CR */
       implicit none
 
@@ -166,6 +167,8 @@ contains
       call update_psi(cg,istep)
 #ifdef STREAM_CR
       call update_sigma(cg, istep, .false.)
+      call update_vdiff(cg, istep)
+      call update_scr_fluid(cg,istep)
 #endif /* STREAM_CR */
       call apply_source(cg,istep)
       nullify(cs2)
@@ -284,8 +287,8 @@ contains
          shift = 0 ;  shift(afdim) = I_ONE
          T(flb:fle, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) = T(flb:fle, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) &
             + dt / cg%dl(afdim) * rk_coef(istep) * ( &
-               F(afdim)%flx(:, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) - &
-               F(afdim)%flx(:, L(xdim)+shift(xdim):U(xdim)+shift(xdim), &
+               F(afdim)%flx(flb:fle, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) - &
+               F(afdim)%flx(flb:fle, L(xdim)+shift(xdim):U(xdim)+shift(xdim), &
                            L(ydim)+shift(ydim):U(ydim)+shift(ydim), &
                            L(zdim)+shift(zdim):U(zdim)+shift(zdim)) )
       enddo

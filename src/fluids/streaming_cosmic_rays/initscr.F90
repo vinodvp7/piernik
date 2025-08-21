@@ -26,9 +26,13 @@ module initscr
                    
 ! pulled by STREAM_CR
 
+   use constants, only: cbuff_len
+
    implicit none
 
    public ! QA_WARN no secrets are kept here
+   private :: cbuff_len ! QA_WARN prevent reexport
+
    ! namelist parameters
   ! integer(kind=4)                         :: nscr             !< number of non-spectral streaming CR components
   ! real                                    :: floorescr        !< floor value of streaming CR energy density
@@ -46,14 +50,16 @@ contains
 
    subroutine init_scr
       use bcast,            only: piernik_MPI_Bcast
-      use constants,        only:  I_ONE, I_TWO, half, big, O_I2, O_I3, &
-      &                           base_level_id, ndims, xdim, ydim,zdim
+      use constants,        only: cbuff_len, I_ONE, I_TWO, half, big, O_I2, O_I3, &
+      &                           base_level_id, ndims, xdim, ydim, zdim
       use diagnostics,      only: ma1d, my_allocate
       use dataio_pub,       only: die, warn, nh
       use func,             only: operator(.notequals.)
-      use mpisetup,         only:  rbuff, lbuff, master, slave
+      use mpisetup,         only: ibuff, rbuff, lbuff, cbuff, master, slave
+      use global,           only: ord_fluid_prolong
 
       implicit none
+      integer(kind=4) :: nl,nn,icr
 
       namelist /STREAMING_CR/ vm, sigmax, sigmay, sigmaz, disable_en_source, disable_feedback, disable_streaming
                               
@@ -97,16 +103,14 @@ contains
          lbuff(2) = disable_feedback
          lbuff(3) = disable_streaming
 
-        ! nl       = 3                                     ! this must match the last lbuff() index above
-        ! nn       = count(rbuff(:) < huge(1.), kind=4)    ! this must match the last rbuff() index above
-         !ibuff(ubound(ibuff, 1)    ) = nn
-         !ibuff(ubound(ibuff, 1) - 1) = nl
+         nl       = 3                                     ! this must match the last lbuff() index above
+         nn       = count(rbuff(:) < huge(1.), kind=4)    ! this must match the last rbuff() index above
+         ibuff(ubound(ibuff, 1)    ) = nn
+         ibuff(ubound(ibuff, 1) - 1) = nl
 
-         !if (nn + 2 * nscr > ubound(rbuff, 1)) call die("[initstreamingcr:init_streamingcr] rbuff size exceeded.")
-         !if (nl  > ubound(lbuff, 1)) call die("[initstreamingcr:init_streamingcr] lbuff size exceeded.")
+         if (nn + 2 * 1 > ubound(rbuff, 1)) call die("[initstreamingcr:init_streamingcr] rbuff size exceeded.")
+         if (nl  > ubound(lbuff, 1)) call die("[initstreamingcr:init_streamingcr] lbuff size exceeded.")
          
-         !rbuff(nn+1      :nn+  nscr) = sigma(1:nscr)
-      
       end if
 
       !call piernik_MPI_Bcast(ibuff)
@@ -123,7 +127,8 @@ contains
          disable_en_source = lbuff(1)  
          disable_feedback = lbuff(2)
          disable_streaming = lbuff(3) 
-
+         nn                  = ibuff(ubound(ibuff, 1)    )    ! this must match the last rbuff() index above
+         nl                  = ibuff(ubound(ibuff, 1) - 1)    ! this must match the last lbuff() index above 
       end if
 
    end subroutine init_scr

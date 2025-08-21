@@ -48,7 +48,9 @@ contains
       use fluxtypes,        only: ext_fluxes
       use unsplit_source,   only: apply_source
       use diagnostics,      only: my_allocate, my_deallocate
-
+#ifdef STREAM_CR
+      use scr_misc,         only: update_sigma
+#endif /* STREAM_CR */
       implicit none
 
       type(grid_container), pointer, intent(in) :: cg
@@ -89,7 +91,7 @@ contains
       cs2 => null()
 
       do ddim=xdim,zdim
-        if (.not. dom%has_dir(ddim)) cycle
+         if (.not. dom%has_dir(ddim)) cycle
 
          call my_allocate(u,[cg%n_(ddim), nfld])
          call my_allocate(b,[cg%n_(ddim), size(cg%b,1, kind=4)])
@@ -98,7 +100,6 @@ contains
          call my_allocate(tflux,[size(u, 2, kind=4),size(u, 1, kind=4)])
          call my_allocate(bflux,[size(b, 1, kind=4)-I_ONE,size(b_psi, 2, kind=4)])
          call my_allocate(tbflux,[size(b_psi, 2, kind=4),size(b, 1, kind=4)])
-
          do i2 = cg%ijkse(pdims(ddim, ORTHO2), LO), cg%ijkse(pdims(ddim, ORTHO2), HI)
             do i1 = cg%ijkse(pdims(ddim, ORTHO1), LO), cg%ijkse(pdims(ddim, ORTHO1), HI)
 
@@ -163,6 +164,9 @@ contains
       call apply_flux(cg,istep,.true.)
       call apply_flux(cg,istep,.false.)
       call update_psi(cg,istep)
+#ifdef STREAM_CR
+      call update_sigma(cg, istep, .false.)
+#endif /* STREAM_CR */
       call apply_source(cg,istep)
       nullify(cs2)
 

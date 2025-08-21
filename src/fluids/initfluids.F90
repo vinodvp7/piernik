@@ -128,7 +128,9 @@ contains
 #ifdef VERBOSE
       use dataio_pub,     only: printinfo
 #endif /* VERBOSE */
-
+#ifdef STREAM_CR                                   
+      use initscr, only: init_scr    
+#endif /* STREAM_CR */
       implicit none
 
       integer :: ifl
@@ -151,7 +153,9 @@ contains
 #ifdef TRACER
       call init_tracer
 #endif /* TRACER */
-
+#ifdef STREAM_CR
+      call init_scr                           
+#endif /* STREAM */
       call fluid_index    ! flind has valid values afterwards
 
       cs2_max = 0.0

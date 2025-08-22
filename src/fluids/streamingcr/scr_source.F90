@@ -86,7 +86,7 @@ contains
          magi   = wna%ind(magh_n)
       endif
       call update_gradpc_here(cg, istep)
-      call update_interaction_term(cg,istep, .true.)
+      call update_interaction_term(cg,istep, .false.)
 
       do ns = 1, scrind%stcosm
          do concurrent (k = cg%lhn(zdim,LO):cg%lhn(zdim,HI), j = cg%lhn(ydim,LO):cg%lhn(ydim,HI), &
@@ -267,7 +267,7 @@ contains
       end do
 
       ! scale by 1/vm
-      cg%w(wna%ind(gpc))%arr = cg%w(wna%ind(gpc))%arr / vm
+      cg%w(wna%ind(gpc))%arr = cg%w(wna%ind(gpc))%arr / vm**2
 
       cg%w(wna%ind(bgpc))%arr(:,:,:,:) = 0.0
       do ns = 1, scrind%stcosm

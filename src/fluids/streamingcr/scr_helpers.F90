@@ -242,9 +242,9 @@ contains
             cg%w(sgmd)%arr(3*(ns - 1) + zdim ,i,j,k) = sigmaz(ns)
             end do
          else
-            cg%w(sgmd)%arr(3*(ns - 1) + xdim ,:,:,:) = sigmax(ns)
-            cg%w(sgmd)%arr(3*(ns - 1) + ydim ,:,:,:) = sigmay(ns)
-            cg%w(sgmd)%arr(3*(ns - 1) + zdim ,:,:,:) = sigmaz(ns)
+            cg%w(sgmd)%arr(3*(ns - 1) + xdim ,:,:,:) = sigmax(ns) * vm 
+            cg%w(sgmd)%arr(3*(ns - 1) + ydim ,:,:,:) = sigmay(ns) * vm 
+            cg%w(sgmd)%arr(3*(ns - 1) + zdim ,:,:,:) = sigmaz(ns) * vm 
          endif
       end do
 

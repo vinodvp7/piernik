@@ -291,8 +291,8 @@ subroutine riemann_hlle(ql, qr, vdiff, flx)
 
          fl(1) = ql(i,2 + 4 * (j-1)) * vm  + (vl(i)- bm(i)) * ql(i,1+ 4 * (j-1))
          fr(1) = qr(i,2 + 4 * (j-1)) * vm  + (vr(i)- bp(i)) * qr(i,1+ 4 * (j-1))
-         fl(2) = vm / 3.0  * ql(i,1 + 4 * (j-1)) + (vl(i)- bm(i))  * ql(i,2+ 4 * (j-1))
-         fr(2) = vm / 3.0  * qr(i,1 + 4 * (j-1)) + (vr(i)- bp(i)) * qr(i,2+ 4 * (j-1))
+         fl(2) = vm * vm / 3.0  * ql(i,1 + 4 * (j-1)) + (vl(i)- bm(i))  * ql(i,2+ 4 * (j-1))
+         fr(2) = vm * vm / 3.0  * qr(i,1 + 4 * (j-1)) + (vr(i)- bp(i)) * qr(i,2+ 4 * (j-1))
          fl(3) =   (vl(i)- bm(i))  * ql(i,3+ 4 * (j-1)) ; fr(3) =  (vr(i)- bp(i)) * qr(i,3+ 4 * (j-1)) 
          fl(4) =   (vl(i)- bm(i)) * ql(i,4+ 4 * (j-1)) ; fr(4) =  (vr(i)- bp(i)) * qr(i,4+ 4 * (j-1)) 
          tmp = 0.0

@@ -54,8 +54,8 @@ $STREAMING_CR
    disable_en_source       = .true.
    disable_feedback        = .true.      ! feedback to MHD gas 
    disable_streaming       = .true.  
-   disable_stabilizer = .true.
-   sigmax_parallel = .true.
+   disable_stabilizer      = .true.
+   sigmax_parallel         = .false.
 
 /
 $NUMERICAL_SETUP

@@ -152,13 +152,13 @@ contains
             coef_14 = rk_coef(istep) * dt * sigmaz * vtot3
 
             coef_21 = -rk_coef(istep) * dt * v1 * sigmax * 4.0/3.0
-            coef_22 = 1.0 + rk_coef(istep) * dt * vm * sigmax
+            coef_22 = 1.0 + rk_coef(istep) * dt * vm *  sigmax
 
             coef_31 = -rk_coef(istep) * dt * v2 * sigmay * 4.0/3.0
-            coef_33 = 1.0 + rk_coef(istep) * dt * vm * sigmay
+            coef_33 = 1.0 + rk_coef(istep) * dt * vm *  sigmay
 
             coef_41 = -rk_coef(istep) * dt * v3 * sigmaz * 4.0/3.0
-            coef_44 = 1.0 + rk_coef(istep) * dt * vm * sigmaz
+            coef_44 = 1.0 + rk_coef(istep) * dt * vm *  sigmaz
 
 
             e_coef = coef_11 - coef_12 * coef_21/coef_22 - coef_13 * coef_31/coef_33 &

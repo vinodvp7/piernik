@@ -262,7 +262,9 @@ subroutine riemann_hlle(ql, qr, vdiff, flx)
 
    real, dimension(4)         :: fl, fr
 
-   real, dimension(size(ql,1))     :: vl, vr, mean_adv, mean_diff, al, ar, bp, bm, vdiff_l, vdiff_r
+   real, dimension(size(ql,1))     :: vl, vr, mean_adv, mean_diff, al, ar, bp, bm
+   real, dimension(size(flx,1))     :: vdiff_l, vdiff_r
+
    integer :: nvar, nx, i, j
    real:: tmp
    nx = size(ql,1)
@@ -271,11 +273,8 @@ subroutine riemann_hlle(ql, qr, vdiff, flx)
    vr(:) = qr(:,nvar)                   ! last term is vrl
 
    do j = 1,scrind%stcosm
-      vdiff_l(2:) = vdiff(1:nx-1,j)
-      vdiff_l(1)  = vdiff(1,j)
-      vdiff_r(2:) = vdiff(2:nx,j)
-      vdiff_r(1)  = vdiff(1,j)
-
+      vdiff_l(1:size(flx,1)) = vdiff(1:size(flx,1),   j)
+      vdiff_r(1:size(flx,1)) = vdiff(2:size(flx,1)+1, j)
       do i = 1,size(flx,1)
 
          mean_adv  = 0.5 * ( vl(i) + vr(i))
@@ -284,18 +283,18 @@ subroutine riemann_hlle(ql, qr, vdiff, flx)
          al = min((mean_adv(i)  - mean_diff(i) ),(vl(i)  - vdiff_l(i) ))
          ar = max((mean_adv(i)  + mean_diff(i) ),(vr(i)  + vdiff_r(i) ))
 
-         ar = min(ar,vm/sqrt(3.0))
-         al = max(al,-vm/sqrt(3.0))
+         ar = min(ar,mean_adv(i)+vm/sqrt(3.0))
+         al = max(al,mean_adv(i)-vm/sqrt(3.0))
 
          bp = max(ar, 0.0)   
          bm = min(al, 0.0)
 
-         fl(1) = ql(i,2 + 4 * (j-1)) * vm  - bm(i) * ql(i,1+ 4 * (j-1))
-         fr(1) = qr(i,2 + 4 * (j-1)) * vm  - bp(i) * qr(i,1+ 4 * (j-1))
-         fl(2) = vm / 3.0  * ql(i,1 + 4 * (j-1)) - bm(i) * ql(i,2+ 4 * (j-1))
-         fr(2) = vm / 3.0  * qr(i,1 + 4 * (j-1)) - bp(i) * qr(i,2+ 4 * (j-1))
-         fl(3) =  - bm(i) * ql(i,3+ 4 * (j-1)) ; fr(3) = - bp(i) * qr(i,3+ 4 * (j-1)) 
-         fl(4) =  - bm(i) * ql(i,4+ 4 * (j-1)) ; fr(4) = - bp(i) * qr(i,4+ 4 * (j-1)) 
+         fl(1) = ql(i,2 + 4 * (j-1)) * vm  + (vl(i)- bm(i)) * ql(i,1+ 4 * (j-1))
+         fr(1) = qr(i,2 + 4 * (j-1)) * vm  + (vr(i)- bp(i)) * qr(i,1+ 4 * (j-1))
+         fl(2) = vm / 3.0  * ql(i,1 + 4 * (j-1)) + (vl(i)- bm(i))  * ql(i,2+ 4 * (j-1))
+         fr(2) = vm / 3.0  * qr(i,1 + 4 * (j-1)) + (vr(i)- bp(i)) * qr(i,2+ 4 * (j-1))
+         fl(3) =   (vl(i)- bm(i))  * ql(i,3+ 4 * (j-1)) ; fr(3) =  (vr(i)- bp(i)) * qr(i,3+ 4 * (j-1)) 
+         fl(4) =   (vl(i)- bm(i)) * ql(i,4+ 4 * (j-1)) ; fr(4) =  (vr(i)- bp(i)) * qr(i,4+ 4 * (j-1)) 
          tmp = 0.0
          if (abs(bp(i) - bm(i)) > 1e-20) tmp = 0.5*(bp(i) + bm(i))/(bp(i) - bm(i))
          flx(i,1+4*(j-1):4+4*(j-1)) = 0.5 * (fl + fr) + (fl - fr) * tmp

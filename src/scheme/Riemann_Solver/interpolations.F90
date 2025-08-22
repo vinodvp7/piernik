@@ -154,9 +154,9 @@ contains
 
       do p = 1, scrind%stcosm
          q(:,1 + (p-1)*4) = u(:,1 + (p-1)*4)
-         q(:,2 + (p-1)*4) = u(:,2 + (p-1)*4)
-         q(:,3 + (p-1)*4) = u(:,3 + (p-1)*4)
-         q(:,4 + (p-1)*4) = u(:,4 + (p-1)*4)
+         q(:,2 + (p-1)*4) = u(:,2 + (p-1)*4)/vm
+         q(:,3 + (p-1)*4) = u(:,3 + (p-1)*4)/vm
+         q(:,4 + (p-1)*4) = u(:,4 + (p-1)*4)/vm
       enddo
          q(:,size(u,2))   = u(:,size(u,2))             ! last component is fluid velocity
 

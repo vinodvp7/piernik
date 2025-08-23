@@ -86,7 +86,7 @@ contains
          magi   = wna%ind(magh_n)
       endif
       call update_gradpc_here(cg, istep)
-      call update_interaction_term(cg,istep, .false.)
+      call update_interaction_term(cg,istep, .true.)
 
       do ns = 1, scrind%stcosm
          do concurrent (k = cg%lhn(zdim,LO):cg%lhn(zdim,HI), j = cg%lhn(ydim,LO):cg%lhn(ydim,HI), &

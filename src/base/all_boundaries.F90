@@ -57,7 +57,9 @@ contains
 #ifdef MAGNETIC
       call all_mag_boundaries
 #endif /* MAGNETIC */
-
+!#ifdef STREAM_CR
+!   call all_scr_boundaries
+!#endif /* STREAM_CR */
    end subroutine all_bnd
 
    subroutine all_bnd_vital_q

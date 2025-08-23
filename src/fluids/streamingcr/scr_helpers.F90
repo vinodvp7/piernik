@@ -51,45 +51,54 @@ contains
 !! This subroutine is called once every RK stage at the beginning.
 !>
    subroutine update_rotation_matrix(cg,istep)
+   use grid_cont,        only: grid_container
+   use named_array_list, only: wna
+   use constants,        only: xdim, ydim, zdim, first_stage, mag_n, magh_n, rtm, sphi, cphi, stheta, ctheta
+   use global,           only: integration_order
+   implicit none
 
-      use grid_cont,          only: grid_container
-      use named_array_list,   only: wna
-      use constants,          only: xdim, ydim, zdim, first_stage, mag_n, magh_n, rtm, sphi, cphi, stheta, ctheta
-      use global,             only: integration_order
+   type(grid_container), pointer, intent(in) :: cg
+   integer,                       intent(in) :: istep
 
-      implicit none
+   integer :: bhi
+   real, parameter :: eps = 1.0e-12   ! better: O(Δx) if you want (e.g. 0.5*max(dl))
 
-      type(grid_container), pointer, intent(in) :: cg
-      integer,                       intent(in) :: istep
+   real, pointer :: bx(:,:,:), by(:,:,:), bz(:,:,:)
+   real, pointer :: cp(:,:,:), sp(:,:,:), st(:,:,:), ct(:,:,:)
+   real :: Bxy(cg%n_(xdim),cg%n_(ydim),cg%n_(zdim))
+   real :: Bxyz(cg%n_(xdim),cg%n_(ydim),cg%n_(zdim))
 
-      integer                                   :: bhi
+   bhi = wna%ind(magh_n)
+   if (istep == first_stage(integration_order) .or. integration_order < 2) then
+      bhi = wna%ind(mag_n)
+   endif
 
-      real, dimension(cg%n_(xdim),cg%n_(ydim),cg%n_(zdim))       :: Bxy, Bxyz
+   bx => cg%w(bhi)%arr(xdim,:,:,:)
+   by => cg%w(bhi)%arr(ydim,:,:,:)
+   bz => cg%w(bhi)%arr(zdim,:,:,:)
 
-      real :: tol2
+   cp => cg%w(wna%ind(rtm))%arr(cphi,:,:,:)
+   sp => cg%w(wna%ind(rtm))%arr(sphi,:,:,:)
+   st => cg%w(wna%ind(rtm))%arr(stheta,:,:,:)
+   ct => cg%w(wna%ind(rtm))%arr(ctheta,:,:,:)
 
-      tol2 = 1e-20      !< magic number basically to test if 0 then dont do expensive calculation below
+   Bxy  = sqrt(bx*bx + by*by)
+   Bxyz = sqrt(Bxy*Bxy + bz*bz)
 
-      bhi   = wna%ind(magh_n)                 
-      if (istep == first_stage(integration_order) .or. integration_order < 2 )  then
-         bhi   = wna%ind(mag_n)          ! At first step you use B at n 
-      endif
+   ! Safe defaults (B || +z)
+   cp = 1.0 ; sp = 0.0
+   st = 0.0 ; ct = 1.0
 
-      Bxy  = sqrt(sum( cg%w(bhi)%arr(xdim:ydim, :,:,:)**2, dim=1))
-      Bxyz = sqrt(sum( cg%w(bhi)%arr(xdim:zdim, :,:,:)**2, dim=1))
-
-      if ( maxval(Bxy) <= tol2 ) then                      ! To handle extreme case 
-         cg%w(wna%ind(rtm))%arr(cphi,:,:,:)   = 1.0 
-         cg%w(wna%ind(rtm))%arr(sphi,:,:,:)   = 0.0
-         cg%w(wna%ind(rtm))%arr(stheta,:,:,:) = 0.0
-      else
-         cg%w(wna%ind(rtm))%arr(cphi,:,:,:)   = cg%w(bhi)%arr(xdim,:,:,:) / Bxy(:,:,:)
-         cg%w(wna%ind(rtm))%arr(sphi,:,:,:)   = cg%w(bhi)%arr(ydim,:,:,:) / Bxy(:,:,:)
-         cg%w(wna%ind(rtm))%arr(stheta,:,:,:) = Bxy(:,:,:) / Bxyz(:,:,:)
-      endif
-      cg%w(wna%ind(rtm))%arr(ctheta,:,:,:) = cg%w(bhi)%arr(zdim,:,:,:) / Bxyz(:,:,:)
-
-   end subroutine
+   ! Overwrite where well-defined
+   WHERE (Bxy  > eps)
+      cp = bx / Bxy
+      sp = by / Bxy
+   END WHERE
+   WHERE (Bxyz > eps)
+      st = Bxy / Bxyz
+      ct = bz  / Bxyz
+   END WHERE
+   end subroutine update_rotation_matrix
 
    subroutine  rotate_along_magx(cg, icfi, ix, iy, iz)
       use grid_cont,          only: grid_container
@@ -227,25 +236,9 @@ contains
       if (.not. at_source) call update_bdotgradpc(cg, istep)
 
       do ns = 1, scrind%stcosm
-         if (sigmax_parallel) then
-            call update_rotation_matrix(cg, istep)
-            do concurrent (k = cg%lhn(zdim,LO):cg%lhn(zdim,HI), j = cg%lhn(ydim,LO):cg%lhn(ydim,HI), &
-            & i = cg%lhn(xdim,LO):cg%lhn(xdim,HI))
-            cp = cg%w(rtmi)%arr(cphi,i,j,k)
-            sp = cg%w(rtmi)%arr(sphi,i,j,k)
-            ct = cg%w(rtmi)%arr(ctheta,i,j,k)
-            st = cg%w(rtmi)%arr(stheta,i,j,k)
-
-            call rot_from_b(sigmax(ns),sigmay(ns),sigmaz(ns),cp,sp,ct,st)
-            cg%w(sgmd)%arr(3*(ns - 1) + xdim ,i,j,k) = sigmax(ns)
-            cg%w(sgmd)%arr(3*(ns - 1) + ydim ,i,j,k) = sigmay(ns)
-            cg%w(sgmd)%arr(3*(ns - 1) + zdim ,i,j,k) = sigmaz(ns)
-            end do
-         else
-            cg%w(sgmd)%arr(3*(ns - 1) + xdim ,:,:,:) = sigmax(ns) * vm 
-            cg%w(sgmd)%arr(3*(ns - 1) + ydim ,:,:,:) = sigmay(ns) * vm 
-            cg%w(sgmd)%arr(3*(ns - 1) + zdim ,:,:,:) = sigmaz(ns) * vm 
-         endif
+         cg%w(sgmd)%arr(3*(ns - 1) + xdim ,:,:,:) = sigmax(ns) * vm 
+         cg%w(sgmd)%arr(3*(ns - 1) + ydim ,:,:,:) = sigmay(ns) * vm 
+         cg%w(sgmd)%arr(3*(ns - 1) + zdim ,:,:,:) = sigmaz(ns) * vm 
       end do
 
       if (disable_streaming) then

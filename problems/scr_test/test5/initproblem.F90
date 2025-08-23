@@ -42,9 +42,10 @@ module initproblem
    implicit none
 
    private
-   public :: read_problem_par, problem_initial_conditions, problem_pointers
+   public :: read_problem_par, problem_initial_conditions, problem_pointers, pi
 
    real               :: rin, rout, phi
+   real, parameter :: pi = acos(-1.0)
 
    namelist /PROBLEM_CONTROL/   rin, rout, phi
 
@@ -68,9 +69,11 @@ contains
 
       implicit none
 
+
+
        rin  = 0.5 
        rout = 0.7
-       phi  = atan(1.0) / 3.         ! pi/12
+       phi  = pi /12.0         ! pi/12
 
       if (master) then
 
@@ -130,7 +133,7 @@ contains
       type(cg_list_element),  pointer :: cgl
       type(grid_container),   pointer :: cg
       integer                         :: p
-
+      real :: eps, r_eps, bx, by, bmag
       !   Secondary parameters
       do p = 1, flind%fluids
 
@@ -139,6 +142,8 @@ contains
          cgl => leaves%first
          do while (associated(cgl))
             cg => cgl%cg
+            eps   = 0.5*max(cg%dl(xdim), cg%dl(ydim))   ! ~ O(Δx)
+
             do j = cg%lhn(ydim,LO), cg%lhn(ydim,HI)
                yj = cg%y(j)
                do i = cg%lhn(xdim,LO), cg%lhn(xdim,HI)
@@ -154,16 +159,26 @@ contains
                      cg%u(fl%imz,i,j,k) = 0.0
                      if (fl%has_energy) then
 
-                        cg%u(fl%ien,i,j,k) = 1.0/fl%gam_1
+                        cg%u(fl%ien,i,j,k) = (2.0 - log(r/eps))/fl%gam + 1.0
                         cg%u(fl%ien,i,j,k) = cg%u(fl%ien,i,j,k) + ekin(cg%u(fl%imx,i,j,k), cg%u(fl%imy,i,j,k), cg%u(fl%imz,i,j,k), cg%u(fl%idn,i,j,k))
 
                         if (fl%is_magnetized) then
 
-                           cg%b(xdim,i,j,k)   =  - yj / r
-                           cg%b(ydim,i,j,k)   =  + xi / r
-                           cg%b(zdim,i,j,k)   =  0.0
-                           cg%u(fl%ien,i,j,k) = cg%u(fl%ien,i,j,k) + emag(cg%b(xdim,i,j,k), cg%b(ydim,i,j,k), cg%b(zdim,i,j,k))
 
+                        r_eps = sqrt(xi*xi + yj*yj + eps*eps)
+
+                        bx = - yj / r_eps
+                        by =   xi / r_eps
+                        ! Optional: normalize to unit magnitude to keep magnetic energy uniform
+                        bmag = sqrt(bx*bx + by*by)
+                        bx   = bx / bmag
+                        by   = by / bmag
+
+                        cg%b(xdim,i,j,k) = bx
+                        cg%b(ydim,i,j,k) = by
+                        cg%b(zdim,i,j,k) = 0.0
+
+                        cg%u(fl%ien,i,j,k) = cg%u(fl%ien,i,j,k) + emag(cg%b(xdim,i,j,k), cg%b(ydim,i,j,k), cg%b(zdim,i,j,k))
                         endif
 
                      endif
@@ -189,11 +204,14 @@ contains
                      r = sqrt(xi * xi + yj * yj)
                      phi_c = atan2(yj, xi)
 
-                     if (r > rin .and. r < rout .and. phi_c < phi) then
-                        cg%scr(scr_fluid%iescr, i,j,k) = 12.0
-                     else 
-                        cg%scr(scr_fluid%iescr, i,j,k) = 10.0
+                     if (phi_c < 0.0) phi_c = phi_c + 2.0*pi ! map to [0, 2π)
+
+                     if (r > rin .and. r < rout .and. phi_c >= 0.0 .and. phi_c <= phi) then
+                     cg%scr(scr_fluid%iescr,i,j,k) = 12.0
+                     else
+                     cg%scr(scr_fluid%iescr,i,j,k) = 10.0
                      endif
+
                      cg%scr(scr_fluid%ixfscr,i,j,k) = 0.0
                      cg%scr(scr_fluid%iyfscr,i,j,k) = 0.0
                      cg%scr(scr_fluid%izfscr,i,j,k) = 0.0

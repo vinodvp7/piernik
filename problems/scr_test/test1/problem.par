@@ -1,5 +1,5 @@
 $BASE_DOMAIN
-  n_d = 256,256,1
+  n_d = 1024,1,1
   nb  = 4
   bnd_xl = 'out'
   bnd_xr = 'out'
@@ -33,13 +33,13 @@ $END_CONTROL
 /
 
 $OUTPUT_CONTROL
-   problem_name = 'scrts1'
-   run_id = 't2d'
+   problem_name = 'scr'
+   run_id = 't50'
    dt_hdf = 0.2
    dt_res = 0.0
    dt_log = 0.02
    dt_tsl = 0.02
-   vars(1:) = 'dens', 'ener', 'velx', 'pres', 'escr', 'xfscr', 'yfscr', 'zfscr', 'gradpcx', 'bdotgradpc', 'sigmax', 'gradpcy', 'gradpcz', 'sigmay'
+   vars(1:) = 'dens', 'ener', 'velx', 'pres', 'escr', 'xfscr', 'yfscr', 'zfscr', 'gradpcx', 'bdotgradpc', 'sigmax', 'gradpcy', 'gradpcz', 'sigmay', 'magx', 'magy'
 /
 
 $FLUID_IONIZED
@@ -47,9 +47,9 @@ $FLUID_IONIZED
 /
 $STREAMING_CR
    nscr                    = 1
-   vm                      = 100.0
+   vm                      = 500.0
    sigmax                  = 10
-   sigmay                  = 1e7
+   !sigmay                  = 1e7
    ord_scr_grad            = 4
    disable_en_source       = .true.
    disable_feedback        = .true.      ! feedback to MHD gas
@@ -58,7 +58,7 @@ $STREAMING_CR
    sigmax_parallel         = .false.
 /
 $NUMERICAL_SETUP
-  cfl     = 0.5
+  cfl     = 1.0
   smalld  = 1.e-5
   smallei = 1.e-5
   limiter = 'moncen'
@@ -70,8 +70,8 @@ $NUMERICAL_SETUP
 $PROBLEM_CONTROL
    a  = 40.0
    bx = 1.0
-   b  = 40.0
-   by = 1.0        ! B at 45 degree in the XY plane
+   !b  = 40.0
+   !by = 1.0        ! B at 45 degree in the XY plane
 /
 
 $AMR

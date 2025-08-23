@@ -47,18 +47,18 @@ $FLUID_IONIZED
 /
 $STREAMING_CR
    nscr                    = 1
-   vm                      = 200.0
-   sigma_paral             = 1e8
+   vm                      = 1000.0
+   sigmax                  = 1e8
    ord_scr_grad            = 4
    disable_en_source       = .true.
    disable_feedback        = .true.      ! feedback to MHD gas
    disable_stabilizer      = .true.
 /
 $NUMERICAL_SETUP
-  cfl     = 0.1
+  cfl     = 0.5
   smalld  = 1.e-5
   smallei = 1.e-5
-  limiter = 'minmod'
+  limiter = 'moncen'
   solver_type = 'unsplit'
   solver_str = 'riemann'
   integration_order = 2

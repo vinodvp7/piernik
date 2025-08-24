@@ -1,5 +1,5 @@
 $BASE_DOMAIN
-  n_d = 256,256,1
+  n_d = 512,512,1
   nb  = 4
   bnd_xl = 'out'
   bnd_xr = 'out'
@@ -66,8 +66,8 @@ $NUMERICAL_SETUP
   solver_type = 'unsplit'
   solver_str = 'riemann'
   !print_divb = 1
-  cfl_glm = 0.4
-  glm_alpha = 0.5
+  cfl_glm = 0.3
+  glm_alpha = 0.2
   integration_order = 2
 /
 

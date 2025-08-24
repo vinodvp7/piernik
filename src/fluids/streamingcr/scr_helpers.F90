@@ -242,7 +242,9 @@ contains
       end do
 
       if (disable_streaming) then
-         cg%w(sgma)%arr(xdim : 3*(scrind%stcosm - 1) + xdim ,:,:,:) = sigma_huge
+         do ns = 1, scrind%stcosm 
+            cg%w(sgma)%arr(xdim + 3*(ns - 1) ,:,:,:) = sigma_huge
+         end do
       else
          do ns = 1, scrind%stcosm 
             cg%w(sgma)%arr(3*(ns - 1) + xdim ,:,:,:) = &
@@ -251,8 +253,10 @@ contains
          end do
       endif
 
-      cg%w(sgma)%arr(ydim : 3*(scrind%stcosm - 1) + ydim ,:,:,:) = sigma_huge
-      cg%w(sgma)%arr(zdim : 3*(scrind%stcosm - 1) + zdim ,:,:,:) = sigma_huge
+      do ns = 1, scrind%stcosm 
+         cg%w(sgma)%arr(ydim + 3*(ns - 1)  ,:,:,:) = sigma_huge
+         cg%w(sgma)%arr(zdim + 3*(ns - 1)  ,:,:,:) = sigma_huge
+      end do
 
    end subroutine update_interaction_term
 
@@ -287,83 +291,82 @@ contains
 
 !> Should ghost zones be included here as well ? Yes because we set proper guard cells 
 !> by calling all_boundaries in piernik.F90 before simulation starts.
-
+      do ns = 1, scrind%stcosm 
 ! --- X-Direction Gradient ---
-      if (dom%has_dir(xdim)) then
-          ! Loop over the entire domain (including ghosts), except the very first and last cells
-          ! where a central difference stencil would go out of bounds.
-          do concurrent(k = cg%lhn(zdim,LO) :cg%lhn(zdim,HI) , j = cg%lhn(ydim,LO):cg%lhn(ydim,HI), &
-          & i = cg%lhn(xdim,LO)+1:cg%lhn(xdim,HI)-1 )
-              cg%w(gpci)%arr(xdim : 3*(scrind%stcosm - 1) + xdim : 3,i,j,k) = &
-              & 1.0/3.0 * (cg%w(scri)%arr(iarr_all_escr,i+1,j,k) - cg%w(scri)%arr(iarr_all_escr,i-1,j,k)) &
-              & / (2. * cg%dl(xdim))
-          end do
-         i = cg%lhn(xdim,LO)                    ! first interior
-         cg%w(gpci)%arr( xdim : 3*(scrind%stcosm - 1) + xdim : 3, i, :,: ) = &
-            (1.0/3.0) * ( -3.0*cg%w(scri)%arr(iarr_all_escr, i  ,:,:)  &
-                                 + 4.0*cg%w(scri)%arr(iarr_all_escr, i+1,:,:)  &
-                                 - 1.0*cg%w(scri)%arr(iarr_all_escr, i+2,:,:) ) / ( 2.0*cg%dl(xdim) )
+         if (dom%has_dir(xdim)) then
+            ! Loop over the entire domain (including ghosts), except the very first and last cells
+            ! where a central difference stencil would go out of bounds.
+               do concurrent(k = cg%lhn(zdim,LO) :cg%lhn(zdim,HI) , j = cg%lhn(ydim,LO):cg%lhn(ydim,HI), &
+               & i = cg%lhn(xdim,LO)+1:cg%lhn(xdim,HI)-1 )
+                  cg%w(gpci)%arr(xdim + 3*(ns-1),i,j,k) = &
+                  & 1.0/3.0 * (cg%w(scri)%arr(iarr_all_escr(ns),i+1,j,k) - cg%w(scri)%arr(iarr_all_escr(ns),i-1,j,k)) &
+                  & / (2. * cg%dl(xdim))
+               end do
+            i = cg%lhn(xdim,LO)                    ! first interior
+            cg%w(gpci)%arr( xdim + 3*(ns-1), i, :,: ) = &
+               (1.0/3.0) * ( -3.0*cg%w(scri)%arr(iarr_all_escr(ns), i  ,:,:)  &
+                                    + 4.0*cg%w(scri)%arr(iarr_all_escr(ns), i+1,:,:)  &
+                                    - 1.0*cg%w(scri)%arr(iarr_all_escr(ns), i+2,:,:) ) / ( 2.0*cg%dl(xdim) )
 
-         i = cg%lhn(xdim,HI)                    ! last interior
-         cg%w(gpci)%arr( xdim : 3*(scrind%stcosm - 1) + xdim : 3, i, :,: ) = &
-            (1.0/3.0) * (  3.0*cg%w(scri)%arr(iarr_all_escr, i  ,:,:)  &
-                                 - 4.0*cg%w(scri)%arr(iarr_all_escr, i-1,:,:)  &
-                                 + 1.0*cg%w(scri)%arr(iarr_all_escr, i-2,:,:) ) / ( 2.0*cg%dl(xdim) )
-      else
-          cg%w(gpci)%arr(xdim : 3*(scrind%stcosm - 1) + xdim : 3,:,:,:) = 0.0
-      endif
+            i = cg%lhn(xdim,HI)                    ! last interior
+            cg%w(gpci)%arr( xdim + 3*(ns-1), i, :,: ) = &
+               (1.0/3.0) * (  3.0*cg%w(scri)%arr(iarr_all_escr(ns), i  ,:,:)  &
+                                    - 4.0*cg%w(scri)%arr(iarr_all_escr(ns), i-1,:,:)  &
+                                    + 1.0*cg%w(scri)%arr(iarr_all_escr(ns), i-2,:,:) ) / ( 2.0*cg%dl(xdim) )
+         else
+            cg%w(gpci)%arr(xdim + 3*(ns-1) ,:,:,:) = 0.0
+         endif
+         ! --- Y-Direction Gradient ---
+         if (dom%has_dir(ydim)) then
+            do concurrent (k = cg%lhn(zdim,LO):cg%lhn(zdim,HI), j = cg%lhn(ydim,LO)+1:cg%lhn(ydim,HI)-1, &
+            & i = cg%lhn(xdim,LO):cg%lhn(xdim,HI))
+               cg%w(gpci)%arr(ydim + 3*(ns-1),i,j,k) = &
+               & 1.0/3.0 * (cg%w(scri)%arr(iarr_all_escr(ns),i,j+1,k) - cg%w(scri)%arr(iarr_all_escr(ns),i,j-1,k)) &
+               & / (2. * cg%dl(ydim))
+            end do
 
-      ! --- Y-Direction Gradient ---
-      if (dom%has_dir(ydim)) then
-          do concurrent (k = cg%lhn(zdim,LO):cg%lhn(zdim,HI), j = cg%lhn(ydim,LO)+1:cg%lhn(ydim,HI)-1, &
-          & i = cg%lhn(xdim,LO):cg%lhn(xdim,HI))
-              cg%w(gpci)%arr(ydim : 3*(scrind%stcosm - 1) + ydim : 3,i,j,k) = &
-              & 1.0/3.0 * (cg%w(scri)%arr(iarr_all_escr,i,j+1,k) - cg%w(scri)%arr(iarr_all_escr,i,j-1,k)) &
-              & / (2. * cg%dl(ydim))
-          end do
+            ! first interior (j0)
+            j = cg%lhn(ydim,LO)
+            cg%w(gpci)%arr( ydim + 3*(ns-1), :, j, : ) = &
+               (1.0/3.0) * ( -3.0*cg%w(scri)%arr(iarr_all_escr(ns), :, j  ,:)  &
+                                    + 4.0*cg%w(scri)%arr(iarr_all_escr(ns), :, j+1,:)  &
+                                    - 1.0*cg%w(scri)%arr(iarr_all_escr(ns), :, j+2,:) ) / ( 2.0*cg%dl(ydim) )
 
-         ! first interior (j0)
-         j = cg%lhn(ydim,LO)
-         cg%w(gpci)%arr( ydim : 3*(scrind%stcosm - 1) + ydim : 3, :, j, : ) = &
-            (1.0/3.0) * ( -3.0*cg%w(scri)%arr(iarr_all_escr, :, j  ,:)  &
-                                 + 4.0*cg%w(scri)%arr(iarr_all_escr, :, j+1,:)  &
-                                 - 1.0*cg%w(scri)%arr(iarr_all_escr, :, j+2,:) ) / ( 2.0*cg%dl(ydim) )
+            ! last interior (j1)
+            j = cg%lhn(ydim,HI)
+            cg%w(gpci)%arr( ydim + 3*(ns-1), :, j, : ) = &
+               (1.0/3.0) * (  3.0*cg%w(scri)%arr(iarr_all_escr(ns), :, j  ,:)  &
+                                    - 4.0*cg%w(scri)%arr(iarr_all_escr(ns), :, j-1,:)  &
+                                    + 1.0*cg%w(scri)%arr(iarr_all_escr(ns), :, j-2,:) ) / ( 2.0*cg%dl(ydim) )
+         else
+            cg%w(gpci)%arr(ydim + 3*(ns-1),:,:,:) = 0.0
+         endif
 
-         ! last interior (j1)
-         j = cg%lhn(ydim,HI)
-         cg%w(gpci)%arr( ydim : 3*(scrind%stcosm - 1) + ydim : 3, :, j, : ) = &
-            (1.0/3.0) * (  3.0*cg%w(scri)%arr(iarr_all_escr, :, j  ,:)  &
-                                 - 4.0*cg%w(scri)%arr(iarr_all_escr, :, j-1,:)  &
-                                 + 1.0*cg%w(scri)%arr(iarr_all_escr, :, j-2,:) ) / ( 2.0*cg%dl(ydim) )
-      else
-          cg%w(gpci)%arr(ydim : 3*(scrind%stcosm - 1) + ydim : 3,:,:,:) = 0.0
-      endif
+         ! --- Z-Direction Gradient ---
+         if (dom%has_dir(zdim)) then
+            do concurrent(k = cg%lhn(zdim,LO)+1:cg%lhn(zdim,HI)-1, j = cg%lhn(ydim,LO):cg%lhn(ydim,HI), &
+            &  i = cg%lhn(xdim,LO):cg%lhn(xdim,HI)) 
+               cg%w(gpci)%arr(zdim + 3*(ns-1),i,j,k) = &
+               & 1.0/3.0 * (cg%w(scri)%arr(iarr_all_escr(ns),i,j,k+1) - cg%w(scri)%arr(iarr_all_escr(ns),i,j,k-1)) &
+               & / (2. * cg%dl(zdim))
+            end do
 
-      ! --- Z-Direction Gradient ---
-      if (dom%has_dir(zdim)) then
-          do concurrent(k = cg%lhn(zdim,LO)+1:cg%lhn(zdim,HI)-1, j = cg%lhn(ydim,LO):cg%lhn(ydim,HI), &
-          &  i = cg%lhn(xdim,LO):cg%lhn(xdim,HI)) 
-              cg%w(gpci)%arr(zdim : 3*(scrind%stcosm - 1) + zdim : 3,i,j,k) = &
-              & 1.0/3.0 * (cg%w(scri)%arr(iarr_all_escr,i,j,k+1) - cg%w(scri)%arr(iarr_all_escr,i,j,k-1)) &
-              & / (2. * cg%dl(zdim))
-          end do
+            k = cg%lhn(zdim,LO)
+            cg%w(gpci)%arr( zdim + 3*(ns-1), :, :, k ) = &
+               (1.0/3.0) * ( -3.0*cg%w(scri)%arr(iarr_all_escr(ns), :, :, k  )  &
+                                    + 4.0*cg%w(scri)%arr(iarr_all_escr(ns), :, :, k+1)  &
+                                    - 1.0*cg%w(scri)%arr(iarr_all_escr(ns), :, :, k+2) ) / ( 2.0*cg%dl(zdim) )
 
-         k = cg%lhn(zdim,LO)
-         cg%w(gpci)%arr( zdim : 3*(scrind%stcosm - 1) + zdim : 3, :, :, k ) = &
-            (1.0/3.0) * ( -3.0*cg%w(scri)%arr(iarr_all_escr, :, :, k  )  &
-                                 + 4.0*cg%w(scri)%arr(iarr_all_escr, :, :, k+1)  &
-                                 - 1.0*cg%w(scri)%arr(iarr_all_escr, :, :, k+2) ) / ( 2.0*cg%dl(zdim) )
-
-         ! last interior (k1)
-         k = cg%lhn(zdim,HI)
-         cg%w(gpci)%arr( zdim : 3*(scrind%stcosm - 1) + zdim : 3, :, :, k ) = &
-            (1.0/3.0) * (  3.0*cg%w(scri)%arr(iarr_all_escr, :, :, k  )  &
-                                 - 4.0*cg%w(scri)%arr(iarr_all_escr, :, :, k-1)  &
-                                 + 1.0*cg%w(scri)%arr(iarr_all_escr, :, :, k-2) ) / ( 2.0*cg%dl(zdim) )
-      else
-          cg%w(gpci)%arr(zdim : 3*(scrind%stcosm - 1) + zdim : 3,:,:,:) = 0.0
-      endif
-
+            ! last interior (k1)
+            k = cg%lhn(zdim,HI)
+            cg%w(gpci)%arr( zdim + 3*(ns-1), :, :, k ) = &
+               (1.0/3.0) * (  3.0*cg%w(scri)%arr(iarr_all_escr(ns), :, :, k  )  &
+                                    - 4.0*cg%w(scri)%arr(iarr_all_escr(ns), :, :, k-1)  &
+                                    + 1.0*cg%w(scri)%arr(iarr_all_escr(ns), :, :, k-2) ) / ( 2.0*cg%dl(zdim) )
+         else
+            cg%w(gpci)%arr(zdim + 3*(ns-1),:,:,:) = 0.0
+         endif
+      end do
       cg%w(wna%ind(bgpc))%arr(:,:,:,:) = 0.0
       do ns = 1, scrind%stcosm
          do i = xdim,zdim
@@ -399,34 +402,38 @@ contains
       endif
 
       if (.not. disable_streaming) then
-         do i = xdim,zdim
-            cg%w(wna%ind(sgm_diff))%arr(i : 3*(scrind%stcosm - 1) + i : 3 ,:,:,: ) = &
-            & cg%w(wna%ind(sgm_diff))%arr(i : 3*(scrind%stcosm - 1) + i : 3 ,:,:,: ) * &
-            & cg%w(wna%ind(sgm_adv))%arr(i : 3*(scrind%stcosm - 1) + i : 3 ,:,:,: ) / &
-            & (cg%w(wna%ind(sgm_diff))%arr(i : 3*(scrind%stcosm - 1) + i : 3 ,:,:,: ) + &
-            &  cg%w(wna%ind(sgm_adv))%arr(i : 3*(scrind%stcosm - 1) + i : 3 ,:,:,: ))
+         do ns = 1, scrind%stcosm
+            do i = xdim,zdim
+               cg%w(wna%ind(sgm_diff))%arr(3*(ns-1) + i ,:,:,: ) = &
+               & cg%w(wna%ind(sgm_diff))%arr(3*(ns-1) + i,:,:,: ) * &
+               & cg%w(wna%ind(sgm_adv))%arr(3*(ns-1) + i  ,:,:,: ) / &
+               & (cg%w(wna%ind(sgm_diff))%arr(3*(ns-1) + i  ,:,:,: ) + &
+               &  cg%w(wna%ind(sgm_adv))%arr(3*(ns-1) + i  ,:,:,: ))
+            end do
          end do
       end if
 
       associate( sd => cg%w(wna%ind(sgm_diff))%arr, &
                  v  => cg%w(wna%ind(v_diff  ))%arr )
 
-         do i = xdim, zdim
-            if (dom%has_dir(i)) then
-               v(i:3*(scrind%stcosm-1)+i:3,:,:,:) = sd(i:3*(scrind%stcosm-1)+i:3,:,:,:) * cg%dl(i)
-               v(i:3*(scrind%stcosm-1)+i:3,:,:,:) = v(i:3*(scrind%stcosm-1)+i:3,:,:,:)**2 * 1.5
+         do ns = 1, scrind%stcosm
+            do i = xdim, zdim
+               if (dom%has_dir(i)) then
+                  v(i+3*(ns-1),:,:,:) = sd(i+3*(ns-1),:,:,:) * cg%dl(i)
+                  v(i+3*(ns-1),:,:,:) = v(i+3*(ns-1),:,:,:)**2 * 1.5
 
-               where ( v(i:3*(scrind%stcosm-1)+i:3,:,:,:) < tau_asym )
-                  v(i:3*(scrind%stcosm-1)+i:3,:,:,:) = sqrt( max(0.0, 1.0 - 0.5*v(i:3*(scrind%stcosm-1)+i:3,:,:,:)) )
-               elsewhere
-                  v(i:3*(scrind%stcosm-1)+i:3,:,:,:) = sqrt( (1.0 - exp(-v(i:3*(scrind%stcosm-1)+i:3,:,:,:))) / &
-                                                             v(i:3*(scrind%stcosm-1)+i:3,:,:,:) ) 
-               end where
+                  where ( v(i+3*(ns-1),:,:,:) < tau_asym )
+                     v(i+3*(ns-1),:,:,:) = sqrt( max(0.0, 1.0 - 0.5*v(i+3*(ns-1),:,:,:)) )
+                  elsewhere
+                     v(i+3*(ns-1),:,:,:) = sqrt( (1.0 - exp(-v(i+3*(ns-1),:,:,:))) / &
+                                                               v(i+3*(ns-1),:,:,:) ) 
+                  end where
 
-               v(i:3*(scrind%stcosm-1)+i:3,:,:,:) = v(i:3*(scrind%stcosm-1)+i:3,:,:,:) * sqrt(1.0/3.0) * vm
-            else
-               v(i:3*(scrind%stcosm-1)+i:3,:,:,:) = 0.0
-            end if
+                  v(i+3*(ns-1),:,:,:) = v(i+3*(ns-1),:,:,:) * sqrt(1.0/3.0) * vm
+               else
+                  v(i+3*(ns-1),:,:,:) = 0.0
+               end if
+            end do
          end do
       end associate
 

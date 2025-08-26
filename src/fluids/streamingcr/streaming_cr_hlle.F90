@@ -118,7 +118,7 @@ contains
                call cg%save_outfluxes(ddim, i1, i2, eflx)
 
                tflux(:,2:) = transpose(flux(:, iarr_all_scr_swp(ddim,:)))
-               tflux(:,1) = 100.0
+               tflux(:,1) = 0.0
                pflux(:,:) = tflux
             enddo
          enddo

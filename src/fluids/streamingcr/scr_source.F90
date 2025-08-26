@@ -186,8 +186,7 @@ contains
                cg%w(fldi)%arr(iarr_all_my(1),i,j,k) = cg%w(fldi)%arr(iarr_all_my(1),i,j,k) + (f2 - newf2)/vm
                cg%w(fldi)%arr(iarr_all_mz(1),i,j,k) = cg%w(fldi)%arr(iarr_all_mz(1),i,j,k) + (f3 - newf3)/vm
             endif
-
-            if (.not. disable_en_source) cg%w(scri)%arr(1+4*(ns-1),i,j,k) = new_ec
+            cg%w(scri)%arr(1+4*(ns-1),i,j,k) = new_ec
             cg%w(scri)%arr(2+4*(ns-1),i,j,k) = newf1
             cg%w(scri)%arr(3+4*(ns-1),i,j,k) = newf2
             cg%w(scri)%arr(4+4*(ns-1),i,j,k) = newf3

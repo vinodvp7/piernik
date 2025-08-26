@@ -288,7 +288,6 @@ subroutine riemann_hlle(ql, qr, vdiff, flx)
 
          bp = max(ar, 0.0)   
          bm = min(al, 0.0)
-         write(*,*) vm
          fl(1) = ql(i,2 + 4 * (j-1)) * vm - bm(i) * ql(i,1+ 4 * (j-1))
          fr(1) = qr(i,2 + 4 * (j-1)) * vm  - bp(i) * qr(i,1+ 4 * (j-1))
          fl(2) = vm  / 3.0  * ql(i,1 + 4 * (j-1)) - bm(i) * ql(i,2+ 4 * (j-1))

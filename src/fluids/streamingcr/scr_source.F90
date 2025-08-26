@@ -265,9 +265,8 @@ contains
          end do
       end do
       end do
-
       ! scale by 1/vm
-      cg%w(wna%ind(gpc))%arr = cg%w(wna%ind(gpc))%arr / vm**2
+      cg%w(wna%ind(gpc))%arr = cg%w(wna%ind(gpc))%arr / vm
 
       cg%w(wna%ind(bgpc))%arr(:,:,:,:) = 0.0
       do ns = 1, scrind%stcosm

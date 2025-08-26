@@ -130,6 +130,7 @@ contains
       type(cg_list_element),  pointer :: cgl
       type(grid_container),   pointer :: cg
       integer                         :: p
+      real            :: ang, halfphi
 
       !   Secondary parameters
       do p = 1, flind%fluids
@@ -154,7 +155,7 @@ contains
                      cg%u(fl%imz,i,j,k) = 0.0
                      if (fl%has_energy) then
 
-                        cg%u(fl%ien,i,j,k) = 1.0/fl%gam_1
+                        cg%u(fl%ien,i,j,k) = (2.0-log(r + tiny(1.)))/(fl%gam_1 )
                         cg%u(fl%ien,i,j,k) = cg%u(fl%ien,i,j,k) + ekin(cg%u(fl%imx,i,j,k), cg%u(fl%imy,i,j,k), cg%u(fl%imz,i,j,k), cg%u(fl%idn,i,j,k))
 
                         if (fl%is_magnetized) then
@@ -187,11 +188,10 @@ contains
                      zk = cg%z(k)
 
                      r = sqrt(xi * xi + yj * yj)
-                     phi_c = atan2(yj, xi)
+                     ang     = atan2(yj, xi)                  ! (-π, π]
+                     halfphi = 0.5*phi
 
-                     if (phi_c < 0.0) phi_c = phi_c + 6.283185307 ! map to [0,2π)
-
-                     if (r > rin .and. r < rout .and. phi_c < phi) then
+                     if (r > rin .and. r < rout .and. abs(ang) <= halfphi) then
                         cg%scr(scr_fluid%iescr, i,j,k) = 12.0
                      else 
                         cg%scr(scr_fluid%iescr, i,j,k) = 10.0

@@ -70,7 +70,7 @@ contains
 
        a0  = 20.0
        a1  = 10.0
-       kx  = 4. * atan(1.0)          ! pi
+       kx  = 3.141592654          ! pi
 
       if (master) then
 

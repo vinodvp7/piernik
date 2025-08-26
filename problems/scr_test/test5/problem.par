@@ -1,5 +1,5 @@
 $BASE_DOMAIN
-  n_d = 512,512,1
+  n_d = 256,256,1
   nb  = 4
   bnd_xl = 'out'
   bnd_xr = 'out'
@@ -47,14 +47,14 @@ $FLUID_IONIZED
 /
 $STREAMING_CR
    nscr                    = 1
-   vm                      = 100.0
-   sigmax                  = 1.0
+   vm                      = 500.0
+   sigmax                  = 1
    sigmay                  = 1e6
    ord_scr_grad            = 4
    disable_en_source       = .true.
    disable_feedback        = .true.      ! feedback to MHD gas 
    disable_streaming       = .true.  
-   disable_stabilizer      = .false.
+   disable_stabilizer      = .true.
    sigmax_parallel         = .false.
 
 /
@@ -67,7 +67,7 @@ $NUMERICAL_SETUP
   solver_str = 'riemann'
   !print_divb = 1
   cfl_glm = 0.3
-  glm_alpha = 0.2
+  !glm_alpha = 0.2
   integration_order = 2
 /
 

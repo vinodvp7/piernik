@@ -393,7 +393,7 @@ contains
       use named_array_list, only: wna, na_var_4d
 #endif /* COSM_RAYS */
 #ifdef STREAM_CR
-      use initstreamingcr,    only: nscr
+      use initstreamingcr,    only: nscr, vm
       use constants,          only: gpc, bgpc, sgm_adv, sgm_diff, ndims
       use named_array_list,   only: wna
       use fluidindex,         only: scrind
@@ -538,15 +538,15 @@ contains
 
          case ('xfscr_01':'xfscr_99')                                !> xth component of Fc
             read(var, '(A6,I2)') aux, is     ! 'xfscr_' + nn
-            tab(:,:,:) = cg%scr( scrind%scr(is)%ixfscr, RNG )
+            tab(:,:,:) = vm * cg%scr( scrind%scr(is)%ixfscr, RNG )
 
          case ('yfscr_01':'yfscr_99')                                !> yth component of Fc
             read(var, '(A6,I2)') aux, is     ! 'yfscr_' + nn
-            tab(:,:,:) = cg%scr( scrind%scr(is)%iyfscr, RNG )
+            tab(:,:,:) =vm *  cg%scr( scrind%scr(is)%iyfscr, RNG )
 
          case ('zfscr_01':'zfscr_99')                                !> zth component of Fc
             read(var, '(A6,I2)') aux, is     ! 'zfscr_' + nn
-            tab(:,:,:) = cg%scr( scrind%scr(is)%izfscr, RNG )
+            tab(:,:,:) = vm * cg%scr( scrind%scr(is)%izfscr, RNG )
 
          case ('gradpcx_01':'gradpcx_99')                            !> xth component of ∇Pc 
             read(var, '(A8,I2)') aux, is     ! 'gradpcx_' + nn
@@ -566,20 +566,20 @@ contains
 
          case ('sigmax_01':'sigmax_99')                              !> xth component of σ
             read(var, '(A7,I2)') aux, is     ! 'sigmax_' + nn
-            tab(:,:,:) = (cg%w(wna%ind(sgm_diff))%arr( (is-1)*ndims + xdim, RNG ) * &
+            tab(:,:,:) =1/vm * (cg%w(wna%ind(sgm_diff))%arr( (is-1)*ndims + xdim, RNG ) * &
             &             cg%w(wna%ind(sgm_adv))%arr( (is-1)*ndims + xdim, RNG ) ) / &
             & (cg%w(wna%ind(sgm_diff))%arr( (is-1)*ndims + xdim, RNG ) + &
             &             cg%w(wna%ind(sgm_adv))%arr( (is-1)*ndims + xdim, RNG ) )
 
          case ('sigmay_01':'sigmay_99')                              !> yth component of σ
             read(var, '(A7,I2)') aux, is
-            tab(:,:,:) = (cg%w(wna%ind(sgm_diff))%arr( (is-1)*ndims + ydim, RNG ) * &
+            tab(:,:,:) =1/vm * (cg%w(wna%ind(sgm_diff))%arr( (is-1)*ndims + ydim, RNG ) * &
             &             cg%w(wna%ind(sgm_adv))%arr( (is-1)*ndims + ydim, RNG ) ) / &
             & (cg%w(wna%ind(sgm_diff))%arr( (is-1)*ndims + ydim, RNG ) + &
             &             cg%w(wna%ind(sgm_adv))%arr( (is-1)*ndims + ydim, RNG ) )
          case ('sigmaz_01':'sigmaz_99')                              !> zth component of σ
             read(var, '(A7,I2)') aux, is
-            tab(:,:,:) = (cg%w(wna%ind(sgm_diff))%arr( (is-1)*ndims + zdim, RNG ) * &
+            tab(:,:,:) = 1/vm * (cg%w(wna%ind(sgm_diff))%arr( (is-1)*ndims + zdim, RNG ) * &
             &             cg%w(wna%ind(sgm_adv))%arr( (is-1)*ndims + zdim, RNG ) ) / &
             & (cg%w(wna%ind(sgm_diff))%arr( (is-1)*ndims + zdim, RNG ) + &
             &             cg%w(wna%ind(sgm_adv))%arr( (is-1)*ndims + zdim, RNG ) )

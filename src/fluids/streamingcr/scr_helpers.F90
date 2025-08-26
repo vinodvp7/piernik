@@ -209,7 +209,7 @@ contains
       use global,             only: integration_order
       use initstreamingcr,    only: sigmax, sigma_huge, sigmay, sigmaz,&
       &                             disable_streaming, vm, sigmax_parallel
-      use fluidindex,         only: scrind, iarr_all_dn, iarr_all_escr
+      use fluidindex,         only: scrind, iarr_all_dn, iarr_all_escr,iarr_all_gpcx,iarr_all_gpcy,iarr_all_gpcz
 
       implicit none
 
@@ -257,6 +257,7 @@ contains
          cg%w(sgma)%arr(ydim + 3*(ns - 1)  ,:,:,:) = sigma_huge
          cg%w(sgma)%arr(zdim + 3*(ns - 1)  ,:,:,:) = sigma_huge
       end do
+
 
    end subroutine update_interaction_term
 
@@ -483,7 +484,7 @@ contains
    subroutine sanitize_scr_helper_container(cg)
       use grid_cont,          only: grid_container
       use named_array_list,   only: wna
-      use constants,          only: gpc, scrh, bgpc, uh_n, fluid_n, sgm_adv, sgm_diff
+      use constants,          only: gpc, scrh, bgpc, uh_n, fluid_n, sgm_adv, sgm_diff, uh_n
 
       implicit none
 

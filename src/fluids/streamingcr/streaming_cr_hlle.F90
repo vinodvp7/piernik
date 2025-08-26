@@ -283,18 +283,18 @@ subroutine riemann_hlle(ql, qr, vdiff, flx)
          al = min((mean_adv  - mean_diff ),(vl(i)  - vdiff_l(i) ))
          ar = max((mean_adv  + mean_diff ),(vr(i)  + vdiff_r(i) ))
 
-         ar = min(ar,mean_adv + vm/sqrt(3.0))
-         al = max(al,mean_adv - vm/sqrt(3.0))
+         ar = min(ar,  vm/sqrt(3.0))
+         al = max(al, - vm/sqrt(3.0))
 
          bp = max(ar, 0.0)   
          bm = min(al, 0.0)
-
-         fl(1) = ql(i,2 + 4 * (j-1)) * vm + (vl(i)- bm(i)) * ql(i,1+ 4 * (j-1))
-         fr(1) = qr(i,2 + 4 * (j-1)) * vm + (vr(i) - bp(i)) * qr(i,1+ 4 * (j-1))
-         fl(2) = vm * vm / 3.0  * ql(i,1 + 4 * (j-1)) +(vl(i)- bm(i)) * ql(i,2+ 4 * (j-1))
-         fr(2) = vm * vm / 3.0  * qr(i,1 + 4 * (j-1)) +(vr(i)- bp(i)) * qr(i,2+ 4 * (j-1))
-         fl(3) =  (vl(i) - bm(i)) * ql(i,3+ 4 * (j-1)) ; fr(3) =  (vr(i) - bp(i)) * qr(i,3+ 4 * (j-1)) 
-         fl(4) =  (vl(i) - bm(i)) * ql(i,4+ 4 * (j-1))  ; fr(4) = (vr(i) - bp(i)) * qr(i,4+ 4 * (j-1)) 
+         write(*,*) vm
+         fl(1) = ql(i,2 + 4 * (j-1)) * vm - bm(i) * ql(i,1+ 4 * (j-1))
+         fr(1) = qr(i,2 + 4 * (j-1)) * vm  - bp(i) * qr(i,1+ 4 * (j-1))
+         fl(2) = vm  / 3.0  * ql(i,1 + 4 * (j-1)) - bm(i) * ql(i,2+ 4 * (j-1))
+         fr(2) = vm  / 3.0  * qr(i,1 + 4 * (j-1)) - bp(i) * qr(i,2+ 4 * (j-1))
+         fl(3) =   - bm(i) * ql(i,3+ 4 * (j-1)) ; fr(3) =   - bp(i) * qr(i,3+ 4 * (j-1)) 
+         fl(4) =   - bm(i) * ql(i,4+ 4 * (j-1))  ; fr(4) =  - bp(i) * qr(i,4+ 4 * (j-1)) 
          tmp = 0.0
          if (abs(bp(i) - bm(i)) > 1e-20) tmp = 0.5*(bp(i) + bm(i))/(bp(i) - bm(i))
          flx(i,1+4*(j-1):4+4*(j-1)) = 0.5 * (fl + fr) + (fl - fr) * tmp

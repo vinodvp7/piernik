@@ -1,5 +1,5 @@
 $BASE_DOMAIN
-  n_d = 256,1,1
+  n_d = 256,256,1
   nb  = 4
   bnd_xl = 'out'
   bnd_xr = 'out'
@@ -49,7 +49,7 @@ $STREAMING_CR
    nscr                    = 1
    vm                      = 100.0
    sigmax                  = 1e8
-   !sigmay                  = 1e8
+   sigmay                  = 1e8
    ord_scr_grad            = 4
    disable_en_source       = .true.
    disable_feedback        = .true.      ! feedback to MHD gas
@@ -70,8 +70,8 @@ $NUMERICAL_SETUP
 $PROBLEM_CONTROL
    a  = 40.0
    bx = 1.0
-   !b  = 40.0
-   !by = 1.0        ! B at 45 degree in the XY plane
+   b  = 40.0
+   by = 1.0        ! B at 45 degree in the XY plane
 /
 
 $AMR

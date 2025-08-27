@@ -71,7 +71,7 @@ contains
       real                                       :: v1, v2, v3, vtot1, vtot2, vtot3, st,ct,sp,cp,f1,f2,f3,ec, sgn_bgpc
       real                                       :: sigmax, sigmay, sigmaz,coef_11,coef_12,coef_13,coef_14,coef_21,coef_22
       real                                       :: coef_31, coef_33, coef_41, coef_44, newf1 ,newf2 ,newf3, e_coef ,new_ec
-      real                                       :: gpcx, gpcy, gpcz, ec_source_
+      real                                       :: gpcx, gpcy, gpcz, ec_source_, new_eg
       fldi   = wna%fi
       scri   = wna%scr
       magi   = wna%bi
@@ -174,17 +174,21 @@ contains
             new_ec = new_ec + rk_coef(istep) * dt * ec_source_
 
             call rot_from_b(newf1,newf2,newf3,cp,sp,ct,st)
-
+            f1 = cg%w(scri)%arr(2+4*(ns-1),i,j,k)
+            f2 = cg%w(scri)%arr(3+4*(ns-1),i,j,k)
+            f3 = cg%w(scri)%arr(4*ns,i,j,k)
             if (new_ec < 0.0) new_ec = ec
 
             if (.not. disable_feedback .and. .not. disable_en_source) then  ! Energy feedback to the MHD gas
-               cg%w(fldi)%arr(iarr_all_en(1),i,j,k) = max(0.0,cg%w(fldi)%arr(iarr_all_en(1),i,j,k) - (new_ec - ec)) ! Floored but with 0 . Revisit this
+               new_eg = cg%w(fldi)%arr(iarr_all_en(1),i,j,k) + (new_ec - ec)
+               if (new_eg < 0) new_eg = cg%w(fldi)%arr(iarr_all_en(1),i,j,k)
+               cg%w(fldi)%arr(iarr_all_en(1),i,j,k) = new_eg
             endif
 
             if (.not. disable_feedback) then ! Momentum feedback to MHD gas
-               cg%w(fldi)%arr(iarr_all_mx(1),i,j,k) = cg%w(fldi)%arr(iarr_all_mx(1),i,j,k) + (f1 - newf1)/vm
-               cg%w(fldi)%arr(iarr_all_my(1),i,j,k) = cg%w(fldi)%arr(iarr_all_my(1),i,j,k) + (f2 - newf2)/vm
-               cg%w(fldi)%arr(iarr_all_mz(1),i,j,k) = cg%w(fldi)%arr(iarr_all_mz(1),i,j,k) + (f3 - newf3)/vm
+               cg%w(fldi)%arr(iarr_all_mx(1),i,j,k) = cg%w(fldi)%arr(iarr_all_mx(1),i,j,k) - (newf1 - f1)/vm
+               cg%w(fldi)%arr(iarr_all_my(1),i,j,k) = cg%w(fldi)%arr(iarr_all_my(1),i,j,k) - (newf2 - f2)/vm
+               cg%w(fldi)%arr(iarr_all_mz(1),i,j,k) = cg%w(fldi)%arr(iarr_all_mz(1),i,j,k) - (newf3 - f3)/vm
             endif
             cg%w(scri)%arr(1+4*(ns-1),i,j,k) = new_ec
             cg%w(scri)%arr(2+4*(ns-1),i,j,k) = newf1

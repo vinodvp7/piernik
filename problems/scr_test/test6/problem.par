@@ -43,7 +43,7 @@ $OUTPUT_CONTROL
 /
 
 $FLUID_IONIZED
-  gamma = 1.6667
+  gamma = 1.666667
 /
 $STREAMING_CR
    nscr                    = 1
@@ -56,7 +56,7 @@ $STREAMING_CR
    disable_stabilizer      = .true.  
 /
 $NUMERICAL_SETUP
-  cfl     = 0.2
+  cfl     = 0.5
   !disallow_negatives = .false.
   smalld  = 1.e-6
   smallei = 1.e-6

@@ -47,7 +47,7 @@ $FLUID_IONIZED
 /
 $STREAMING_CR
    nscr                    = 1
-   vm                      = 700.0
+   vm                      = 100.0
    sigmax                  = 1
    sigmay                  = 1e6
    ord_scr_grad            = 4

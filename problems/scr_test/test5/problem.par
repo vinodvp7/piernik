@@ -1,5 +1,5 @@
 $BASE_DOMAIN
-  n_d = 256,256,1
+  n_d = 1024,1024,1
   nb  = 4
   bnd_xl = 'out'
   bnd_xr = 'out'
@@ -48,13 +48,13 @@ $FLUID_IONIZED
 $STREAMING_CR
    nscr                    = 1
    vm                      = 100.0
-   sigmax                  = 1
+   sigmax                  = 1.0
    sigmay                  = 1e6
    ord_scr_grad            = 4
-   disable_en_source       = .true.
+   disable_en_source       = .false.
    disable_feedback        = .true.      ! feedback to MHD gas 
    disable_streaming       = .true.  
-   disable_stabilizer      = .true.
+   disable_stabilizer      = .false.
    sigmax_parallel         = .false.
 
 /

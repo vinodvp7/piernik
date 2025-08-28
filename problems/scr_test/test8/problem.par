@@ -1,8 +1,8 @@
 $BASE_DOMAIN
   n_d = 512,512,1
   nb  = 4
-  bnd_xl = 'per'
-  bnd_xr = 'per'
+  bnd_xl = 'out'
+  bnd_xr = 'out'
   bnd_yl = 'out'
   bnd_yr = 'out'
   bnd_zl = 'out'
@@ -28,18 +28,18 @@ $RESTART_CONTROL
 /
 
 $END_CONTROL
-  tend = 0.06
+  tend = 0.1
   nend = 100000000
 /
 
 $OUTPUT_CONTROL
-   problem_name = 'scrtst8'
+   problem_name = 'scr'
    run_id = 'tst'
    dt_hdf = 0.02
    dt_res = 0.0
    dt_log = 0.02
    dt_tsl = 0.02
-   vars(1:) = 'dens', 'ener', 'velx', 'pres', 'escr', 'xfscr', 'yfscr', 'zfscr', 'gradpcx', 'bdotgradpc', 'sigmax', 'gradpcy', 'gradpcz'
+   vars(1:) = 'dens', 'ener', 'velx', 'vely' , 'pres', 'escr', 'xfscr', 'yfscr', 'zfscr', 'gradpcx', 'bdotgradpc', 'sigmax', 'gradpcy', 'gradpcz', 'magx','magy'
 /
 
 $FLUID_IONIZED
@@ -48,18 +48,23 @@ $FLUID_IONIZED
 $STREAMING_CR
    nscr                    = 1
    vm                      = 100.0
-   sigmax                  = 10
+   sigmax                  = 1e6
    sigmay                  = 1e6
    ord_scr_grad            = 4
    disable_en_source       = .false.
    disable_feedback        = .false.      ! feedback to MHD gas 
-   disable_streaming       = .true.  
+   disable_streaming       = .false.  
+   disable_stabilizer      = .true.
 /
 $NUMERICAL_SETUP
-  cfl     = 0.4
+  cfl     = 0.1
   smalld  = 1.e-5
+  disallow_negatives = .false.
   smallei = 1.e-5
-  limiter = 'minmod'
+  limiter = 'moncen'
+  cfl_glm = 0.3
+  !glm_alpha = 0.1
+  print_divb = 10
   solver_type = 'unsplit'
   solver_str = 'riemann'
   integration_order = 2

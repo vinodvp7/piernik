@@ -1177,7 +1177,7 @@ contains
                case (BND_MPI, BND_COR, BND_SHE, BND_FC, BND_MPI_FC, BND_PER)
                   ! Do nothing
                case (BND_USER)
-                  call user_fluidbnd(dir, side, cg, wn=wna%fi)
+                  call user_fluidbnd(dir, side, cg, wn=wna%scr)
                case (BND_REF)
                   ssign = lh_2_pm1(side)
                   do ib=1_INT4, dom%nb

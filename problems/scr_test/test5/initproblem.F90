@@ -70,7 +70,7 @@ contains
 
        rin  = 0.5 
        rout = 0.7
-       phi  = 0.261799388
+       phi  = 0.523598776
 
       if (master) then
 
@@ -155,7 +155,7 @@ contains
                      cg%u(fl%imz,i,j,k) = 0.0
                      if (fl%has_energy) then
 
-                        cg%u(fl%ien,i,j,k) = (2.0-log(r + tiny(1.)))/(fl%gam_1 )
+                        cg%u(fl%ien,i,j,k) = 1.0
                         cg%u(fl%ien,i,j,k) = cg%u(fl%ien,i,j,k) + ekin(cg%u(fl%imx,i,j,k), cg%u(fl%imy,i,j,k), cg%u(fl%imz,i,j,k), cg%u(fl%idn,i,j,k))
 
                         if (fl%is_magnetized) then

@@ -80,7 +80,7 @@ contains
       rtmi   = wna%ind(rtm)
       gpci   = wna%ind(gpc)
       bgpci  = wna%ind(bgpc)
-      if (istep == first_stage(integration_order) .or. integration_order < 2 )  then
+      if (istep == first_stage(integration_order) .and. integration_order > 1 )  then
          fldi   = wna%ind(uh_n)
          scri   = wna%ind(scrh)
          magi   = wna%ind(magh_n)
@@ -180,7 +180,7 @@ contains
             if (new_ec < 0.0) new_ec = ec
 
             if (.not. disable_feedback .and. .not. disable_en_source) then  ! Energy feedback to the MHD gas
-               new_eg = cg%w(fldi)%arr(iarr_all_en(1),i,j,k) + (new_ec - ec)
+               new_eg = cg%w(fldi)%arr(iarr_all_en(1),i,j,k) - (new_ec - ec)
                if (new_eg < 0) new_eg = cg%w(fldi)%arr(iarr_all_en(1),i,j,k)
                cg%w(fldi)%arr(iarr_all_en(1),i,j,k) = new_eg
             endif
@@ -260,7 +260,7 @@ contains
             shift = 0 ; shift(afdim) = I_ONE
 
             T(iarr_all_gpc(d,ns), L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) = &
-            T(iarr_all_gpc(d,ns), L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) + &
+            T(iarr_all_gpc(d,ns), L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) - &
             ( F(afdim)%flx(iarr_all_fscr(d,ns), L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) - &
                F(afdim)%flx(iarr_all_fscr(d,ns), L(xdim)+shift(xdim):U(xdim)+shift(xdim), &
                                                 L(ydim)+shift(ydim):U(ydim)+shift(ydim), &

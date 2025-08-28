@@ -484,14 +484,19 @@ contains
    subroutine sanitize_scr_helper_container(cg)
       use grid_cont,          only: grid_container
       use named_array_list,   only: wna
-      use constants,          only: gpc, scrh, bgpc, uh_n, fluid_n, sgm_adv, sgm_diff, uh_n
+      use constants,          only: gpc, scrh, bgpc, uh_n, fluid_n, sgm_adv, sgm_diff, uh_n, magh_n
 
       implicit none
 
       type(grid_container), pointer, intent(in) :: cg
 
       cg%w(wna%ind(scrh))%arr(:,:,:,:) = cg%scr(:,:,:,:)
-      
+
+      cg%w(wna%ind(uh_n))%arr(:,:,:,:) = cg%u(:,:,:,:)
+
+      cg%w(wna%ind(magh_n))%arr(:,:,:,:) = cg%b(:,:,:,:)
+
+
       cg%w(wna%ind(bgpc))%arr(:,:,:,:) = 0.0
 
       cg%w(wna%ind(sgm_adv))%arr(:,:,:,:) = 0.0

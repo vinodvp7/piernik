@@ -150,10 +150,7 @@ contains
                   xi = cg%x(i)
                   do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
                      zk = cg%z(k)
-                     
-                     vx = vl
-                     if (xi > x0) vx = vr
-
+                  
                      cg%u(fl%idn,i,j,k) = 1.0
                      cg%u(fl%imx,i,j,k) = 0.0
                      cg%u(fl%imy,i,j,k) = 0.0

@@ -28,14 +28,14 @@ $RESTART_CONTROL
 /
 
 $END_CONTROL
-  tend = 0.05
+  tend = 0.3
   nend = 100000000
 /
 
 $OUTPUT_CONTROL
    problem_name = 'scr'
    run_id = 'tst'
-   dt_hdf = 0.02
+   dt_hdf = 0.01
    dt_res = 0.0
    dt_log = 1e-20
    dt_tsl = 0.02
@@ -43,7 +43,7 @@ $OUTPUT_CONTROL
 /
 
 $FLUID_IONIZED
-  gamma = 1.666667
+  gamma = 1.666666667
 /
 $STREAMING_CR
    nscr                    = 1
@@ -64,7 +64,7 @@ $NUMERICAL_SETUP
   cfl_glm = 0.3
   solver_type = 'unsplit'
   solver_str = 'riemann'
-  integration_order = 2
+  integration_order = 1
 /
 
 $PROBLEM_CONTROL

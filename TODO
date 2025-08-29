@@ -76,13 +76,19 @@ primitive variable evolution + comparision, L1/L2 error, time and nstep comparis
     -[ ] Test5 - Anisotropic diffusion of Ec in 2d with no streaming or feedback
     -[ ] Test6 - Anisotropic diffusion of Ec in 2d with no streaming or feedback along a circular B field
     -[ ] Test7 - Bottleneck Effect: Balance between CR Streaming and Heating Terms
-    -[ ] Test8 - 
+    -[ ] Test8 - CR-driven Waves with Mixed Diffusion and Streaming
+    -[ ] Test9 - CR Interactions with Warm Clouds
+    -[ ] Test10 - CR-driven Blast Waves without AMR
+    -[ ] Test11 - CR-driven Blast Waves with AMR
+    -[ ] Test12 - MCR test to test the source term Q
+    -[ ] Test13 - Performance  test of the code 
+   
+
      
 
 
 
-
-
+ 
 
 
 

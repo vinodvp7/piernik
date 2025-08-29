@@ -49,4 +49,40 @@ primitive variable evolution + comparision, L1/L2 error, time and nstep comparis
 -[ ] Document "How to add a new solver"
 -[ ] Pull request
 
+########################## NEWER TODO #############################################
+-[ ] Modify constants.F90 with streaming cosmic rays
+-[ ] Modify global
+-[ ] Added scr related arrays in cg_list_global / named_array_list / grid_container_na
+-[ ] Modify fluidindex/fluidtypes/initfluid to include scr related subroutines and type
+-[ ] Modify common_hdf5 / hdf5_data to include scr related outputs 
+-[ ] Create a module called initstreamingcr for initialization of streaming cr related files
+-[ ] Modify all_boundaries/ unsplit_sweep / cg_list_bnd
+-[ ] Create a module of scr_misc subtroutines that helps 
+      -[ ] Subroutine to rotate and inverse_rotate a vector that is pure/ elemental 
+      -[ ] Sanitize array 
+      -[ ] Check_for_positive
+      -[ ] Update_interaction_coefficient
+      -[ ] Gradient of Pc 2nd order and 4th order
+      -[ ] Calculate v_diffusion
+-[ ] Create a module to do the transport of streaming cr
+-[ ] Modify interpolations.F90 
+-[ ] Create scr_source to handle streaming cosmic ray source term
+-[ ] Modify unplit_source/ unsplit_mag_modules to include these pieces
+-[ ] Create test problems
+    -[ ] Test1 - Simple advection of streaming cosmic ray with gaussian Ec without feedback in 1d
+    -[ ] Test2 - Simple advection of streaming cosmic ray with triangular Ec without feedback
+    -[ ] Test3 - Simple advection of streaming cosmic ray with gaussian Ec without feedback in 2d
+    -[ ] Test4 - Diffusion of gaussian Ec in 1d with v= 0 and v = 0.5 / 1 / -1 without feedback
+    -[ ] Test5 - Anisotropic diffusion of Ec in 2d with no streaming or feedback
+    -[ ] Test6 - Anisotropic diffusion of Ec in 2d with no streaming or feedback along a circular B field
+    -[ ] Test7 - Bottleneck Effect: Balance between CR Streaming and Heating Terms
+    -[ ] Test8 - 
+     
+
+
+
+
+
+
+
 

@@ -70,18 +70,19 @@ primitive variable evolution + comparision, L1/L2 error, time and nstep comparis
 -[ ] Modify unplit_source/ unsplit_mag_modules to include these pieces
 -[ ] Create test problems
     -[X] Test1  - Simple advection of streaming cosmic ray with gaussian Ec without feedback in 1d
-    -[ ] Test2  - Simple advection of streaming cosmic ray with triangular Ec without feedback
+    -[X] Test2  - Simple advection of streaming cosmic ray with triangular Ec without feedback
     -[X] Test3  - Simple advection of streaming cosmic ray with gaussian Ec without feedback in 2d
     -[X] Test4  - Diffusion of gaussian Ec in 1d with v= 0 and v = 0.5 / 1 / -1 without feedback
-    -[ ] Test5  - Anisotropic diffusion of Ec in 2d with no streaming or feedback
-    -[ ] Test6  - Anisotropic diffusion of Ec in 2d with no streaming or feedback along a circular B field
-    -[ ] Test7  - Bottleneck Effect: Balance between CR Streaming and Heating Terms
-    -[ ] Test8  - CR-driven Waves with Mixed Diffusion and Streaming
+    -[X] Test5  - Anisotropic diffusion of Ec in 2d with no streaming or feedback
+    -[X] Test6  - Anisotropic diffusion of Ec in 2d with no streaming or feedback along a circular B field
+    -[X] Test7  - Bottleneck Effect: Balance between CR Streaming and Heating Terms
+    -[X] Test8  - CR-driven Waves with Mixed Diffusion and Streaming
     -[ ] Test9  - CR Interactions with Warm Clouds
-    -[ ] Test10 - CR-driven Blast Waves without AMR
-    -[ ] Test11 - CR-driven Blast Waves with AMR
-    -[ ] Test12 - MCR test to test the source term Q
-    -[ ] Test13 - Performance  test of the code 
+    -[ ] Test10 - CR Interactions with Warm Clouds
+    -[ ] Test11 - CR-driven Blast Waves without AMR
+    -[ ] Test12 - CR-driven Blast Waves with AMR
+    -[ ] Test13 - MCR test to test the source term Q
+    -[ ] Test14 - Performance  test of the code 
    
 
      

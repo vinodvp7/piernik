@@ -39,7 +39,7 @@ $OUTPUT_CONTROL
    dt_res = 0.0
    dt_log = 0.02
    dt_tsl = 0.02
-   vars(1:) = 'dens', 'ener', 'velx', 'vely' , 'pres', 'escr', 'xfscr', 'yfscr', 'zfscr', 'gradpcx', 'bdotgradpc', 'sigmax', 'gradpcy', 'gradpcz', 'magx','magy'
+   vars(1:) = 'dens', 'ener', 'velx', 'vely' , 'pres', 'escr', 'xfscr', 'yfscr', 'magx','magy'
 /
 
 $FLUID_IONIZED
@@ -54,7 +54,6 @@ $STREAMING_CR
    disable_en_source       = .false.
    disable_feedback        = .false.      ! feedback to MHD gas 
    disable_streaming       = .false.  
-   disable_stabilizer      = .true.
 /
 $NUMERICAL_SETUP
   cfl     = 0.1

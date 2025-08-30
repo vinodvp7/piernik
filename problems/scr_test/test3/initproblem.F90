@@ -28,50 +28,55 @@
 #include "piernik.h"
 
 module initproblem
-! ----------------------------------------- !
-! Initial condition for a 1D MHD shock tube !
-! See: Ryu, Jones, ApJ 442:228-258, (1995)  !
-!    and reference therein                  !
-! ----------------------------------------- !
-! Initial condition for a 1D Sod shcok tube !
-! See: Gary A. Sod, J.Comp.Physics 27,1-31(1978) !
-! ------------------------------------------!
-
-   use constants, only: singlechar
+! ----------------------------------------------- !
+! A New Numerical Scheme for Cosmic-Ray Transport !
+! Yan-Fei Jiang and S. Peng Oh : ApJ 854 5        !
+! DOI 10.3847/1538-4357/aaa6ce                    !
+! ----------------------------------------------- !
+! Initial condition                               !
+! See section 4.1.3 Bottleneck Effect: Balance    !
+!  between CR Streaming and Heating Terms         ! 
+! ------------------------------------------------!
 
    implicit none
 
    private
    public :: read_problem_par, problem_initial_conditions, problem_pointers
 
-   real               :: dh, dc, x0, dx
+   real               :: dh, dc, x0, dx, El, E0
 
-   namelist /PROBLEM_CONTROL/  a
+   namelist /PROBLEM_CONTROL/  dh, dc, x0, dx, El, E0
 
 contains
 
 !-----------------------------------------------------------------------------
    subroutine problem_pointers
 
+      use fluidboundaries_funcs, only: user_fluidbnd
+
       implicit none
 
+      user_fluidbnd => custom_boundary
+
    end subroutine problem_pointers
+
 
 !-----------------------------------------------------------------------------
 
    subroutine read_problem_par
 
       use bcast,      only: piernik_MPI_Bcast
-      use constants,  only: cbuff_len
       use dataio_pub, only: nh
-      use mpisetup,   only: rbuff, cbuff, master, slave
+      use mpisetup,   only: rbuff, master, slave
 
       implicit none
 
-      dh = 1.0 
-      dc = 0.1
+      dh = 0.1 
+      dc = 1.0
       x0 = 200.0
       dx = 25.0
+      El = 3.0
+      E0 = 1e-6
 
 
       if (master) then
@@ -96,11 +101,12 @@ contains
          rbuff(2)  = dc
          rbuff(3)  = x0
          rbuff(4)  = dx
+         rbuff(5)  = El
+         rbuff(6)  = E0
 
       endif
 
       call piernik_MPI_Bcast(rbuff)
-      call piernik_MPI_Bcast(cbuff, cbuff_len)
 
       if (slave) then
 
@@ -108,6 +114,8 @@ contains
          dc = rbuff(2)
          x0 = rbuff(3)
          dx = rbuff(4)
+         El = rbuff(5)
+         E0 = rbuff(6)
 
       endif
 
@@ -187,7 +195,7 @@ contains
                   xi = cg%x(i)
                   do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
                      zk = cg%z(k)
-                     cg%scr(scr_fluid%iescr, i,j,k) = 1e-6
+                     cg%scr(scr_fluid%iescr, i,j,k) = E0
                      cg%scr(scr_fluid%ixfscr,i,j,k) = 0.0
                      cg%scr(scr_fluid%iyfscr,i,j,k) = 0.0
                      cg%scr(scr_fluid%izfscr,i,j,k) = 0.0
@@ -199,4 +207,59 @@ contains
       enddo
    end subroutine problem_initial_conditions
 !-----------------------------------------------------------------------------
+   subroutine custom_boundary(dir, side, cg, wn, qn, emfdir)
+
+      use constants,        only: xdim,ydim,zdim,LO,HI
+      use domain,           only: dom
+      use named_array_list, only: wna        
+      use fluidindex,       only: scrind
+      use grid_cont,        only: grid_container
+
+      implicit none
+
+      integer(kind=4),               intent(in)    :: dir, side
+      type(grid_container), pointer, intent(inout) :: cg
+      integer(kind=4),     optional, intent(in)    :: wn, qn, emfdir
+
+      integer(kind=4) :: ib, ssign, l(3,LO:HI), r(3,LO:HI)
+      integer(kind=4) :: iflux(3)
+      real(kind=8), pointer :: A(:,:,:,:)
+
+      A => cg%w(wn)%arr
+
+      if (wn /= wna%scr) then                  ! Do simple outflow for magnetic field and MHD gas
+         ssign = 2*side - (LO+HI)
+         l = cg%lhn ; r = l
+         do ib=1, dom%nb
+            l(dir,:) = cg%ijkse(dir,side) + ssign*ib
+            r(dir,:) = cg%ijkse(dir,side) + ssign*(1-ib)
+            A(:, l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = &
+               A(:, r(xdim,LO):r(xdim,HI), r(ydim,LO):r(ydim,HI), r(zdim,LO):r(zdim,HI))
+         end do
+         return
+      end if
+
+      ! map flux component indices for SCR(1)
+      iflux(xdim) = scrind%scr(1)%ixfscr          ! xFc
+      iflux(ydim) = scrind%scr(1)%iyfscr          ! yFc
+      iflux(zdim) = scrind%scr(1)%izfscr          ! zFc
+
+      ssign = 2*side - (LO+HI)
+      l = cg%lhn ; r = l
+      do ib=1, dom%nb
+         l(dir,:) = cg%ijkse(dir,side) + ssign*ib
+         r(dir,:) = cg%ijkse(dir,side) + ssign*(1-ib)
+         ! left: Ec=3 and reflect the normal CR flux
+         A(scrind%scr(1)%iescr, l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = El
+         A(iflux(dir),          l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = &
+         -A(iflux(dir),       r(xdim,LO):r(xdim,HI), r(ydim,LO):r(ydim,HI), r(zdim,LO):r(zdim,HI))
+         ! copy tangential fluxes
+         if (dir /= xdim) A(iflux(xdim), l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = &
+                           A(iflux(xdim), r(xdim,LO):r(xdim,HI), r(ydim,LO):r(ydim,HI), r(zdim,LO):r(zdim,HI))
+         if (dir /= ydim) A(iflux(ydim), l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = &
+                           A(iflux(ydim), r(xdim,LO):r(xdim,HI), r(ydim,LO):r(ydim,HI), r(zdim,LO):r(zdim,HI))
+         if (dir /= zdim) A(iflux(zdim), l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = &
+                           A(iflux(zdim), r(xdim,LO):r(xdim,HI), r(ydim,LO):r(ydim,HI), r(zdim,LO):r(zdim,HI))
+      end do
+   end subroutine custom_boundary
 end module initproblem

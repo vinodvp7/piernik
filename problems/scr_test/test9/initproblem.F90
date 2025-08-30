@@ -28,30 +28,34 @@
 #include "piernik.h"
 
 module initproblem
-! ----------------------------------------- !
-! Initial condition for a 1D MHD shock tube !
-! See: Ryu, Jones, ApJ 442:228-258, (1995)  !
-!    and reference therein                  !
-! ----------------------------------------- !
-! Initial condition for a 1D Sod shcok tube !
-! See: Gary A. Sod, J.Comp.Physics 27,1-31(1978) !
-! ------------------------------------------!
+! ------------------------------------------------!
+! A New Numerical Scheme for Cosmic-Ray Transport !
+! Yan-Fei Jiang and S. Peng Oh : ApJ 854 5        !
+! DOI 10.3847/1538-4357/aaa6ce                    !
+! ------------------------------------------------!
+! Initial condition                               !
+! See section 4.2.2 Shocks with CRs               !  
+! ------------------------------------------------!
 
    implicit none
 
    private
    public :: read_problem_par, problem_initial_conditions, problem_pointers
 
-   real               :: a
+   real               :: x0, vl, vr, Ec0 
 
-   namelist /PROBLEM_CONTROL/  a
+   namelist /PROBLEM_CONTROL/  x0, vl, vr, Ec0
 
 contains
 
 !-----------------------------------------------------------------------------
    subroutine problem_pointers
 
+      use fluidboundaries_funcs, only: user_fluidbnd
+
       implicit none
+
+      user_fluidbnd => custom_boundary
 
    end subroutine problem_pointers
 
@@ -65,8 +69,10 @@ contains
 
       implicit none
 
-      a  = 40.0
-
+       x0  = 0.0
+       vl  = 10.0
+       vr  = -10.0
+       Ec0 = 1.0
 
       if (master) then
 
@@ -86,7 +92,10 @@ contains
          close(nh%lun)
          call nh%compare_namelist()
 
-         rbuff(1)  = a
+         rbuff(1)  = x0
+         rbuff(2)  = vl
+         rbuff(3)  = vr
+         rbuff(4)  = Ec0
 
       endif
 
@@ -94,8 +103,10 @@ contains
 
       if (slave) then
 
-         a  = rbuff(1)
-
+         x0   = rbuff(1)
+         vl   = rbuff(2)
+         vr   = rbuff(3)
+         Ec0  = rbuff(4)
 
       endif
 
@@ -111,14 +122,14 @@ contains
       use fluidtypes,  only: component_fluid, component_scr
       use func,        only: ekin, emag
       use grid_cont,   only: grid_container
-
+      use initstreamingcr, only: vm
 
       implicit none
 
       class(component_fluid), pointer :: fl
       class(component_scr),allocatable:: scr_fluid
       integer                         :: i, j, k
-      real                            :: xi, yj, zk
+      real                            :: xi, yj, zk, vx
       type(cg_list_element),  pointer :: cgl
       type(grid_container),   pointer :: cg
       integer                         :: p
@@ -136,19 +147,28 @@ contains
                   xi = cg%x(i)
                   do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
                      zk = cg%z(k)
+
+                     vx = vr
+                     if(xi < x0) vx = vl
+
                      cg%u(fl%idn,i,j,k) = 1.0
-                     cg%u(fl%imx,i,j,k) = 0.0
+                     cg%u(fl%imx,i,j,k) = vx * cg%u(fl%idn,i,j,k)
                      cg%u(fl%imy,i,j,k) = 0.0
                      cg%u(fl%imz,i,j,k) = 0.0
                      if (fl%has_energy) then
+
                         cg%u(fl%ien,i,j,k) = 1.0/fl%gam_1
                         cg%u(fl%ien,i,j,k) = cg%u(fl%ien,i,j,k) + ekin(cg%u(fl%imx,i,j,k), cg%u(fl%imy,i,j,k), cg%u(fl%imz,i,j,k), cg%u(fl%idn,i,j,k))
+
                         if (fl%is_magnetized) then
+
                            cg%b(xdim,i,j,k)   =  1.0
                            cg%b(ydim,i,j,k)   =  0.0
                            cg%b(zdim,i,j,k)   =  0.0
                            cg%u(fl%ien,i,j,k) = cg%u(fl%ien,i,j,k) + emag(cg%b(xdim,i,j,k), cg%b(ydim,i,j,k), cg%b(zdim,i,j,k))
+
                         endif
+
                      endif
                   enddo
                enddo
@@ -156,7 +176,9 @@ contains
             cgl => cgl%nxt
          enddo
       enddo
-! Initializing streaming cosmic ray fluid components Ec, Fcx, Fcy, Fcz
+
+      fl => flind%all_fluids(1)%fl               ! The flux is set w.r.t to first fluid
+
       do p = 1, scrind%stcosm
          scr_fluid = scrind%scr(p)
          cgl => leaves%first
@@ -168,8 +190,8 @@ contains
                   xi = cg%x(i)
                   do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
                      zk = cg%z(k)
-                     cg%scr(scr_fluid%iescr, i,j,k) = exp(- a * xi * xi)
-                     cg%scr(scr_fluid%ixfscr,i,j,k) = 0.0
+                     cg%scr(scr_fluid%iescr, i,j,k) = Ec0  
+                     cg%scr(scr_fluid%ixfscr,i,j,k) = 4.0/3.0 * cg%u(fl%imx,i,j,k) /cg%u(fl%idn,i,j,k) *  Ec0/vm
                      cg%scr(scr_fluid%iyfscr,i,j,k) = 0.0
                      cg%scr(scr_fluid%izfscr,i,j,k) = 0.0
                   enddo
@@ -179,5 +201,89 @@ contains
          enddo
       enddo
    end subroutine problem_initial_conditions
+!-----------------------------------------------------------------------------
+   subroutine custom_boundary(dir, side, cg, wn, qn, emfdir)
+
+      use constants,        only: xdim,ydim,zdim,LO,HI
+      use domain,           only: dom
+      use named_array_list, only: wna        
+      use fluidindex,       only: scrind, iarr_all_mx,iarr_all_dn, iarr_all_en, flind
+      use grid_cont,        only: grid_container
+      use fluidtypes,       only: component_fluid
+      use initstreamingcr, only: vm
+
+      implicit none
+
+      integer(kind=4),               intent(in)    :: dir, side
+      type(grid_container), pointer, intent(inout) :: cg
+      integer(kind=4),     optional, intent(in)    :: wn, qn, emfdir
+
+      integer(kind=4) :: ib, ssign, l(3,LO:HI), r(3,LO:HI), p
+      integer(kind=4) :: iflux(3)
+      real :: vx
+      class(component_fluid), pointer :: fl
+
+      real(kind=8), pointer :: A(:,:,:,:)
+      A => cg%w(wn)%arr
+
+      if (wn == wna%fi) then                  ! For MHD gas fix values at the boundary
+         ssign = 2*side - (LO+HI)
+         l = cg%lhn ; r = l
+         do ib=1, dom%nb
+            if (side == LO) then
+                vx = vl
+            else
+               vx = vr
+            endif
+            l(dir,:) = cg%ijkse(dir,side) + ssign*ib
+            r(dir,:) = cg%ijkse(dir,side) + ssign*(1-ib)
+            A(iarr_all_dn, l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = 1.0 ! Fixing density. vx will be overwritten
+            do p = 1, flind%fluids
+               fl => flind%all_fluids(p)%fl
+               A(iarr_all_en(p), l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = 1.0/fl%gam_1 ! Fixing density. vx will be overwritten
+            end do
+            A(iarr_all_mx, l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) =  vx
+         end do
+         return
+      end if
+
+      if (wn == wna%bi) then                  ! For magnetic field fix values at the boundary
+         ssign = 2*side - (LO+HI)
+         l = cg%lhn ; r = l
+         do ib=1, dom%nb
+            l(dir,:) = cg%ijkse(dir,side) + ssign*ib
+            r(dir,:) = cg%ijkse(dir,side) + ssign*(1-ib)
+            A(:, l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = 1.0 ! Fixing Bx. vx will be overwritten
+         end do
+         return
+      end if
+
+      ! map flux component indices for SCR(1)
+      iflux(xdim) = scrind%scr(1)%ixfscr          ! xFc
+      iflux(ydim) = scrind%scr(1)%iyfscr          ! yFc
+      iflux(zdim) = scrind%scr(1)%izfscr          ! zFc
+
+      ssign = 2*side - (LO+HI)
+      l = cg%lhn ; r = l
+      do ib=1, dom%nb
+         if (side == LO) then
+            vx = vl
+         else
+            vx = vr
+         endif
+         l(dir,:) = cg%ijkse(dir,side) + ssign*ib
+         r(dir,:) = cg%ijkse(dir,side) + ssign*(1-ib)
+         ! left: Ec=3 and reflect the normal CR flux
+         A(scrind%scr(1)%iescr, l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = Ec0
+         A(iflux(dir),          l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = 4.0/3.0 * Ec0 * vx/vm
+         ! copy tangential fluxes
+         if (dir /= xdim) A(iflux(xdim), l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = &
+                           A(iflux(xdim), r(xdim,LO):r(xdim,HI), r(ydim,LO):r(ydim,HI), r(zdim,LO):r(zdim,HI))
+         if (dir /= ydim) A(iflux(ydim), l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = &
+                           A(iflux(ydim), r(xdim,LO):r(xdim,HI), r(ydim,LO):r(ydim,HI), r(zdim,LO):r(zdim,HI))
+         if (dir /= zdim) A(iflux(zdim), l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = &
+                           A(iflux(zdim), r(xdim,LO):r(xdim,HI), r(ydim,LO):r(ydim,HI), r(zdim,LO):r(zdim,HI))
+      end do
+   end subroutine custom_boundary
 !-----------------------------------------------------------------------------
 end module initproblem

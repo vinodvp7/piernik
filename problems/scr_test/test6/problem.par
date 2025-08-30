@@ -28,18 +28,18 @@ $RESTART_CONTROL
 /
 
 $END_CONTROL
-  tend = 0.3
+  tend = 0.05
   nend = 100000000
 /
 
 $OUTPUT_CONTROL
    problem_name = 'scr'
    run_id = 'tst'
-   dt_hdf = 0.01
+   dt_hdf = 0.02
    dt_res = 0.0
-   dt_log = 1e-20
+   dt_log = 0.01
    dt_tsl = 0.02
-   vars(1:) = 'dens', 'ener', 'velx', 'pres', 'escr', 'xfscr', 'yfscr', 'zfscr', 'gradpcx', 'bdotgradpc', 'sigmax', 'gradpcy', 'gradpcz', 'magx', 'magy'
+   vars(1:) = 'dens', 'ener', 'velx', 'pres', 'escr', 'xfscr', 'gradpcx', 'sigmax', 'magx'
 /
 
 $FLUID_IONIZED
@@ -57,14 +57,13 @@ $STREAMING_CR
 /
 $NUMERICAL_SETUP
   cfl     = 0.5
-  !disallow_negatives = .false.
   smalld  = 1.e-6
   smallei = 1.e-6
   limiter = 'moncen'
   cfl_glm = 0.3
   solver_type = 'unsplit'
   solver_str = 'riemann'
-  integration_order = 1
+  integration_order = 2
 /
 
 $PROBLEM_CONTROL

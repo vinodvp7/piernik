@@ -567,13 +567,13 @@ contains
 
          case ('sigmax_01':'sigmax_50')                              !> xth component of σ
             read(var, '(A7,I2)') aux, is     
-            tab(:,:,:) = vmax * cg%w(wna%ind(sgmn))%arr( 2 * (is-1) + 1, RNG ) 
+            tab(:,:,:) = 1.0/vmax * cg%w(wna%ind(sgmn))%arr( 2 * (is-1) + 1, RNG ) 
          case ('sigmay_01':'sigmay_50')                              !> yth component of σ
             read(var, '(A7,I2)') aux, is
-            tab(:,:,:) = vmax * cg%w(wna%ind(sgmn))%arr( 2 * (is-1) + 2, RNG ) 
+            tab(:,:,:) = 1.0/vmax * cg%w(wna%ind(sgmn))%arr( 2 * (is-1) + 2, RNG ) 
          case ('sigmaz_01':'sigmaz_50')                              !> zth component of σ
             read(var, '(A7,I2)') aux, is
-            tab(:,:,:) = vmax * cg%w(wna%ind(sgmn))%arr( 2 * (is-1) + 2, RNG ) 
+            tab(:,:,:) = 1.0/vmax * cg%w(wna%ind(sgmn))%arr( 2 * (is-1) + 2, RNG ) 
 #endif /* STREAM_CR */
 #ifdef TRACER
          case ("trcr")

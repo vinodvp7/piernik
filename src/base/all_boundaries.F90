@@ -39,7 +39,9 @@ module all_boundaries
 #ifdef MAGNETIC
    public :: all_mag_boundaries
 #endif /* MAGNETIC */
-
+#ifdef STREAM_CR
+   public :: all_scr_boundaries
+#endif /* STREAM_CR */
 contains
 
 !>
@@ -55,7 +57,9 @@ contains
 #ifdef MAGNETIC
       call all_mag_boundaries
 #endif /* MAGNETIC */
-
+#ifdef STREAM_CR
+      call all_scr_boundaries
+#endif /* STREAM_CR */
    end subroutine all_bnd
 
    subroutine all_bnd_vital_q
@@ -187,5 +191,57 @@ contains
 
    end subroutine all_mag_boundaries
 #endif /* MAGNETIC */
+
+#ifdef STREAM_CR
+   subroutine all_scr_boundaries(dir, nocorners, istep)
+
+      use cg_leaves,          only: leaves
+      use constants,          only: xdim, zdim, scrh, first_stage
+      use global,             only: integration_order
+      use domain,             only: dom
+      use named_array_list,   only: wna
+      use ppp,                only: ppp_main
+
+      implicit none
+
+      integer(kind=4), optional, intent(in) :: dir       !< select only this direction
+      logical,         optional, intent(in) :: nocorners !< .when .true. then don't care about proper edge and corner update
+      integer,         optional, intent(in) :: istep
+
+      integer(kind=4)                     :: d
+      character(len=*), parameter :: asb_label = "all_scr_boundaries"
+
+      if (present(dir)) then
+         if (.not. dom%has_dir(dir)) return
+      endif
+
+      call ppp_main%start(asb_label)
+
+!      call finest%level%restrict_to_base
+
+      ! should be more selective (modified leaves?)
+      if (present(istep) .and. istep==first_stage(integration_order)) then
+         call leaves%leaf_arr4d_boundaries(wna%ind(scrh) , dir=dir, nocorners=nocorners)
+         if (present(dir)) then
+            call leaves%bnd_scr(dir)
+         else
+            do d = xdim, zdim
+               if (dom%has_dir(d)) call leaves%bnd_scr(d)
+            enddo
+         endif
+      else
+         call leaves%leaf_arr4d_boundaries(wna%scr, dir=dir, nocorners=nocorners)
+         if (present(dir)) then
+            call leaves%bnd_scr(dir)
+         else
+            do d = xdim, zdim
+               if (dom%has_dir(d)) call leaves%bnd_scr(d)
+            enddo
+         endif
+      endif
+      call ppp_main%stop(asb_label)
+
+   end subroutine all_scr_boundaries
+#endif /* STREAM_CR */
 
 end module all_boundaries

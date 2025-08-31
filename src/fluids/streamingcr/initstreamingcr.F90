@@ -60,12 +60,14 @@ module initstreamingcr
    integer, parameter                      :: nscr_max   = 50     !< Maximum number of allowed streaming cr component 
    real, parameter                         :: tau_asym   = 1e-3   !< Used in the calculation of R in streaming_cr_hlle where below this value the function is taylor expanded in tau
    real, parameter                         :: sigma_huge = 1e10   !< Default huge value for interaction coefficient that essentially means diffusion is switched off
+   real, parameter                         :: gamma_def  = 4./3.   !< Default huge value for interaction coefficient that essentially means diffusion is switched off
+
 contains
 
    subroutine init_streamingcr
       use bcast,            only: piernik_MPI_Bcast
       use constants,        only: cbuff_len
-      use dataio_pub,       only: die, nh, msg
+      use dataio_pub,       only: die, nh, msg, warn
       use func,             only: operator(.notequals.)
       use mpisetup,         only: ibuff, rbuff, lbuff, cbuff, master, slave
 
@@ -82,9 +84,9 @@ contains
       escr_floor               = 1e-6
       vmax                     = 100.0
       use_escr_floor           = .true.
-      gamma_scr(1:nscr)        = 4./3.
-      sigma_paral(1:nscr)      = sigma_huge
-      sigma_perp(1:nscr)       = sigma_huge
+      gamma_scr(:)             = gamma_def
+      sigma_paral(:)           = sigma_huge
+      sigma_perp(:)            = sigma_huge
       disable_feedback         = .false.
       disable_streaming        = .false.
       cr_sound_speed           = .false.
@@ -168,7 +170,22 @@ contains
          write(msg,'(A,I0)') "[initstreamingcr:init_streamingcr] Number of streaming CR species greater than maximum allowed = ", nscr_max
          call die(msg)
       endif
-      
+
+      do nn=1,nscr
+         if (abs(sigma_paral(nn) - sigma_huge) < 1e-10 .or. abs(sigma_perp(nn) - sigma_huge) < 1e-10 ) then
+            write(msg,'(A,ES0.2)') "[initstreamingcr:init_streamingcr] One or more CR species have default value of diffusion coefficient = ", sigma_huge
+            call warn(msg)
+         end if
+         exit
+      end do
+      do nn=1,nscr
+         if (abs(gamma_scr(nn) - gamma_def) < 1e-10 ) then
+            write(msg,'(A,F0.3)') "[initstreamingcr:init_streamingcr] One or more CR species have default value of adiabatic index = ", gamma_def 
+            call warn(msg)
+         end if
+         exit
+      end do
+
    end subroutine init_streamingcr
 
 end module initstreamingcr

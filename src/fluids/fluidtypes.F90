@@ -150,6 +150,8 @@ module fluidtypes
       integer(kind=4) :: ixfscr    = -1        !< index denoting position of the x-streaming cr flux density in array arrays::scr
       integer(kind=4) :: iyfscr    = -1        !< index denoting position of the y-streaming cr flux density in array arrays::scr
       integer(kind=4) :: izfscr    = -1        !< index denoting position of the z-streaming cr flux density in array arrays::scr
+      real    :: gam   = -1.0                  !< fluid\'s adiabatic index
+      real    :: gam_1 = -1.0                  !< fluid\'s adiabatic index minus one
       integer(kind=4), allocatable, dimension(:)   :: iarr_scr        
       integer(kind=4), allocatable, dimension(:,:) :: iarr_scr_swp
    contains
@@ -402,6 +404,7 @@ contains
 
          use diagnostics, only: ma1d, ma2d, my_allocate
          use constants,   only: xdim, ydim, zdim, ndims, I_ONE, I_FOUR
+         use initstreamingcr, only: gamma_scr
 
          implicit none
 
@@ -435,6 +438,9 @@ contains
          this%iarr_scr_swp(xdim, 1:4) = [this%iescr, this%ixfscr, this%iyfscr, this%izfscr]
          this%iarr_scr_swp(ydim, 1:4) = [this%iescr, this%iyfscr, this%ixfscr, this%izfscr]
          this%iarr_scr_swp(zdim, 1:4) = [this%iescr, this%izfscr, this%iyfscr, this%ixfscr]
+
+         this%gam = gamma_scr(iscr)
+         this%gam_1 = gamma_scr(iscr) - 1.0
 
       end subroutine set_scr_index
 #endif /* STREAM_CR */

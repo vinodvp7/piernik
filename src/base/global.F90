@@ -546,7 +546,7 @@ contains
          endif
 #ifdef MAGNETIC
          if (which_solver_type == UNSPLIT) then
-            if (cfl_glm /= 0.3) call warn("[global:init_global] Unsplit MHD solver chosen. Ideal CFL_GLM = 0.3. Anything else may lead to unexpected result.")
+            if (cfl_glm > 0.5) call warn("[global:init_global] Unsplit MHD solver chosen. Ideal CFL_GLM < 0.5, Preferably 0.3 . Anything else may lead to unexpected result.")
          endif
 #endif /* MAGNETIC */
       endif

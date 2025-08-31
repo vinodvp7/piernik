@@ -50,12 +50,12 @@ primitive variable evolution + comparision, L1/L2 error, time and nstep comparis
 -[ ] Pull request
 
 ########################## NEWER TODO #############################################
--[ ] Modify constants.F90 with streaming cosmic rays
--[ ] Modify global
--[ ] Added scr related arrays in cg_list_global / named_array_list / grid_container_na
--[ ] Modify fluidindex/fluidtypes/initfluid to include scr related subroutines and type
--[ ] Modify common_hdf5 / hdf5_data to include scr related outputs 
--[ ] Create a module called initstreamingcr for initialization of streaming cr related files
+-[X] Modify constants.F90 with streaming cosmic rays
+-[X] Modify global
+-[X] Added scr related arrays in cg_list_global / named_array_list / grid_container_na
+-[X] Modify fluidindex/fluidtypes/initfluid to include scr related subroutines and type
+-[X] Modify common_hdf5 / hdf5_data to include scr related outputs 
+-[X] Create a module called initstreamingcr for initialization of streaming cr related files
 -[ ] Modify all_boundaries/ unsplit_sweep / cg_list_bnd
 -[ ] Create a module of scr_misc subtroutines that helps 
       -[ ] Subroutine to rotate and inverse_rotate a vector that is pure/ elemental 
@@ -68,6 +68,7 @@ primitive variable evolution + comparision, L1/L2 error, time and nstep comparis
 -[ ] Modify interpolations.F90 
 -[ ] Create scr_source to handle streaming cosmic ray source term
 -[ ] Modify unplit_source/ unsplit_mag_modules to include these pieces
+-[ ] timestep
 -[ ] Create test problems
     -[X] Test1  - Simple advection of streaming cosmic ray with gaussian Ec without feedback in 1d
     -[X] Test2  - Simple advection of streaming cosmic ray with triangular Ec without feedback
@@ -77,12 +78,13 @@ primitive variable evolution + comparision, L1/L2 error, time and nstep comparis
     -[X] Test6  - Anisotropic diffusion of Ec in 2d with no streaming or feedback along a circular B field
     -[X] Test7  - Bottleneck Effect: Balance between CR Streaming and Heating Terms
     -[X] Test8  - CR-driven Waves with Mixed Diffusion and Streaming
-    -[ ] Test9  - CR Interactions with Warm Clouds
+    -[XX] Test9  - Shocks with CRs                                                                                      [SKIP] 
     -[ ] Test10 - CR Interactions with Warm Clouds
-    -[ ] Test11 - CR-driven Blast Waves without AMR
+    -[X] Test11 - CR-driven Blast Waves without AMR
     -[ ] Test12 - CR-driven Blast Waves with AMR
     -[ ] Test13 - MCR test to test the source term Q
     -[ ] Test14 - Performance  test of the code 
+-[ ] Check restart feature. Need to make sure if scaling of Fc is needed when reading from restart file
    
 
      

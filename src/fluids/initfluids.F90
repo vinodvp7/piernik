@@ -128,6 +128,9 @@ contains
 #ifdef VERBOSE
       use dataio_pub,     only: printinfo
 #endif /* VERBOSE */
+#ifdef STREAM_CR                                   
+      use initstreamingcr, only: init_streamingcr    
+#endif /* STREAM_CR */
 
       implicit none
 
@@ -151,6 +154,9 @@ contains
 #ifdef TRACER
       call init_tracer
 #endif /* TRACER */
+#ifdef STREAM_CR
+      call init_streamingcr                             
+#endif /* STREAM */
 
       call fluid_index    ! flind has valid values afterwards
 

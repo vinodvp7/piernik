@@ -156,6 +156,32 @@ contains
             f%fu = "\rm{cm}^2 / \rm{s}^2"
             f%f2cgs = 1.0 / (cm**2 / sek**2)
          case ("trcr")
+#ifdef STREAM_CR
+      ! energy density per species
+      case ('escr_01':'escr_50')
+         f%fu   = "\rm{erg}/\rm{cm}^3"
+         f%f2cgs = 1.0 / (erg / cm**3)
+
+      ! streaming energy flux per species (names aligned with set_streamingcr_names)
+      case ('xfscr_01':'xfscr_50', 'yfscr_01':'yfscr_50', 'zfscr_01':'zfscr_50')
+         f%fu   = "\rm{erg}/(\rm{cm}^2\ \rm{s})"
+         f%f2cgs = 1.0 / (erg / (cm**2 * sek))
+
+      ! grad Pc per species & component
+      case ('gradpcx_01':'gradpcx_50', 'gradpcy_01':'gradpcy_50', 'gradpcz_01':'gradpcz_50')
+         f%fu   = "\rm{erg}/\rm{cm}^4"
+         f%f2cgs = 1.0 / (erg / cm**4)
+
+      ! |B · ∇Pc| per species
+      case ('bdotgradpc_01':'bdotgradpc_50')
+         f%fu   = "\rm{Gs}\ \rm{erg}/\rm{cm}^4"
+         f%f2cgs = 1.0 / ( (fpi * sqrt(cm / (miu0 * gram)) * sek) * (erg / cm**4) )
+
+      ! interaction coefficient (σ) per species
+      case ('sigmax_01':'sigmax_50', 'sigmay_01':'sigmay_50', 'sigmaz_01':'sigmaz_50')
+         f%fu   = "\rm{s}/\rm{cm}^2"
+         f%f2cgs = 1.0 / (sek / cm**2)
+#endif /* STREAM_CR */
       end select
    end function datafields_descr
 
@@ -369,6 +395,12 @@ contains
 #ifndef ISO
       use units,            only: kboltz, mH
 #endif /* !ISO */
+#ifdef STREAM_CR
+      use initstreamingcr,    only: nscr, vmax
+      use constants,          only: gpcn, sgmn, ndims
+      use named_array_list,   only: wna
+      use fluidindex,         only: scrind
+#endif /* STREAM_CR */
 
       implicit none
 
@@ -390,7 +422,11 @@ contains
 #ifdef CRESP
       integer                                        :: ibin
 #endif /* CRESP */
-
+#ifdef STREAM_CR
+      integer                                        :: is
+      integer, parameter                             :: auxlen = dsetnamelen - 1
+      character(len=auxlen)                          :: aux
+#endif /* STREAM_CR */
       call common_shortcuts(var, fl_dni, i_xyz)
       if (.not. associated(fl_dni)) tab = -huge(1.)
       ierrh = 0
@@ -493,6 +529,52 @@ contains
             read(var,'(A4,I2.2)') aux, i !> \deprecated BEWARE 0 <= i <= 99, no other indices can be dumped to hdf file
             tab(:,:,:) = cg%w(wna%ind(dfpq%q_nam))%arr(i,RNG)  !flind%cre%fbeg+i-1, RNG)
 #endif /* CRESP */
+#ifdef STREAM_CR
+         case ('escr_01':'escr_50')                                !>  Ec
+            read(var, '(A5,I2)') aux, is     ! 'escr_' + nn
+            if (is < 1 .or. is > nscr) stop 'escr_*: species out of range'
+            tab(:,:,:) = cg%scr( scrind%scr(is)%iescr, RNG )
+
+         case ('xfscr_01':'xfscr_50')                                !> xth component of Fc
+            read(var, '(A6,I2)') aux, is     ! 'xfscr_' + nn
+            tab(:,:,:) = vmax * cg%scr( scrind%scr(is)%ixfscr, RNG )
+
+         case ('yfscr_01':'yfscr_50')                                !> yth component of Fc
+            read(var, '(A6,I2)') aux, is     ! 'yfscr_' + nn
+            tab(:,:,:) = vmax * cg%scr( scrind%scr(is)%iyfscr, RNG )
+
+         case ('zfscr_01':'zfscr_50')                                !> zth component of Fc
+            read(var, '(A6,I2)') aux, is     ! 'zfscr_' + nn
+            tab(:,:,:) = vmax * cg%scr( scrind%scr(is)%izfscr, RNG )
+
+         case ('gradpcx_01':'gradpcx_50')                            !> xth component of ∇Pc 
+            read(var, '(A8,I2)') aux, is     ! 'gradpcx_' + nn
+            tab(:,:,:) = cg%w(wna%ind(gpcn))%arr( (is-1)*ndims + xdim, RNG )
+
+         case ('gradpcy_01':'gradpcy_50')                            !> yth component of ∇Pc 
+            read(var, '(A8,I2)') aux, is
+            tab(:,:,:) = cg%w(wna%ind(gpcn))%arr( (is-1)*ndims + ydim, RNG )
+
+         case ('gradpcz_01':'gradpcz_50')                            !> zth component of ∇Pc 
+            read(var, '(A8,I2)') aux, is
+            tab(:,:,:) = cg%w(wna%ind(gpcn))%arr( (is-1)*ndims + zdim, RNG )
+
+         case ('bdotgradpc_01':'bdotgradpc_50')                      !> B·∇Pc
+            read(var, '(A11,I2)') aux, is    ! 'bdotgradpc_' + nn
+            tab(:,:,:) = cg%b(xdim, RNG) * cg%w(wna%ind(gpcn))%arr( (is-1)*ndims + xdim, RNG ) + &
+            &            cg%b(ydim, RNG) * cg%w(wna%ind(gpcn))%arr( (is-1)*ndims + ydim, RNG ) + &
+            &            cg%b(zdim, RNG) * cg%w(wna%ind(gpcn))%arr( (is-1)*ndims + zdim, RNG )
+
+         case ('sigmax_01':'sigmax_50')                              !> xth component of σ
+            read(var, '(A7,I2)') aux, is     
+            tab(:,:,:) = vmax * cg%w(wna%ind(sgmn))%arr( 2 * (is-1) + 1, RNG ) 
+         case ('sigmay_01':'sigmay_50')                              !> yth component of σ
+            read(var, '(A7,I2)') aux, is
+            tab(:,:,:) = vmax * cg%w(wna%ind(sgmn))%arr( 2 * (is-1) + 2, RNG ) 
+         case ('sigmaz_01':'sigmaz_50')                              !> zth component of σ
+            read(var, '(A7,I2)') aux, is
+            tab(:,:,:) = vmax * cg%w(wna%ind(sgmn))%arr( 2 * (is-1) + 2, RNG ) 
+#endif /* STREAM_CR */
 #ifdef TRACER
          case ("trcr")
             tab(:,:,:) = cg%u(flind%trc%beg, RNG)

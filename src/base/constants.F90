@@ -242,6 +242,16 @@ module constants
         &                                      last_stage  = [ EULER, RK2_2 ]
    real, dimension(EULER:RK2_2), parameter :: rk_coef = [ one, &      !! EULER
         &                                                 half, one ] !! RK2
+   
+   ! enumerate the position of cos and sin angle of rotation matrix useful for streaming CR
+#ifdef STREAM_CR
+   enum, bind(C)
+      enumerator :: cphi = 1      ! cos phi   : Bx/sqrt(Bx^2 + By^2)
+      enumerator :: sphi          ! sin phi   : By/sqrt(Bx^2 + By^2)
+      enumerator :: ctheta        ! cos theta : Bz/sqrt(Bx^2 + By^2 + Bz^2)
+      enumerator :: stheta        ! sin theta : sqrt(Bx^2 + By^2)/sqrt(Bx^2 + By^2 + Bz^2)
+   end enum
+#endif /* STREAM_CR */  
 
    ! 3D and 4D array names
    ! fluids
@@ -280,7 +290,17 @@ module constants
    character(len=dsetnamelen), parameter :: wa_n    = "wa"      !< general-purpose auxiliary 3D array
    character(len=dsetnamelen), parameter :: psi_n   = "psi"     !< auxiliary 3D array for divergence cleaning
    character(len=dsetnamelen), parameter :: psih_n  = "psih"    !< auxiliary 3D array for divergence cleaning for half-step values
-
+#ifdef STREAM_CR
+   character(len=dsetnamelen), parameter :: scrn      = "scrn"      !< main streaming cosmic ray (scr) fluid array
+   character(len=dsetnamelen), parameter :: scrh      = "scrh"      !< auxiliary array for half-step values of scr fluid array
+   character(len=dsetnamelen), parameter :: xscrflx   = "xscrflx"   !< main X face-flux array for scr fluid
+   character(len=dsetnamelen), parameter :: yscrflx   = "yscrflx"   !< main Y face-flux array for scr fluid
+   character(len=dsetnamelen), parameter :: zscrflx   = "zscrflx"   !< main Z face-flux array for scr fluid
+   character(len=dsetnamelen), parameter :: gpcn      = "gpcn"      !< array of gradient of Pc
+   character(len=dsetnamelen), parameter :: rtmn      = "rtmn"      !< rotation matrix for frame transformation where B is along Bx
+   character(len=dsetnamelen), parameter :: sgmn      = "sgmn"      !< interaction coefficient for streaming cosmic rays
+   character(len=dsetnamelen), parameter :: v_diff    = "v_diff"    !< Diffusion + streaming speed 
+#endif /* STREAM_CR */ 
    ! timer names
    character(len=*), parameter :: tmr_fu  = "fluid_update"       !< main timer used to measure fluid_update step
    character(len=*), parameter :: tmr_hdf = "hdf_dump"           !< timer for I/O operations

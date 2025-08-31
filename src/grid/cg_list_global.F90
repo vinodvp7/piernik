@@ -242,6 +242,11 @@ contains
       &                     psi_n, psih_n, xbflx_n, ybflx_n, zbflx_n, psiflx_n
       use global,     only: cc_mag, ord_mag_prolong
 #endif /* MAGNETIC */
+#ifdef STREAM_CR
+      use constants,        only: scrn, scrh, xscrflx, yscrflx, zscrflx, rtmn, gpcn, &
+      &                           sgmn, v_diff
+      use initstreamingcr,  only: nscr
+#endif /* STREAM_CR */
 
       implicit none
 
@@ -294,6 +299,21 @@ contains
          call this%reg_var(psih_n, vital = .false.)  !! its copy for use in RK2
       endif
 #endif /* MAGNETIC */
+
+#ifdef STREAM_CR
+
+      call this%reg_var(scrn,    vital = .true.,  dim4 = 4 * nscr,     ord_prolong = ord_fluid_prolong, restart_mode = AT_NO_B )  !! Main array of streaming CR fluid
+      call this%reg_var(scrh,    vital = .true.,  dim4 = 4 * nscr,     ord_prolong = ord_fluid_prolong, restart_mode = AT_NO_B )  !! array of streaming CR fluid at half time step for RK2
+      call this%reg_var(xscrflx, vital = .false., dim4 = 4 * nscr,     ord_prolong = ord_fluid_prolong, restart_mode = AT_NO_B )  !! X Face-Streaming CR Fluid flux array
+      call this%reg_var(yscrflx, vital = .false., dim4 = 4 * nscr,     ord_prolong = ord_fluid_prolong, restart_mode = AT_NO_B )  !! Y Face-Streaming CR Fluid flux array
+      call this%reg_var(zscrflx, vital = .false., dim4 = 4 * nscr,     ord_prolong = ord_fluid_prolong, restart_mode = AT_NO_B )  !! Z Face-Streaming CR Fluid flux array
+      call this%reg_var(gpcn,    vital = .false., dim4 = ndims * nscr, ord_prolong = ord_fluid_prolong, restart_mode = AT_NO_B )  !! Array to store gradient of Pc for each streaming CR species
+      call this%reg_var(rtmn,    vital = .false., dim4 = 4,            ord_prolong = ord_fluid_prolong, restart_mode = AT_NO_B )  !! Array to store rotation matirx component cos(phi) / sin(phi) / cos(theta) / sin(theta)
+      call this%reg_var(sgmn,    vital = .false., dim4 = 2 * nscr,     ord_prolong = ord_fluid_prolong, restart_mode = AT_NO_B )  !! Array to store interaction coefficient for each streaming CR species : parallel and perpendicular
+      call this%reg_var(v_diff,  vital = .false., dim4 = ndims * nscr, ord_prolong = ord_fluid_prolong, restart_mode = AT_NO_B )  !! Array to store interaction coefficient for each streaming CR species
+
+      call set_scr_names
+#endif /* STREAM_CR */
 
 #ifdef ISO
       call all_cg%reg_var(cs_i2_n, vital = .true., restart_mode = AT_NO_B)
@@ -401,6 +421,36 @@ contains
 
       end subroutine set_cresp_names
 #endif /* CRESP */
+
+#ifdef STREAM_CR
+      subroutine set_scr_names
+         use constants,        only: dsetnamelen, I_ONE
+         use named_array_list, only: wna, na_var_4d
+         use initstreamingcr,  only: nscr
+         use fluidindex,       only: scrind
+
+         implicit none
+
+         integer(kind=4) :: i
+         character(len=dsetnamelen) :: var
+
+         select type (lst => wna%lst)
+            type is (na_var_4d)
+            do i=I_ONE,nscr
+               write(var, '(a,i2.2)') "escr_", i
+               call lst(wna%scr)%set_compname(scrind%scr(i)%iescr, var)
+               write(var, '(a,i2.2)') "fxscr_", i
+               call lst(wna%scr)%set_compname(scrind%scr(i)%ixfscr , var)
+               write(var, '(a,i2.2)') "fyscr_", i
+               call lst(wna%scr)%set_compname(scrind%scr(i)%iyfscr , var)
+               write(var, '(a,i2.2)') "fzscr_", i
+               call lst(wna%scr)%set_compname(scrind%scr(i)%izfscr , var)
+            end do
+            class default
+               call die("[cg_list_global:set_streamingcr_names] Unknown list type")
+         end select
+      end subroutine set_scr_names
+#endif /* STREAM_CR */
 
 #ifdef MAGNETIC
       subroutine set_magnetic_names

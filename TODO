@@ -65,9 +65,9 @@ primitive variable evolution + comparision, L1/L2 error, time and nstep comparis
       -[X] Gradient of Pc 2nd order and 4th order
       -[X] Calculate v_diffusion
 -[ ] Create a module to do the transport of streaming cr
--[ ] Modify interpolations.F90 
+-[X] Modify interpolations.F90 
 -[ ] Create scr_source to handle streaming cosmic ray source term
--[ ] Modify unplit_source/ unsplit_mag_modules to include these pieces
+-[X] Modify unplit_source/ unsplit_mag_modules to include these pieces
 -[X] timestep
 -[ ] Create test problems
     -[X] Test1  - Simple advection of streaming cosmic ray with gaussian Ec without feedback in 1d

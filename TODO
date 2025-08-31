@@ -56,19 +56,19 @@ primitive variable evolution + comparision, L1/L2 error, time and nstep comparis
 -[X] Modify fluidindex/fluidtypes/initfluid to include scr related subroutines and type
 -[X] Modify common_hdf5 / hdf5_data to include scr related outputs 
 -[X] Create a module called initstreamingcr for initialization of streaming cr related files
--[ ] Modify all_boundaries/ unsplit_sweep / cg_list_bnd
--[ ] Create a module of scr_misc subtroutines that helps 
-      -[ ] Subroutine to rotate and inverse_rotate a vector that is pure/ elemental 
-      -[ ] Sanitize array 
-      -[ ] Check_for_positive
-      -[ ] Update_interaction_coefficient
-      -[ ] Gradient of Pc 2nd order and 4th order
-      -[ ] Calculate v_diffusion
+-[X] Modify all_boundaries/ unsplit_sweep / cg_list_bnd
+-[X] Create a module of scr_helpers subtroutines that helps 
+      -[X] Subroutine to rotate and inverse_rotate a vector that is pure/ elemental 
+      -[X] Sanitize array 
+      -[X] Check_for_positive
+      -[X] Update_interaction_coefficient
+      -[X] Gradient of Pc 2nd order and 4th order
+      -[X] Calculate v_diffusion
 -[ ] Create a module to do the transport of streaming cr
 -[ ] Modify interpolations.F90 
 -[ ] Create scr_source to handle streaming cosmic ray source term
 -[ ] Modify unplit_source/ unsplit_mag_modules to include these pieces
--[ ] timestep
+-[X] timestep
 -[ ] Create test problems
     -[X] Test1  - Simple advection of streaming cosmic ray with gaussian Ec without feedback in 1d
     -[X] Test2  - Simple advection of streaming cosmic ray with triangular Ec without feedback

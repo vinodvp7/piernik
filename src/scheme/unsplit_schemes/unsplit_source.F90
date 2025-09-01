@@ -52,6 +52,9 @@ contains
       use constants,          only: magh_n
       use fluidindex,         only: iarr_mag_swp
 #endif /* MAGNETIC */
+#ifdef STREAM_CR
+      use scr_source,       only: apply_scr_source
+#endif /* STREAM_CR */
 
         implicit none
 
@@ -73,6 +76,9 @@ contains
       real, dimension(1, 1)                                       :: b_ugly ! ugly
       b_ugly = 0.0
 #endif /* !MAGNETIC */
+#ifdef STREAM_CR
+      call apply_scr_source(cg,istep)              !< Call streaming CR source term 
+#endif /* STREAM_CR */
       uhi = wna%ind(uh_n)
       do ddim=xdim,zdim
          if (.not. dom%has_dir(ddim)) cycle

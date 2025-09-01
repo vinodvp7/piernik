@@ -48,8 +48,6 @@ contains
       use fluidindex,       only: iarr_all_swp, scrind, iarr_all_dn, iarr_all_mx,iarr_all_scr_swp
       use fluxtypes,        only: ext_fluxes
       use diagnostics,      only: my_allocate, my_deallocate
-      use scr_helpers,      only: update_rotation_matrix, update_interaction_term, update_vdiff
-      use scr_source,       only: apply_scr_source
 
       implicit none
 
@@ -123,11 +121,7 @@ contains
          call my_deallocate(tflux); call my_deallocate(vx)
          call my_deallocate(vdiff1d)
       enddo
-      call update_rotation_matrix(cg, istep)
-      call update_interaction_term(cg, istep, .false.)
-      call update_vdiff(cg,istep)
       call apply_flux(cg,istep)
-      call apply_scr_source(cg,istep)
    end subroutine update_scr_fluid
 
    subroutine solve_scr(ui, vdiff, eflx, flx, vx)

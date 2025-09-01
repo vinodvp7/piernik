@@ -50,6 +50,8 @@ contains
       use diagnostics,      only: my_allocate, my_deallocate
 #ifdef STREAM_CR
       use streaming_cr_hlle, only: update_scr_fluid
+      use scr_helpers,      only: update_rotation_matrix, update_interaction_term, update_vdiff
+
 #endif /* STREAM_CR */
 
       implicit none
@@ -163,6 +165,9 @@ contains
       call apply_flux(cg,istep,.false.)
       call update_psi(cg,istep)
 #ifdef STREAM_CR
+      call update_interaction_term(cg, istep, .false.)
+      call update_rotation_matrix(cg, istep)
+      call update_vdiff(cg,istep)
       call update_scr_fluid(cg,istep)
 #endif /* STREAM_CR */
       call apply_source(cg,istep)

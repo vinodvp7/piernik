@@ -50,7 +50,7 @@ subroutine timestep_scr(dt)
    use allreduce,       only: piernik_MPI_Allreduce
    use cg_leaves,       only: leaves
    use cg_list,         only: cg_list_element
-   use constants,       only: xdim, ydim, zdim, pMIN
+   use constants,       only: xdim, zdim, pMIN
    use global,          only: cfl
    use grid_cont,       only: grid_container
    use initstreamingcr, only: vmax

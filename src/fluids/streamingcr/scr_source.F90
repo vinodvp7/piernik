@@ -48,7 +48,7 @@ contains
       use fluidindex,       only: iarr_all_xfscr, iarr_all_escr, iarr_all_dn, iarr_all_gpcx, &
       &                           iarr_all_gpcy, iarr_all_gpcz, iarr_all_mx, iarr_all_my, & 
       &                           iarr_all_mz, iarr_all_yfscr, iarr_all_zfscr, iarr_all_en
-      use initstreamingcr,  only: vmax, disable_streaming, disable_feedback
+      use initstreamingcr,  only: vmax, disable_streaming, disable_feedback, use_escr_floor, escr_floor
       use scr_helpers,      only: rotate_vec, inverse_rotate_vec, update_interaction_term 
 
 
@@ -162,20 +162,21 @@ contains
             f2 = cg%w(scri)%arr(iarr_all_yfscr(ns),i,j,k)
             f3 = cg%w(scri)%arr(iarr_all_zfscr(ns),i,j,k)
 
-            if (new_ec < 0.0) new_ec = ec
+            if (use_escr_floor) then
+               if (new_ec < escr_floor) new_ec = escr_floor
+            else
+               if (new_ec < 0.0) new_ec = ec
+            endif
 
             if (.not. disable_feedback ) then  ! Energy feedback to the MHD gas
                new_eg = cg%w(fldi)%arr(iarr_all_en(1),i,j,k) - (new_ec - ec)
                if (new_eg < 0) new_eg = cg%w(fldi)%arr(iarr_all_en(1),i,j,k)
                cg%w(fldi)%arr(iarr_all_en(1),i,j,k) = new_eg
-            endif
-
-            if (.not. disable_feedback) then ! Momentum feedback to MHD gas
                cg%w(fldi)%arr(iarr_all_mx(1),i,j,k) = cg%w(fldi)%arr(iarr_all_mx(1),i,j,k) - (newf1 - f1)/vmax
                cg%w(fldi)%arr(iarr_all_my(1),i,j,k) = cg%w(fldi)%arr(iarr_all_my(1),i,j,k) - (newf2 - f2)/vmax
                cg%w(fldi)%arr(iarr_all_mz(1),i,j,k) = cg%w(fldi)%arr(iarr_all_mz(1),i,j,k) - (newf3 - f3)/vmax
             endif
-
+            
             cg%w(scri)%arr(iarr_all_escr(ns),i,j,k)  = new_ec
             cg%w(scri)%arr(iarr_all_xfscr(ns),i,j,k) = newf1
             cg%w(scri)%arr(iarr_all_yfscr(ns),i,j,k) = newf2

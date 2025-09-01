@@ -74,8 +74,8 @@ contains
          scri   = wna%ind(scrh)
          magi   = wna%ind(magh_n)
       endif
-      call update_gradpc_here(cg)
-      call update_interaction_term(cg, istep, .true.)
+      !call update_gradpc_here(cg)
+      call update_interaction_term(cg, istep, .false.)
 
       do ns = 1, scrind%stcosm
          do concurrent (k = cg%lhn(zdim,LO):cg%lhn(zdim,HI), j = cg%lhn(ydim,LO):cg%lhn(ydim,HI), &
@@ -205,7 +205,7 @@ contains
 
       logical                     :: active(ndims)
       integer                     :: L0(ndims), U0(ndims), L(ndims), U(ndims), shift(ndims)
-      integer                     :: afdim, ns, d
+      integer                     :: afdim, ns, d, i, j , k
       real, pointer               :: T(:,:,:,:)
       type(fxptr)                 :: F(ndims)
 
@@ -235,21 +235,17 @@ contains
          do d = xdim, zdim                          ! component of grad Pc (x,y,z)
             do afdim = xdim, zdim                    ! sweep direction
                if (.not. active(afdim)) cycle
-
                call bounds_for_flux(L0,U0,active,afdim,L,U)
                shift = 0 ; shift(afdim) = I_ONE
-
-               T(iarr_all_gpc(d,ns), L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) = &
-               T(iarr_all_gpc(d,ns), L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) - &
-               ( F(afdim)%flx(iarr_all_fscr(d,ns), L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) - &
-               F(afdim)%flx(iarr_all_fscr(d,ns), L(xdim)+shift(xdim):U(xdim)+shift(xdim), &
-                                                L(ydim)+shift(ydim):U(ydim)+shift(ydim), &
-                                                L(zdim)+shift(zdim):U(zdim)+shift(zdim)) ) / cg%dl(afdim)
+               do concurrent (k = L(zdim) : U(zdim) , j = L(ydim):U(ydim) , i = L(xdim):U(xdim))
+               T(iarr_all_gpc(d,ns), i, j, k) = T(iarr_all_gpc(d,ns), i, j, k) - &
+               ( F(afdim)%flx(iarr_all_fscr(d,ns), i, j, k) - &
+               F(afdim)%flx(iarr_all_fscr(d,ns), i+shift(xdim),j+shift(ydim),k+shift(zdim)) ) / (cg%dl(afdim) * vmax) 
+               end do
             end do
          end do
       end do
 
-      cg%w(wna%ind(gpcn))%arr = cg%w(wna%ind(gpcn))%arr / vmax
 
    end subroutine update_gradpc_here
 

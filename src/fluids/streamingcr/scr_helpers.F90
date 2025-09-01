@@ -260,7 +260,7 @@ contains
       use grid_cont,          only: grid_container
       use named_array_list,   only: wna
       use constants,          only: xdim, ydim, zdim, first_stage, sgmn, v_diff, scrh, uh_n, rtmn, &
-      &                             cphi, sphi, ctheta, stheta
+      &                             cphi, sphi, ctheta, stheta, LO, HI
       use global,             only: integration_order
       use fluidindex,         only: scrind, iarr_all_escr, iarr_all_dn
       use initstreamingcr,    only: disable_streaming, tau_asym, vmax, cr_sound_speed
@@ -271,12 +271,14 @@ contains
       type(grid_container), pointer, intent(in) :: cg
       integer,                       intent(in) :: istep
 
-      integer :: i, scri, fldi, ns
-      real, pointer :: vx(:,:,:), vy(:,:,:), vz(:,:,:)
-      real, pointer :: cp(:,:,:), sp(:,:,:), ct(:,:,:), st(:,:,:)
+      integer :: i, j, k, cdim, scri, fldi, ns, rtmi, vdiffi
+      real    :: cp, sp, ct, st, vx, vy, vz
 
       scri   = wna%ind(scrh)
       fldi   = wna%ind(uh_n)
+      rtmi   = wna%ind(rtmn)
+      vdiffi = wna%ind(v_diff)
+
       if (istep == first_stage(integration_order) .or. integration_order < 2 )  then
          scri   = wna%scr
          fldi   = wna%fi
@@ -287,47 +289,58 @@ contains
                  v  => cg%w(wna%ind(v_diff  ))%arr )
 
          do ns = 1, scrind%stcosm
-            do i = xdim, zdim
-               if (dom%has_dir(i)) then
-                  v(i+3*(ns-1),:,:,:) = sd(i+3*(ns-1),:,:,:) * cg%dl(i)
-                  v(i+3*(ns-1),:,:,:) = v(i+3*(ns-1),:,:,:)**2 * 1.5
+            do cdim = xdim, zdim
+               do concurrent (k = cg%lhn(zdim,LO):cg%lhn(zdim,HI), j = cg%lhn(ydim,LO):cg%lhn(ydim,HI), &
+               & i = cg%lhn(xdim,LO):cg%lhn(xdim,HI))
 
-                  where ( v(i+3*(ns-1),:,:,:) < tau_asym )
-                     v(i+3*(ns-1),:,:,:) = sqrt( max(0.0, 1.0 - 0.5*v(i+3*(ns-1),:,:,:)) )
-                  elsewhere
-                     v(i+3*(ns-1),:,:,:) = sqrt( (1.0 - exp(-v(i+3*(ns-1),:,:,:))) / &
-                                                               v(i+3*(ns-1),:,:,:) ) 
-                  end where
+                  if (dom%has_dir(cdim)) then
+                     v(cdim+3*(ns-1),i,j,k) = sd(cdim+3*(ns-1),i,j,k) * cg%dl(cdim)
+                     v(cdim+3*(ns-1),i,j,k) = v(cdim+3*(ns-1),i,j,k)**2 * 1.5
 
-                  v(i+3*(ns-1),:,:,:) = v(i+3*(ns-1),:,:,:) * sqrt(1.0/3.0) * vmax
-               else
-                  v(i+3*(ns-1),:,:,:) = 0.0
-               end if
+                     if ( v(cdim+3*(ns-1),i,j,k) < tau_asym ) then
+                        v(cdim+3*(ns-1),i,j,k) = sqrt( max(0.0, 1.0 - 0.5*v(cdim+3*(ns-1),i,j,k)) )
+                     else
+                        v(cdim+3*(ns-1),i,j,k) = sqrt( (1.0 - exp(-v(cdim+3*(ns-1),i,j,k))) / &
+                                                                  v(cdim+3*(ns-1),i,j,k) ) 
+                     end if
+
+                     v(cdim+3*(ns-1),i,j,k) = v(cdim+3*(ns-1),i,j,k) * sqrt(1.0/3.0) * vmax
+                  else
+                     v(cdim+3*(ns-1),i,j,k) = 0.0
+                  end if
+               end do
             end do
          end do
       end associate
-      cp => cg%w(wna%ind(rtmn))%arr(cphi  ,:,:,:)
-      sp => cg%w(wna%ind(rtmn))%arr(sphi  ,:,:,:)
-      ct => cg%w(wna%ind(rtmn))%arr(ctheta,:,:,:)
-      st => cg%w(wna%ind(rtmn))%arr(stheta,:,:,:)
+
 
       do ns = 1, scrind%stcosm
-         vx => cg%w(wna%ind(v_diff))%arr(3*(ns-1)+xdim,:,:,:)
-         vy => cg%w(wna%ind(v_diff))%arr(3*(ns-1)+ydim,:,:,:)
-         vz => cg%w(wna%ind(v_diff))%arr(3*(ns-1)+zdim,:,:,:)
-
-         ! Rotate in-place (elemental call over the full 3D arrays)
-         call inverse_rotate_vec(vx, vy, vz, cp, sp, ct, st)
+         do concurrent (k = cg%lhn(zdim,LO):cg%lhn(zdim,HI), j = cg%lhn(ydim,LO):cg%lhn(ydim,HI), &
+         & i = cg%lhn(xdim,LO):cg%lhn(xdim,HI))
+            cp = cg%w(rtmi)%arr(cphi  ,i,j,k)
+            sp = cg%w(rtmi)%arr(sphi  ,i,j,k)
+            ct = cg%w(rtmi)%arr(ctheta,i,j,k)
+            st = cg%w(rtmi)%arr(stheta,i,j,k)
+            vx = cg%w(vdiffi)%arr(3*(ns-1)+xdim,i,j,k)
+            vy = cg%w(vdiffi)%arr(3*(ns-1)+ydim,i,j,k)
+            vz = cg%w(vdiffi)%arr(3*(ns-1)+zdim,i,j,k)
+            call inverse_rotate_vec(vx, vy, vz, cp, sp, ct, st)
+            cg%w(vdiffi)%arr(3*(ns-1)+xdim,i,j,k) = abs(vx)
+            cg%w(vdiffi)%arr(3*(ns-1)+ydim,i,j,k) = abs(vy)
+            cg%w(vdiffi)%arr(3*(ns-1)+zdim,i,j,k) = abs(vz)
+         end do
       end do
 
-      cg%w(wna%ind(v_diff))%arr(:,:,:,:) = abs(cg%w(wna%ind(v_diff))%arr(:,:,:,:) )
 
       if (cr_sound_speed) then
          do ns = 1, scrind%stcosm
-            do i = xdim, zdim   ! c_scr = sqrt (gamma * (gamma-1) Ec /rho )
-               cg%w(wna%ind(v_diff))%arr(3*(ns-1) + i,:,:,:)  = cg%w(wna%ind(v_diff))%arr(3*(ns-1) + i,:,:,:) +&
-               & sqrt(scrind%scr(ns)%gam * scrind%scr(ns)%gam_1 * cg%w(scri)%arr(iarr_all_escr(ns),:,:,:)/&
-               & cg%w(fldi)%arr(iarr_all_dn(1),:,:,:))            ! We consider the density of the first fluid
+            do cdim = xdim, zdim   ! c_scr = sqrt (gamma * (gamma-1) Ec /rho )
+               do concurrent (k = cg%lhn(zdim,LO):cg%lhn(zdim,HI), j = cg%lhn(ydim,LO):cg%lhn(ydim,HI), &
+               & i = cg%lhn(xdim,LO):cg%lhn(xdim,HI))
+                  cg%w(vdiffi)%arr(3*(ns-1) + cdim,i,j,k)  = cg%w(vdiffi)%arr(3*(ns-1) + cdim,i,j,k) +&
+                  & sqrt(scrind%scr(ns)%gam * scrind%scr(ns)%gam_1 * cg%w(scri)%arr(iarr_all_escr(ns),i,j,k)/&
+                  & cg%w(fldi)%arr(iarr_all_dn(1),i,j,k))            ! We consider the density of the first fluid
+               end do
             end do
          end do
       endif

@@ -74,8 +74,8 @@ contains
          scri   = wna%ind(scrh)
          magi   = wna%ind(magh_n)
       endif
-      !call update_gradpc_here(cg)
-      call update_interaction_term(cg, istep, .false.)
+      call update_gradpc_here(cg)
+      call update_interaction_term(cg, istep, .true.)
 
       do ns = 1, scrind%stcosm
          do concurrent (k = cg%lhn(zdim,LO):cg%lhn(zdim,HI), j = cg%lhn(ydim,LO):cg%lhn(ydim,HI), &
@@ -185,6 +185,7 @@ contains
 
    end subroutine apply_scr_source
 
+   ! This function needs to be optimized. Currenlty causing a 0.02 second overhead for a 256 x256 run 
    subroutine update_gradpc_here(cg)
       use grid_cont,        only: grid_container
       use named_array_list, only: wna
@@ -230,7 +231,7 @@ contains
       cg%w(wna%ind(gpcn))%arr = 0.0
 
       T => cg%w(wna%ind(gpcn))%arr
-
+      
       do ns = 1, scrind%stcosm
          do d = xdim, zdim                          ! component of grad Pc (x,y,z)
             do afdim = xdim, zdim                    ! sweep direction

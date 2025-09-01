@@ -178,9 +178,11 @@ contains
             do ddim = xdim, zdim
                bdotpc(:,:,:) = bdotpc(:,:,:) + cg%w(magi)%arr(ddim,:,:,:) * cg%w(gpci)%arr(3 * (ns-1) + ddim,:,:,:)
             end do
-            cg%w(sgmd)%arr(2*(ns - 1) + xdim ,:,:,:) = &
-            &  abs(bdotpc) * sqrt(cg%w(fldi)%arr(iarr_all_dn(1) ,:,:,:)) * vmax / &
-            &  (scrind%scr(ns)%gam * Bxyz * cg%w(scri)%arr(iarr_all_escr(ns),:,:,:))   
+            cg%w(sgmd)%arr(2*(ns - 1) + xdim ,:,:,:) = (cg%w(sgmd)%arr(2*(ns - 1) + xdim ,:,:,:) * &
+            & ( abs(bdotpc) * sqrt(cg%w(fldi)%arr(iarr_all_dn(1) ,:,:,:)) * vmax / &
+            &  (scrind%scr(ns)%gam * Bxyz * cg%w(scri)%arr(iarr_all_escr(ns),:,:,:))))/(cg%w(sgmd)%arr(2*(ns - 1) + xdim ,:,:,:) + &
+            & ( abs(bdotpc) * sqrt(cg%w(fldi)%arr(iarr_all_dn(1) ,:,:,:)) * vmax / &
+            &  (scrind%scr(ns)%gam * Bxyz * cg%w(scri)%arr(iarr_all_escr(ns),:,:,:))))  
          end do
       endif
 

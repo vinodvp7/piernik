@@ -1,0 +1,90 @@
+ $BASE_DOMAIN
+    n_d = 128, 128, 1
+    nb  = 4
+    bnd_xl = 'per'
+    bnd_xr = 'per'
+    bnd_yl = 'per'
+    bnd_yr = 'per'
+    bnd_zl = 'per'
+    bnd_zr = 'per'
+    xmin   =-500.0
+    xmax   = 500.0
+    ymin   =-500.0
+    ymax   = 500.0
+    zmin   =-500.0
+    zmax   = 500.0
+ /
+
+ $MPI_BLOCKS
+    psize = 2, 2, 1
+ /
+
+ $UNITS
+    units_set = "PSM"
+ /
+
+ $RESTART_CONTROL
+    restart  = 'last'
+    res_id   = ''
+    nrestart = 0
+ /
+
+ $END_CONTROL
+    tend   = 50.0
+    nend   = 10000
+ /
+
+ $OUTPUT_CONTROL
+    problem_name = 'mcr'
+    run_id = 'tst'
+    dt_hdf  = 5.0
+    dt_res  = 0.0
+    dt_log  = 0.05
+    dt_tsl  = 0.000
+    vars(1:) = 'ener', 'dens', 'magx', 'magy', 'magz', 'escr', 'velx', 'vely', 'velz'
+ /
+
+
+ $FLUID_IONIZED
+    gamma  = 1.66666666666666666
+ /
+
+$STREAMING_CR
+   nscr                    = 1
+   vmax                    = 100.0
+   sigma_paral             = 3.333e-5
+   sigma_perp              = 1e10
+   ord_pc_grad             = 2
+   disable_feedback        = .true.      ! feedback to MHD gas
+   disable_streaming       = .false.
+   cr_sound_speed          = .true.
+/
+$NUMERICAL_SETUP
+  cfl     = 0.5
+  smalld  = 1.e-5
+  smallei = 1.e-5
+  limiter = 'moncen'
+  solver_type = 'unsplit'
+  solver_str = 'riemann'
+  integration_order = 2
+/
+
+ $PROBLEM_CONTROL
+    d0        = 1.0 ! when COSM_RAYS_SOURCES are defined, the density somehow scales the result of sourcecosmicrays.F90 and values like 1e5 quickly lead to FP overflow. This must be a bug.
+    p0        = 1.0
+    bx0       = 5.0
+    by0       = 5.0
+    bz0       = 5.0
+    x0        = 0.0
+    y0        = 0.0
+    z0        = 0.0
+    r0        = 64.0
+    beta_cr   = 0.0
+    amp_cr1   = 1000.0
+ /
+
+ $INTERACTIONS
+ /
+
+ $AMR
+ /

@@ -182,10 +182,12 @@ contains
                if (new_ec < 0.0) new_ec = ec
             endif
 
-            if (.not. disable_feedback ) then  ! Energy feedback to the MHD gas
+            if (.not. disable_feedback ) then  ! Energy feedback to the MHD gas . Only the first fluid
+#ifndef ISO
                new_eg = cg%w(fldi)%arr(iarr_all_en(1),i,j,k) - (new_ec - ec)
                if (new_eg < 0 .or. new_ec == escr_floor) new_eg = cg%w(fldi)%arr(iarr_all_en(1),i,j,k)
                cg%w(fldi)%arr(iarr_all_en(1),i,j,k) = new_eg
+#endif /* !ISO */
                cg%w(fldi)%arr(iarr_all_mx(1),i,j,k) = cg%w(fldi)%arr(iarr_all_mx(1),i,j,k) - (newf1 - f1)/vmax
                cg%w(fldi)%arr(iarr_all_my(1),i,j,k) = cg%w(fldi)%arr(iarr_all_my(1),i,j,k) - (newf2 - f2)/vmax
                cg%w(fldi)%arr(iarr_all_mz(1),i,j,k) = cg%w(fldi)%arr(iarr_all_mz(1),i,j,k) - (newf3 - f3)/vmax

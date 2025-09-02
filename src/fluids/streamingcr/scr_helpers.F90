@@ -42,8 +42,11 @@ module scr_helpers
 
    private
 
-   public :: update_rotation_matrix, scr_initial_tasks, update_interaction_term, &
+   public :: scr_initial_tasks, update_interaction_term, &
    &         rotate_vec, inverse_rotate_vec, update_vdiff
+#ifdef MAGNETIC
+   public :: update_rotation_matrix
+#endif /* MAGNETIC */
 
    abstract interface
       subroutine gradient_pc(cg, ind)
@@ -65,6 +68,7 @@ contains
 
 !! This subroutine is called once every RK stage at the beginning.
 !>
+#ifdef MAGNETIC
    subroutine update_rotation_matrix(cg,istep)
 
       use grid_cont,        only: grid_container
@@ -116,7 +120,7 @@ contains
          ct = bz  / Bxyz
       end where
    end subroutine update_rotation_matrix
-
+#endif /* MAGNETIC */
 !>
 !! This subroutine is used to set the value of sigma_diffusion and sigma_advection
 !! Inside it used a second order midpoint scheme to calculate grad Pc 
@@ -131,6 +135,9 @@ contains
       use global,             only: integration_order
       use initstreamingcr,    only: sigma_paral, sigma_perp, disable_streaming, vmax, ord_pc_grad
       use fluidindex,         only: scrind, iarr_all_dn, iarr_all_escr
+#ifdef MAGNETIC
+      use constants,          only: magh_n
+#endif /* MAGNETIC */
 
       implicit none
 
@@ -140,29 +147,37 @@ contains
 
       procedure(gradient_pc), pointer           :: grad_pc => null()
 
-      integer :: sgmd, magi, scri, fldi, ns, ddim, gpci
-
-      real :: bdotpc(cg%n_(xdim),cg%n_(ydim),cg%n_(zdim))
-      real :: Bxyz(cg%n_(xdim),cg%n_(ydim),cg%n_(zdim))
+      integer :: sgmd, scri, fldi, ns, ddim, gpci
+#ifdef MAGNETIC
+      integer :: magi
+      real    :: bdotpc(cg%n_(xdim),cg%n_(ydim),cg%n_(zdim))
+      real    :: Bxyz(cg%n_(xdim),cg%n_(ydim),cg%n_(zdim))
+#endif /* MAGNETIC */
 
       if (ord_pc_grad == 2)  grad_pc => gradient_2nd_order
       if (ord_pc_grad == 4)  grad_pc => gradient_4th_order 
 
       sgmd = wna%ind(sgmn)
       gpci = wna%ind(gpcn)
+#ifdef MAGNETIC
       magi   = wna%ind(magh_n)
+#endif /* MAGNETIC */
       scri   = wna%ind(scrh)
       fldi   = wna%ind(uh_n)
       if (istep == first_stage(integration_order) .or. integration_order < 2 )  then
+#ifdef MAGNETIC
          magi   = wna%bi
+#endif /* MAGNETIC */
          scri   = wna%scr
          fldi   = wna%fi
       endif
 
+#ifdef MAGNETIC
       Bxyz = 0.0                 ! Bx^2 + By^2 + Bz^2
       do ddim = xdim, zdim
          Bxyz(:,:,:) = Bxyz(:,:,:) + cg%w(magi)%arr(ddim,:,:,:) * cg%w(magi)%arr(ddim,:,:,:) 
       end do
+#endif /* MAGNETIC */
 
       if (.not. at_source) call grad_pc(cg,scri)
 
@@ -171,6 +186,7 @@ contains
          cg%w(sgmd)%arr(2*(ns - 1) + ydim ,:,:,:) = sigma_perp(ns) * vmax    ! z and y are equivalent
       end do
 
+#ifdef MAGNETIC
       if (.not. disable_streaming) then
          do ns = 1, scrind%stcosm 
 
@@ -185,6 +201,7 @@ contains
             &  (scrind%scr(ns)%gam * Bxyz * cg%w(scri)%arr(iarr_all_escr(ns),:,:,:))))  
          end do
       endif
+#endif /* MAGNETIC */
 
    end subroutine update_interaction_term
 
@@ -195,8 +212,11 @@ contains
       use fluidindex,        only: iarr_all_escr
       use initstreamingcr,   only: vmax
       use named_array_list,  only: wna
-      use constants,         only: scrh, magh_n, uh_n, first_stage
+      use constants,         only: scrh, uh_n, first_stage
       use global,            only: integration_order
+#ifdef MAGNETIC
+      use constants,         only: magh_n
+#endif /* MAGNETIC */
 
       implicit none
 
@@ -214,9 +234,11 @@ contains
          cg%w(wna%ind(scrh))%arr(:,:,:,:) = cg%scr(:,:,:,:)
 
          cg%w(wna%ind(uh_n))%arr(:,:,:,:)   = cg%u(:,:,:,:)     ! Copy fluid and B state to half index array 
+#ifdef MAGNETIC         
          cg%w(wna%ind(magh_n))%arr(:,:,:,:) = cg%b(:,:,:,:)     ! as it is used to calculate relevant quantities elsewhere here
 
          call update_rotation_matrix(cg,istep = first_stage(integration_order)) ! istep is irrelevant here  
+#endif /* MAGNETIC */
 
          call update_interaction_term(cg,istep = first_stage(integration_order), at_source = .false.)
 
@@ -261,24 +283,30 @@ contains
 
       use grid_cont,          only: grid_container
       use named_array_list,   only: wna
-      use constants,          only: xdim, ydim, zdim, first_stage, sgmn, v_diff, scrh, uh_n, rtmn, &
-      &                             cphi, sphi, ctheta, stheta, LO, HI
+      use constants,          only: xdim, ydim, zdim, first_stage, sgmn, v_diff, scrh, uh_n, LO, HI
       use global,             only: integration_order
       use fluidindex,         only: scrind, iarr_all_escr, iarr_all_dn
       use initstreamingcr,    only: disable_streaming, tau_asym, vmax, cr_sound_speed
       use domain,             only: dom
-
+#ifdef MAGNETIC
+      use constants,          only: rtmn, cphi, sphi, ctheta, stheta
+#endif /* MAGNETIC */
       implicit none
 
       type(grid_container), pointer, intent(in) :: cg
       integer,                       intent(in) :: istep
 
-      integer :: i, j, k, cdim, scri, fldi, ns, rtmi, vdiffi
+      integer :: i, j, k, cdim, scri, fldi, ns, vdiffi
+#ifdef MAGNETIC
+      integer :: rtmi 
       real    :: cp, sp, ct, st, vx, vy, vz
+#endif /* MAGNETIC */
 
       scri   = wna%ind(scrh)
       fldi   = wna%ind(uh_n)
+#ifdef MAGNETIC
       rtmi   = wna%ind(rtmn)
+#endif /* MAGNETIC */
       vdiffi = wna%ind(v_diff)
 
       if (istep == first_stage(integration_order) .or. integration_order < 2 )  then
@@ -316,7 +344,7 @@ contains
          end do
       end associate
 
-
+#ifdef MAGNETIC
       do ns = 1, scrind%stcosm
          do concurrent (k = cg%lhn(zdim,LO):cg%lhn(zdim,HI), j = cg%lhn(ydim,LO):cg%lhn(ydim,HI), &
          & i = cg%lhn(xdim,LO):cg%lhn(xdim,HI))
@@ -333,7 +361,7 @@ contains
             cg%w(vdiffi)%arr(3*(ns-1)+zdim,i,j,k) = abs(vz)
          end do
       end do
-
+#endif /* MAGNETIC */
 
       if (cr_sound_speed) then
          do ns = 1, scrind%stcosm

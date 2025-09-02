@@ -86,6 +86,10 @@ contains
       use fluxtypes,        only: ext_fluxes
       use unsplit_source,   only: apply_source
       use diagnostics,      only: my_allocate, my_deallocate
+#ifdef STREAM_CR
+      use streaming_cr_hlle, only: update_scr_fluid
+      use scr_helpers,       only: update_interaction_term, update_vdiff
+#endif /* STREAM_CR */
 
       implicit none
 
@@ -148,9 +152,13 @@ contains
          enddo
 
          call my_deallocate(u); call my_deallocate(flux); call my_deallocate(tflux)
-
       enddo
       call apply_flux(cg,istep)
+#ifdef STREAM_CR
+      call update_interaction_term(cg, istep, .false.)
+      call update_vdiff(cg,istep)
+      call update_scr_fluid(cg,istep)
+#endif /* STREAM_CR */
       call apply_source(cg,istep)
       nullify(cs2)
 

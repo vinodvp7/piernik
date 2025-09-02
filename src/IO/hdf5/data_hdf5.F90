@@ -558,13 +558,13 @@ contains
          case ('gradpcz_01':'gradpcz_50')                            !> zth component of ∇Pc 
             read(var, '(A8,I2)') aux, is
             tab(:,:,:) = cg%w(wna%ind(gpcn))%arr( (is-1)*ndims + zdim, RNG )
-
+#ifdef MAGNETIC
          case ('bdotgradpc_01':'bdotgradpc_50')                      !> B·∇Pc
             read(var, '(A11,I2)') aux, is    ! 'bdotgradpc_' + nn
             tab(:,:,:) = cg%b(xdim, RNG) * cg%w(wna%ind(gpcn))%arr( (is-1)*ndims + xdim, RNG ) + &
             &            cg%b(ydim, RNG) * cg%w(wna%ind(gpcn))%arr( (is-1)*ndims + ydim, RNG ) + &
             &            cg%b(zdim, RNG) * cg%w(wna%ind(gpcn))%arr( (is-1)*ndims + zdim, RNG )
-
+#endif /* MAGNETIC */
          case ('sigmax_01':'sigmax_50')                              !> xth component of σ
             read(var, '(A7,I2)') aux, is     
             tab(:,:,:) = 1.0/vmax * cg%w(wna%ind(sgmn))%arr( 2 * (is-1) + 1, RNG ) 

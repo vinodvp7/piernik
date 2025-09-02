@@ -40,6 +40,9 @@ module snsources
 #ifdef COSM_RAYS
    public :: cr_sn, amp_ecr_sn
 #endif /* COSM_RAYS */
+#ifdef STREAM_CR
+   public :: scr_sn, amp_escr_sn
+#endif /* STREAM_CR */
 #ifdef HDF5
    public :: read_snsources_from_restart, write_snsources_to_restart
 #endif /* HDF5 */
@@ -58,6 +61,10 @@ module snsources
 #ifdef COSM_RAYS
    real                                    :: amp_ecr_sn          !< cosmic ray explosion amplitude
 #endif /* COSM_RAYS */
+
+#ifdef STREAM_CR
+   real                                    :: amp_escr_sn          !< streaming cosmic ray explosion amplitude
+#endif /* STREAM_CR */
 
    namelist /SN_SOURCES/ e_sn, h_sn, r_sn, f_sn_kpc2
 
@@ -80,16 +87,18 @@ contains
 !<
    subroutine init_snsources
 
-      use bcast,          only: piernik_MPI_Bcast
-      use constants,      only: PIERNIK_INIT_GRID, xdim, ydim, zdim, pi, I_ONE
-      use dataio_pub,     only: die, code_progress, nh
-      use domain,         only: dom
-      use mpisetup,       only: rbuff, master, slave
-      use units,          only: erg, kpc, Myr
+      use bcast,           only: piernik_MPI_Bcast
+      use constants,       only: PIERNIK_INIT_GRID, xdim, ydim, zdim, pi, I_ONE
+      use dataio_pub,      only: die, code_progress, nh
+      use domain,          only: dom
+      use mpisetup,        only: rbuff, master, slave
+      use units,           only: erg, kpc, Myr
 #ifdef COSM_RAYS
-      use initcosmicrays, only: cr_eff
+      use initcosmicrays,  only: cr_eff
 #endif /* COSM_RAYS */
-
+#ifdef STREAM_CR
+      use initstreamingcr, only: scr_eff
+#endif /* STREAM_CR */
       implicit none
 
       integer(kind=4) :: id
@@ -143,6 +152,10 @@ contains
       amp_ecr_sn = cr_eff * e_sn * erg * gnorm
 #endif /* COSM_RAYS */
 
+#ifdef STREAM_CR
+      amp_escr_sn = scr_eff * e_sn * erg * gnorm
+#endif /* STREAM_CR */
+
       f_sn = f_sn_kpc2 / Myr * dom%L_(xdim) * dom%L_(ydim) / kpc**2
 
       nsn_last = 0
@@ -180,6 +193,11 @@ contains
 #ifdef COSM_RAYS
          call cr_sn(snpos, amp_ecr_sn)
 #endif /* COSM_RAYS */
+
+
+#ifdef STREAM_CR
+         call scr_sn(snpos, amp_escr_sn)
+#endif /* STREAM_CR */
 
       enddo
 
@@ -280,6 +298,84 @@ contains
 
    end subroutine cr_sn
 #endif /* COSM_RAYS */
+
+!--------------------------------------------------------------------------
+#ifdef STREAM_CR
+!>
+!! \brief Routine that inserts an amount of streaming cosmic ray energy around the position of supernova
+!! \param pos real, dimension(3), array of supernova position components. This is a copy of the above subroutine for STREAM_CR
+!!  In its current form this is wrong because I need to add CR species mass and other factors. But for now lets assume
+!!  each cr species is H so that decr doesnt have a factor before it.
+!<
+   subroutine scr_sn(pos, ampl)
+
+      use cg_leaves,        only: leaves
+      use cg_list,          only: cg_list_element
+      use constants,        only: xdim, ydim, zdim
+      use domain,           only: dom
+      use grid_cont,        only: grid_container
+      use fluidindex,       only: iarr_all_escr
+      use initstreamingcr,  only: nscr
+
+
+      implicit none
+
+      real, dimension(ndims), intent(in) :: pos
+      real,                   intent(in) :: ampl
+      integer                            :: i, j, k, ipm, jpm
+      real                               :: decr, ysna
+      real, dimension(ndims)             :: posr
+      type(cg_list_element), pointer     :: cgl
+      type(grid_container),  pointer     :: cg
+#ifdef SHEAR
+      real, dimension(3)                 :: ysnoi
+#endif /* SHEAR */
+
+      integer :: ns
+
+      cgl => leaves%first
+      do while (associated(cgl))
+         cg => cgl%cg
+
+#ifdef SHEAR
+         ysnoi(2) = pos(ydim)
+         call sn_shear(cg, ysnoi)
+#else /* !SHEAR */
+         ysna = pos(ydim)
+#endif /* !SHEAR */
+
+         do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
+            posr(zdim) = ((cg%z(k)-pos(zdim))/r_sn)**2
+            do j = cg%lhn(ydim,LO), cg%lhn(ydim,HI)
+               do i = cg%lhn(xdim,LO), cg%lhn(xdim,HI)
+
+                  decr = 0.0
+                  do ipm = auxper(xdim,LO), auxper(xdim,HI)
+                     posr(xdim) = ((cg%x(i)-pos(xdim) + real(ipm)*dom%L_(xdim))/r_sn)**2
+#ifdef SHEAR
+                     ysna = ysnoi(ipm+2)
+#endif /* SHEAR */
+                     if (dom%eff_dim > 0) then
+                        do jpm = auxper(ydim,LO), auxper(ydim,HI)
+                           posr(ydim) = ((cg%y(j)-ysna + real(jpm)*dom%L_(ydim))/r_sn)**2
+                           ! BEWARE:  for num < -744.6 the exp(num) is the underflow
+                           decr = decr + exp(-sum(posr, mask=dom%has_dir))
+                        enddo
+                     endif
+                  enddo
+                  decr = decr * ampl
+                  do ns = 1, nscr
+                     cg%scr(iarr_all_escr(ns),i,j,k) =  cg%scr(iarr_all_escr(ns),i,j,k) + decr
+                  end do
+               enddo
+            enddo
+         enddo
+
+         cgl => cgl%nxt
+      enddo
+
+   end subroutine scr_sn
+#endif /* STREAM_CR */
 !--------------------------------------------------------------------------
 !>
 !! \brief Routine that determines the position of next supernova

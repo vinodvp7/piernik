@@ -41,16 +41,19 @@ contains
    subroutine apply_scr_source(cg,istep)
       use grid_cont,        only: grid_container
       use named_array_list, only: wna
-      use constants,        only: LO, HI, scrh, first_stage, xdim, ydim, zdim, rtmn, &
-      &                           rk_coef, gpcn, uh_n, magh_n, cphi, ctheta, sphi, stheta, sgmn
+      use constants,        only: LO, HI, scrh, first_stage, xdim, ydim, zdim,rk_coef, gpcn, uh_n
       use global,           only: integration_order, dt
       use fluidindex,       only: scrind
       use fluidindex,       only: iarr_all_xfscr, iarr_all_escr, iarr_all_dn, iarr_all_gpcx, &
       &                           iarr_all_gpcy, iarr_all_gpcz, iarr_all_mx, iarr_all_my, & 
       &                           iarr_all_mz, iarr_all_yfscr, iarr_all_zfscr, iarr_all_en
       use initstreamingcr,  only: vmax, disable_streaming, disable_feedback, use_escr_floor, escr_floor
-      use scr_helpers,      only: rotate_vec, inverse_rotate_vec, update_interaction_term 
+      use scr_helpers,      only: update_interaction_term 
 
+#ifdef MAGNETIC  
+      use constants,        only: rtmn, magh_n, cphi, ctheta, sphi, stheta, sgmn   
+      use scr_helpers,      only: rotate_vec, inverse_rotate_vec    
+#endif /* MAGNETIC */
 
       implicit none
 
@@ -59,20 +62,28 @@ contains
 
       integer                                    :: i, j, k, ns
       integer(kind=4)                            :: scri, fldi, magi, sgmd, rtmi, gpci
-      real                                       :: v1, v2, v3, vtot1, vtot2, vtot3, st,ct,sp,cp,f1,f2,f3,ec, sgn_bgpc
-      real                                       :: sigmax, sigmay, sigmaz,coef_11,coef_12,coef_13,coef_14,coef_21,coef_22
-      real                                       :: coef_31, coef_33, coef_41, coef_44, newf1 ,newf2 ,newf3, e_coef ,new_ec
-      real                                       :: gpcx, gpcy, gpcz, ec_source_, new_eg, bdotpc
+      real                                       :: v1, v2, v3, vtot1, vtot2, vtot3, f1, f2, f3, ec
+      real                                       :: sigmax, sigmay, sigmaz, coef_11,coef_12,coef_13,coef_14,coef_21,coef_22
+      real                                       :: coef_31, coef_33, coef_41, coef_44, newf1 ,newf2 ,newf3, e_coef, new_ec
+      real                                       :: gpcx, gpcy, gpcz, ec_source_, new_eg
+#ifdef MAGNETIC
+      real                                       :: bdotpc, sgn_bgpc, st, ct, sp, cp
+#endif /* MAGNETIC */
+
       fldi   = wna%fi
       scri   = wna%scr
+#ifdef MAGNETIC
       magi   = wna%bi
-      sgmd   = wna%ind(sgmn)
       rtmi   = wna%ind(rtmn)
+#endif /* MAGNETIC */
+      sgmd   = wna%ind(sgmn)
       gpci   = wna%ind(gpcn)
       if (istep == first_stage(integration_order) .and. integration_order > 1 )  then
          fldi   = wna%ind(uh_n)
          scri   = wna%ind(scrh)
+#ifdef MAGNETIC
          magi   = wna%ind(magh_n)
+#endif /* MAGNETIC */
       endif
       call update_gradpc_here(cg)
       call update_interaction_term(cg, istep, .true.)
@@ -80,12 +91,12 @@ contains
       do ns = 1, scrind%stcosm
          do concurrent (k = cg%lhn(zdim,LO):cg%lhn(zdim,HI), j = cg%lhn(ydim,LO):cg%lhn(ydim,HI), &
          & i = cg%lhn(xdim,LO):cg%lhn(xdim,HI))
-
+#ifdef MAGNETIC
             cp = cg%w(rtmi)%arr(cphi,i,j,k)
             sp = cg%w(rtmi)%arr(sphi,i,j,k)
             ct = cg%w(rtmi)%arr(ctheta,i,j,k)
             st = cg%w(rtmi)%arr(stheta,i,j,k)
-            
+#endif /* MAGNETIC */
             v1 = cg%w(fldi)%arr(iarr_all_mx(1),i,j,k)/cg%w(fldi)%arr(iarr_all_dn(1),i,j,k)
             v2 = cg%w(fldi)%arr(iarr_all_my(1),i,j,k)/cg%w(fldi)%arr(iarr_all_dn(1),i,j,k)
             v3 = cg%w(fldi)%arr(iarr_all_mz(1),i,j,k)/cg%w(fldi)%arr(iarr_all_dn(1),i,j,k)
@@ -95,6 +106,8 @@ contains
             gpcx = cg%w(gpci)%arr(iarr_all_gpcx(ns),i,j,k)
             gpcy = cg%w(gpci)%arr(iarr_all_gpcy(ns),i,j,k)
             gpcz = cg%w(gpci)%arr(iarr_all_gpcz(ns),i,j,k)
+
+#ifdef MAGNETIC         
             bdotpc = gpcx * cg%w(magi)%arr(xdim,i,j,k) + gpcy * cg%w(magi)%arr(ydim,i,j,k) + &
             &        gpcz * cg%w(magi)%arr(zdim,i,j,k)
             sgn_bgpc = 0.0 
@@ -107,17 +120,18 @@ contains
                vtot2 = vtot2 - sgn_bgpc * cg%w(magi)%arr(ydim,i,j,k)/sqrt(cg%w(fldi)%arr(iarr_all_dn(1),i,j,k)) ! vfluid + vs
                vtot3 = vtot3 - sgn_bgpc * cg%w(magi)%arr(zdim,i,j,k)/sqrt(cg%w(fldi)%arr(iarr_all_dn(1),i,j,k)) ! vfluid + vs  .
             endif
-
+#endif /* MAGNETIC */
 
             ec = cg%w(scri)%arr(iarr_all_escr(ns),i,j,k)
             f1 = cg%w(scri)%arr(iarr_all_xfscr(ns),i,j,k)
             f2 = cg%w(scri)%arr(iarr_all_yfscr(ns),i,j,k)
             f3 = cg%w(scri)%arr(iarr_all_zfscr(ns),i,j,k)
-
+#ifdef MAGNETIC         
             call rotate_vec(f1,f2,f3,cp,sp,ct,st)
             call rotate_vec(v1,v2,v3,cp,sp,ct,st)
             call rotate_vec(vtot1,vtot2,vtot3,cp,sp,ct,st)
             call rotate_vec(gpcx,gpcy,gpcz,cp,sp,ct,st)
+#endif /* MAGNETIC */
 
             ec_source_ = v2 * gpcy + v3 * gpcz
 
@@ -155,12 +169,12 @@ contains
             newf3 = (f3 - coef_41 * new_ec)/coef_44
 
             new_ec = new_ec + rk_coef(istep) * dt * ec_source_
-
+#ifdef MAGNETIC         
             call inverse_rotate_vec(newf1,newf2,newf3,cp,sp,ct,st)
-
             f1 = cg%w(scri)%arr(iarr_all_xfscr(ns),i,j,k)        ! Original f1,f2,f3
             f2 = cg%w(scri)%arr(iarr_all_yfscr(ns),i,j,k)
             f3 = cg%w(scri)%arr(iarr_all_zfscr(ns),i,j,k)
+#endif /* MAGNETIC */
 
             if (use_escr_floor) then
                if (new_ec < escr_floor) new_ec = escr_floor
@@ -170,14 +184,14 @@ contains
 
             if (.not. disable_feedback ) then  ! Energy feedback to the MHD gas
                new_eg = cg%w(fldi)%arr(iarr_all_en(1),i,j,k) - (new_ec - ec)
-               if (new_eg < 0) new_eg = cg%w(fldi)%arr(iarr_all_en(1),i,j,k)
+               if (new_eg < 0 .or. new_ec == escr_floor) new_eg = cg%w(fldi)%arr(iarr_all_en(1),i,j,k)
                cg%w(fldi)%arr(iarr_all_en(1),i,j,k) = new_eg
                cg%w(fldi)%arr(iarr_all_mx(1),i,j,k) = cg%w(fldi)%arr(iarr_all_mx(1),i,j,k) - (newf1 - f1)/vmax
                cg%w(fldi)%arr(iarr_all_my(1),i,j,k) = cg%w(fldi)%arr(iarr_all_my(1),i,j,k) - (newf2 - f2)/vmax
                cg%w(fldi)%arr(iarr_all_mz(1),i,j,k) = cg%w(fldi)%arr(iarr_all_mz(1),i,j,k) - (newf3 - f3)/vmax
             endif
             
-            cg%w(scri)%arr(iarr_all_escr(ns),i,j,k)  = new_ec
+            cg%w(scri)%arr(iarr_all_escr(ns),i,j,k)  = new_ec         ! For test 1 and test 2 comment me 
             cg%w(scri)%arr(iarr_all_xfscr(ns),i,j,k) = newf1
             cg%w(scri)%arr(iarr_all_yfscr(ns),i,j,k) = newf2
             cg%w(scri)%arr(iarr_all_zfscr(ns),i,j,k) = newf3

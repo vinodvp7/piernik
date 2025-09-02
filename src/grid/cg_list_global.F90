@@ -308,7 +308,9 @@ contains
       call this%reg_var(yscrflx, vital = .false., dim4 = 4 * nscr,     ord_prolong = ord_fluid_prolong, restart_mode = AT_NO_B )  !! Y Face-Streaming CR Fluid flux array
       call this%reg_var(zscrflx, vital = .false., dim4 = 4 * nscr,     ord_prolong = ord_fluid_prolong, restart_mode = AT_NO_B )  !! Z Face-Streaming CR Fluid flux array
       call this%reg_var(gpcn,    vital = .false., dim4 = ndims * nscr, ord_prolong = ord_fluid_prolong, restart_mode = AT_NO_B )  !! Array to store gradient of Pc for each streaming CR species
+#ifdef MAGNETIC
       call this%reg_var(rtmn,    vital = .false., dim4 = 4,            ord_prolong = ord_fluid_prolong, restart_mode = AT_NO_B )  !! Array to store rotation matirx component cos(phi) / sin(phi) / cos(theta) / sin(theta)
+#endif /* MAGNETIC */   
       call this%reg_var(sgmn,    vital = .false., dim4 = 2 * nscr,     ord_prolong = ord_fluid_prolong, restart_mode = AT_NO_B )  !! Array to store interaction coefficient for each streaming CR species : parallel and perpendicular
       call this%reg_var(v_diff,  vital = .false., dim4 = ndims * nscr, ord_prolong = ord_fluid_prolong, restart_mode = AT_NO_B )  !! Array to store interaction coefficient for each streaming CR species
 

@@ -535,15 +535,15 @@ contains
             tab(:,:,:) = cg%u( flind%scr(is)%iescr, RNG )
 
          ! -------- streaming fluxes (x,y,z) --------
-         case ('fxscr_01':'fxscr_99')
+         case ('xfscr_01':'xfscr_99')
             read(var, '(A6,I2)') aux, is     ! 'fxscr_' + nn
             tab(:,:,:) = vmax * cg%u( flind%scr(is)%ixfscr, RNG )
 
-         case ('fyscr_01':'fyscr_99')
+         case ('yfscr_01':'yfscr_99')
             read(var, '(A6,I2)') aux, is     ! 'fyscr_' + nn
             tab(:,:,:) = vmax * cg%u( flind%scr(is)%iyfscr, RNG )
 
-         case ('fzscr_01':'fzscr_99')
+         case ('zfscr_01':'zfscr_99')
             read(var, '(A6,I2)') aux, is     ! 'fzscr_' + nn
             tab(:,:,:) = vmax * cg%u( flind%scr(is)%izfscr, RNG )
 
@@ -570,10 +570,10 @@ contains
 #endif /* MAGNETIC */
          ! -------- σ per direction per species --------
          case ('sigma_paral_01':'sigma_paral_50')                    !> xth component of σ
-            read(var, '(A7,I2)') aux, is     
+            read(var, '(A12,I2)') aux, is     
             tab(:,:,:) = 1.0/vmax * cg%w(wna%ind(sgmn))%arr( 2 * (is-1) + 1, RNG ) 
          case ('sigma_perp_01':'sigma_perp_50')                      !> yth component of σ
-            read(var, '(A7,I2)') aux, is
+            read(var, '(A12,I2)') aux, is
             tab(:,:,:) = 1.0/vmax * cg%w(wna%ind(sgmn))%arr( 2 * (is-1) + 2, RNG ) 
 #endif /* STREAM_CR */
 #ifdef TRACER

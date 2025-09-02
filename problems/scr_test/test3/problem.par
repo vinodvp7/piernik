@@ -1,5 +1,5 @@
 $BASE_DOMAIN
-  n_d = 256,1,1
+  n_d = 256,256,1
   nb  = 4
   bnd_xl = 'out'
   bnd_xr = 'out'
@@ -29,7 +29,7 @@ $RESTART_CONTROL
 
 $END_CONTROL
   tend = 0.1
-  nend = 1000000
+  nend = 100000
 /
 
 $OUTPUT_CONTROL
@@ -39,7 +39,7 @@ $OUTPUT_CONTROL
    dt_res = 0.0
    dt_log = 0.02
    dt_tsl = 0.02
-   vars(1:) = 'dens', 'ener', 'velx', 'pres', 'escr', 'xfscr', 'gradpcx', 'sigma_paral', 'magx', 'sigma_perp'
+   vars(1:) = 'dens', 'ener', 'velx', 'pres', 'escr', 'xfscr', 'yfscr', 'gradpcx', 'sigmax', 'sigmay', 'magx', 'magy'
 /
 
 $FLUID_IONIZED
@@ -47,12 +47,13 @@ $FLUID_IONIZED
 /
 $STREAMING_CR
    nscr                    = 1
-   vmax                    = 100.0
+   vm                      = 100.0
    sigma_paral             = 1e8
-   ord_pc_grad             = 2
+   sigma_perp              = 1e8
+   ord_scr_grad            = 2
    disable_feedback        = .true.      ! feedback to MHD gas
    disable_streaming       = .false.
-   cr_sound_speed          = .true.
+   !disable_cr_sound        = .true.
 /
 $NUMERICAL_SETUP
   cfl     = 0.5
@@ -65,7 +66,6 @@ $NUMERICAL_SETUP
 /
 
 $PROBLEM_CONTROL
-   a  = 40.0
 /
 
 $AMR

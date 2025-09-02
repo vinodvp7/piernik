@@ -72,7 +72,9 @@ contains
       use fluidindex, only: flind
       use fluidtypes, only: component_fluid
       use func,       only: ekin
-
+#ifdef STREAM_CR
+      use fluidtypes,   only: component_scr
+#endif /* STREAM_CR */
       implicit none
 
       real, dimension(:,:),           intent(in) :: u
@@ -81,7 +83,9 @@ contains
       real, dimension(size(u, 1), size(u, 2)) :: q
       integer                                 :: p
       class(component_fluid), pointer         :: fl
-
+#ifdef STREAM_CR
+      class(component_scr),allocatable        :: sr
+#endif /* STREAM_CR */
       do p = 1, flind%fluids
          fl => flind%all_fluids(p)%fl
 
@@ -96,13 +100,20 @@ contains
                q(:, fl%ien) =  q(:, fl%ien) - half*fl%gam_1*sum(b_cc(:, xdim:zdim)**2, dim=2) ! Primitive variable for gas pressure (p) with magnetic fields. The requirement of total pressure is dealt in the fluxes and hlld routines. (2)
             endif
          endif
-
       enddo
-
       associate (iend => flind%all_fluids(flind%fluids)%fl%end)
          if (iend < flind%all) q(:, iend + I_ONE:) = u(:, iend + I_ONE:)
       end associate
-
+! The above associate already does this job ? lets see 
+#ifdef STREAM_CR
+      do p = 1, flind%nscr
+         sr = flind%scr(p)
+         q(:, sr%iescr) =  u(:, sr%iescr)
+         q(:, sr%ixfscr) =  u(:, sr%ixfscr)
+         q(:, sr%iyfscr) =  u(:, sr%iyfscr)
+         q(:, sr%izfscr) =  u(:, sr%izfscr)
+      enddo
+#endif /* STREAM_CR */
    end function utoq
 
 !<

@@ -388,6 +388,7 @@ contains
 
       use diagnostics, only: ma1d, ma2d, my_allocate
       use constants,   only: xdim, ydim, zdim, ndims, I_ONE, I_FOUR
+      use initstreamingcr, only: gamma_scr
 
       implicit none
 
@@ -406,7 +407,7 @@ contains
       this%end = this%beg + this%all - I_ONE            ! End index . This should be 9 . Defined here <- 6 + 4 - 1 = 9
 
       this%iescr    = this%beg                              ! index of the energy density for the first CR is 6 and the next one is 10                      
-      this%ixfscr   = this%iescr   + I_ONE                    ! Index of flux follows from above as  7 -> 8 -> 9 
+      this%ixfscr   = this%iescr   + I_ONE                  ! Index of flux follows from above as  7 -> 8 -> 9 
       this%iyfscr   = this%ixfscr  + I_ONE
       this%izfscr   = this%iyfscr  + I_ONE                  ! (this%end should match this value)
 
@@ -424,6 +425,10 @@ contains
       this%iarr_scr_swp(xdim, 1:4) = [this%iescr, this%ixfscr, this%iyfscr, this%izfscr]
       this%iarr_scr_swp(ydim, 1:4) = [this%iescr, this%iyfscr, this%ixfscr, this%izfscr]
       this%iarr_scr_swp(zdim, 1:4) = [this%iescr, this%izfscr, this%iyfscr, this%ixfscr]
+
+      this%gam = gamma_scr(iscr)
+      this%gam_1 = gamma_scr(iscr) - 1.0
+
    end subroutine set_scr_index
 !>
 !! \brief returns True value if any fluid is selfgravitating

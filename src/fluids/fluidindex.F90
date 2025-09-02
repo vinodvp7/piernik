@@ -72,7 +72,9 @@ module fluidindex
    integer(kind=4), allocatable, dimension(:) :: iarr_all_yfscr         !< array of indexes pointing to mass densities of all fluids
    integer(kind=4), allocatable, dimension(:) :: iarr_all_zfscr         !< array of indexes pointing to mass densities of all fluids
    integer(kind=4), allocatable, dimension(:,:) :: iarr_all_scr_swp     !< array (size = flind) of all fluid indexes in the order depending on sweeps direction
-
+   integer(kind=4), allocatable, dimension(:)   :: iarr_all_gpcx          !< array of indexes pointing to x component of ∇.Pc of all streaming cosmic rays
+   integer(kind=4), allocatable, dimension(:)   :: iarr_all_gpcy          !< array of indexes pointing to y component of ∇.Pc of all streaming cosmic rays
+   integer(kind=4), allocatable, dimension(:)   :: iarr_all_gpcz          !< array of indexes pointing to z component of ∇.Pc of all streaming cosmic rays
 
    integer(kind=4), allocatable, dimension(:)   :: iarr_all_mag         !< array (size = nmag) of all magnetic field components
    integer(kind=4), allocatable, dimension(:,:) :: iarr_mag_swp         !< array (size = nmag) of all mag. field indexes in the order depending on sweeps direction
@@ -132,6 +134,7 @@ contains
       iarr_all_yfscr(scrpos) = scr_fluid%iyfscr
       iarr_all_zfscr(scrpos) = scr_fluid%izfscr
       iarr_all_scr_swp(:,I_ONE + (scrpos-I_ONE)*I_FOUR:I_FOUR + (scrpos-I_ONE)*I_FOUR) = scr_fluid%iarr_scr_swp(:,:)
+      iarr_all_swp(:,flind%scr(1)%beg :flind%scr(1)%end) = scr_fluid%iarr_scr_swp(:,:)
 
       scrpos = scrpos + I_ONE
    end subroutine set_scrindex_arrays
@@ -200,7 +203,7 @@ contains
 
 ! Allocate index arrays
       allocate(iarr_mag_swp(ndims,nmag),iarr_all_mag(nmag))
-      allocate(iarr_all_swp(xdim:zdim, flind%all - I_FOUR*flind%nscr))
+      allocate(iarr_all_swp(xdim:zdim, flind%all ))
       allocate(iarr_all_dn(flind%fluids),iarr_all_mx(flind%fluids),iarr_all_my(flind%fluids),iarr_all_mz(flind%fluids))
       allocate(iarr_all_sg(flind%fluids_sg))
 #ifdef ISO
@@ -268,9 +271,12 @@ contains
 #endif /* TRACER */
 
 #ifdef STREAM_CR
-      do i=I_ONE, nscr
+      do i=I_ONE, flind%nscr
             call set_scrindex_arrays(flind%scr(i))
       end do
+      iarr_all_gpcx = [(xdim + 3*(i-1), i=1, flind%nscr)]
+      iarr_all_gpcy = [(ydim + 3*(i-1), i=1, flind%nscr)]
+      iarr_all_gpcz = [(zdim + 3*(i-1), i=1, flind%nscr)]   
 #endif /* STREAM_CR */
 
       allocate(flind%all_fluids(flind%fluids))

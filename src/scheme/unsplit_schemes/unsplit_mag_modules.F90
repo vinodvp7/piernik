@@ -48,6 +48,10 @@ contains
       use fluxtypes,        only: ext_fluxes
       use unsplit_source,   only: apply_source
       use diagnostics,      only: my_allocate, my_deallocate
+#ifdef STREAM_CR
+      use fluidindex,       only: flind
+      use constants,        only: v_diff
+#endif /* STREAM_CR */
 
       implicit none
 
@@ -56,21 +60,19 @@ contains
 
       integer                                    :: i1, i2
       integer(kind=4)                            :: uhi, bhi, psii, psihi, ddim
-      real, dimension(:,:),allocatable           :: u
-      real, dimension(:,:),allocatable           :: b
-      real, dimension(:,:),allocatable           :: b_psi                ! This will carry both b and psi so it will have one extra size in dim=2
+      real, dimension(:,:),allocatable           :: u, b, b_psi
       real, dimension(:,:), pointer              :: pu, pb
       real, dimension(:), pointer                :: ppsi
       real, dimension(:,:), pointer              :: pflux, pbflux,apsiflux
       real, dimension(:), pointer                :: ppsiflux
       real, dimension(:),   pointer              :: cs2
-      real, dimension(:,:),allocatable           :: flux
-      real, dimension(:,:),allocatable           :: bflux
-      real, dimension(:,:),allocatable           :: tflux                 ! to temporarily store transpose of flux
-      real, dimension(:,:),allocatable           :: tbflux                ! to temporarily store transpose of bflux
+      real, dimension(:,:),allocatable           :: flux, bflux, tflux, tbflux
       type(ext_fluxes)                           :: eflx
       integer                                    :: i_cs_iso2
-
+#ifdef STREAM_CR
+      real, dimension(:,:),allocatable           :: vdiff1d
+      real, dimension(:,:), pointer              :: vdiff
+#endif /* STREAM_CR */
       uhi = wna%ind(uh_n)
       bhi = wna%ind(magh_n)
 
@@ -94,7 +96,9 @@ contains
          call my_allocate(tflux,[size(u, 2, kind=4),size(u, 1, kind=4)])
          call my_allocate(bflux,[size(b, 1, kind=4)-I_ONE,size(b_psi, 2, kind=4)])
          call my_allocate(tbflux,[size(b_psi, 2, kind=4),size(b, 1, kind=4)])
-
+#ifdef STREAM_CR
+         call my_allocate(vdiff1d, [cg%n_(ddim) , flind%nscr])  ! interaction coefficient along one dimension for all species
+#endif /* STREAM_CR */
          do i2 = cg%ijkse(pdims(ddim, ORTHO2), LO), cg%ijkse(pdims(ddim, ORTHO2), HI)
             do i1 = cg%ijkse(pdims(ddim, ORTHO1), LO), cg%ijkse(pdims(ddim, ORTHO1), HI)
 
@@ -122,8 +126,10 @@ contains
                     pb   => cg%w(wna%bi)%get_sweep(ddim,i1,i2)
                     ppsi => cg%q(psii)%get_sweep(ddim,i1,i2)
                endif
-
-
+#ifdef STREAM_CR
+               vdiff => cg%w(wna%ind(v_diff))%get_sweep(ddim, i1, i2)
+               vdiff1d(:,:) = transpose(vdiff(ddim : 3*(flind%nscr - 1) + ddim : 3,:) )
+#endif /* STREAM_CR */
                u(:, iarr_all_swp(ddim,:)) = transpose(pu(:,:))
                b(:, iarr_mag_swp(ddim,:)) = transpose(pb(:,:))
 
@@ -131,18 +137,17 @@ contains
 
                if (i_cs_iso2 > 0) cs2 => cg%q(i_cs_iso2)%get_sweep(ddim,i1,i2)
 
-
                call cg%set_fluxpointers(ddim, i1, i2, eflx)
-
+#ifdef STREAM_CR
+               call solve(u, b_psi ,cs2, eflx, flux, bflux, vdiff1d)
+#else /* !STREAM_CR */
                call solve(u, b_psi ,cs2, eflx, flux, bflux)
-
-
+#endif /* !STREAM_CR */
                call cg%save_outfluxes(ddim, i1, i2, eflx)
 
                tflux(:,2:) = transpose(flux(:, iarr_all_swp(ddim,:)))
                tflux(:,1) = 0.0
                pflux(:,:) = tflux
-
 
                tbflux(:,2:) = transpose(bflux(:, iarr_mag_swp(ddim,:)))
                tbflux(:,1) = 0
@@ -155,16 +160,20 @@ contains
          call my_deallocate(u); call my_deallocate(flux); call my_deallocate(tflux)
          call my_deallocate(b); call my_deallocate(b_psi); call my_deallocate(tbflux)
          call my_deallocate(bflux)
+#ifdef STREAM_CR
+         call my_deallocate(vdiff1d)
+#endif /* STREAM_CR */
       enddo
       call apply_flux(cg,istep,.true.)
       call apply_flux(cg,istep,.false.)
       call update_psi(cg,istep)
       call apply_source(cg,istep)
+
       nullify(cs2)
 
    end subroutine solve_cg_ub
 
-   subroutine solve(ui, bi, cs2, eflx, flx, bflx)
+   subroutine solve(ui, bi, cs2, eflx, flx, bflx, vdiff)
 
       use constants,      only: DIVB_HDC
       use fluxtypes,      only: ext_fluxes
@@ -172,27 +181,41 @@ contains
       use hlld,           only: riemann_wrap
       use interpolations, only: interpol
       use dataio_pub,     only: die
-
+#ifdef STREAM_CR
+      use streaming_cr_hlle, only: riemann_hlle
+      use fluidindex,        only: iarr_all_dn, iarr_all_mx, flind
+#endif /* STREAM_CR*/
       implicit none
 
-      real, dimension(:,:),        intent(in)    :: ui      !< cell-centered initial fluid states
-      real, dimension(:,:),        intent(in)    :: bi      !< cell-centered initial magnetic field states (including psi field when necessary)
-      real, dimension(:,:),        intent(inout) :: flx     !< cell-centered intermediate fluid states
-      real, dimension(:,:),        intent(inout) :: bflx    !< cell-centered intermediate magnetic field states (including psi field when necessary)
-      real, dimension(:), pointer, intent(in)    :: cs2     !< square of local isothermal sound speed
-      type(ext_fluxes),            intent(inout) :: eflx    !< external fluxes
+      real, dimension(:,:),            intent(in)    :: ui      !< cell-centered initial fluid states
+      real, dimension(:,:),            intent(in)    :: bi      !< cell-centered initial magnetic field states (including psi field when necessary)
+      real, dimension(:,:),            intent(inout) :: flx     !< cell-centered intermediate fluid states
+      real, dimension(:,:),            intent(inout) :: bflx    !< cell-centered intermediate magnetic field states (including psi field when necessary)
+      real, dimension(:), pointer,     intent(in)    :: cs2     !< square of local isothermal sound speed
+      type(ext_fluxes),                intent(inout) :: eflx    !< external fluxes
+      real, dimension(:,:),optional,   intent(in)    :: vdiff   !< diffussive speed for transport corrected with effective optical depth
 
       ! left and right states at interfaces 1 .. n-1
       real, dimension(size(ui, 1)-1, size(ui, 2)), target :: ql, qr
       real, dimension(size(bi, 1)-1, size(bi, 2)), target :: bl, br
+
+#ifdef STREAM_CR
+      real, dimension(size(ui, 1))  :: vxl, vxr
+#endif /* STREAM_CR*/
 
       ! updates required for higher order of integration will likely have shorter length
 
       bflx = huge(1.)
 
       call interpol(ui, ql, qr, bi, bl, br)
+#ifdef STREAM_CR
+      vxl = ql(:,iarr_all_mx(1))/ql(:,iarr_all_dn(1))
+      vxr = qr(:,iarr_all_mx(1))/qr(:,iarr_all_dn(1))
+      call riemann_wrap(ql(:,:flind%scr(1)%beg - 1), qr(:,:flind%scr(1)%beg - 1), bl, br, cs2, flx(:,:flind%scr(1)%beg - 1), bflx) ! Now we advance the left and right states by a timestep.
+      call riemann_hlle(ql(:,flind%scr(1)%beg:), qr(:,flind%scr(1)%beg:), vxl, vxr, vdiff, flx(:,flind%scr(1)%beg:)) ! Now we advance the left and right states by a timestep.
+#else /* !STREAM_CR */
       call riemann_wrap(ql, qr, bl, br, cs2, flx, bflx) ! Now we advance the left and right states by a timestep.
-
+#endif /* !STREAM_CR */
       if (associated(eflx%li)) flx(eflx%li%index, :) = eflx%li%uflx
       if (associated(eflx%ri)) flx(eflx%ri%index, :) = eflx%ri%uflx
       if (associated(eflx%lo)) eflx%lo%uflx = flx(eflx%lo%index, :)

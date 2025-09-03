@@ -105,15 +105,15 @@ contains
          if (iend < flind%all) q(:, iend + I_ONE:) = u(:, iend + I_ONE:)
       end associate
 ! The above associate already does this job ? lets see 
-#ifdef STREAM_CR
-      do p = 1, flind%nscr
-         sr = flind%scr(p)
-         q(:, sr%iescr) =  u(:, sr%iescr)
-         q(:, sr%ixfscr) =  u(:, sr%ixfscr)
-         q(:, sr%iyfscr) =  u(:, sr%iyfscr)
-         q(:, sr%izfscr) =  u(:, sr%izfscr)
-      enddo
-#endif /* STREAM_CR */
+! #ifdef STREAM_CR
+!       do p = 1, flind%nscr
+!          sr = flind%scr(p)
+!          q(:, sr%iescr) =  u(:, sr%iescr)
+!          q(:, sr%ixfscr) =  u(:, sr%ixfscr)
+!          q(:, sr%iyfscr) =  u(:, sr%iyfscr)
+!          q(:, sr%izfscr) =  u(:, sr%izfscr)
+!       enddo
+! #endif /* STREAM_CR */
    end function utoq
 
 !<

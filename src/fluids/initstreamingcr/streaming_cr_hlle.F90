@@ -59,6 +59,7 @@ contains
       real:: tmp
       nx = size(ql,1)
       nvar = size(ql,2)
+
       do j = 1,flind%nscr
          vdiff_l(1:size(flx,1)) = vdiff(1:size(flx,1),   j)
          vdiff_r(1:size(flx,1)) = vdiff(2:size(flx,1)+1, j)

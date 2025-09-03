@@ -134,7 +134,7 @@ contains
       iarr_all_yfscr(scrpos) = scr_fluid%iyfscr
       iarr_all_zfscr(scrpos) = scr_fluid%izfscr
       iarr_all_scr_swp(:,I_ONE + (scrpos-I_ONE)*I_FOUR:I_FOUR + (scrpos-I_ONE)*I_FOUR) = scr_fluid%iarr_scr_swp(:,:)
-      iarr_all_swp(:,flind%scr(1)%beg :flind%scr(1)%end) = scr_fluid%iarr_scr_swp(:,:)
+      iarr_all_swp(:,scr_fluid%beg :scr_fluid%end) = scr_fluid%iarr_scr_swp(:,:)
 
       scrpos = scrpos + I_ONE
    end subroutine set_scrindex_arrays

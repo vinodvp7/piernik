@@ -46,11 +46,11 @@ $FLUID_IONIZED
   gamma = 1.6667
 /
 $STREAMING_CR
-   nscr                    = 1
-   vm                      = 100.0
-   sigma_paral             = 1e8
-   sigma_perp              = 1e8
-   ord_scr_grad            = 2
+   nscr                    = 2
+   vmax                    = 100.0
+   sigma_paral             = 1e8, 1e8
+   sigma_perp              = 1e8, 1e8
+   ord_pc_grad             = 2
    disable_feedback        = .true.      ! feedback to MHD gas
    disable_streaming       = .false.
    !disable_cr_sound        = .true.

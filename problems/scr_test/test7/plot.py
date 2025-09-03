@@ -96,7 +96,7 @@ def load_and_stitch_data(fname):
 import matplotlib.pyplot as plt
 
 plt.rcParams.update({
-    'figure.dpi': 720, 'savefig.dpi': 720,
+    'figure.dpi': 150, 'savefig.dpi': 720,
     'axes.linewidth': 2.5,
     'font.size': 12,
     'xtick.major.size': 5, 'ytick.major.size': 5,
@@ -109,7 +109,7 @@ plt.rcParams.update({
 
 fig,ax=plt.subplots(3,1,figsize=(8,6),sharex=True)
 
-file = '/home/vinodvp/simdir/piernik/runs/test3/scr_tst_0001.h5'
+file = '/home/vinodvp/simdir/piernik/runs/test7/scr_tst_0001.h5'
 data, cell_dims, origin, spacing = load_and_stitch_data(file)
 N, dx, x0 = cell_dims[0], spacing[0], origin[0]
 xe = x0 + np.arange(N+1)*dx                   # assume x0 is left edge
@@ -118,22 +118,22 @@ x  = 0.5*(xe[:-1] + xe[1:])                   # centers
 ax[0].plot(x,data['density'][0,0,:],color='k',linewidth=1.5)
 ax[0].set_ylabel(r'$\mathbf{\rho}$', fontweight='bold', labelpad=10)
 
-file = '/home/vinodvp/simdir/piernik/runs/test3/scr_tst_0010.h5'
+file = '/home/vinodvp/simdir/piernik/runs/test7/scr_tst_0010.h5'
 data, cell_dims, origin, spacing = load_and_stitch_data(file)
 d = data['escr_01'][0,0,:] * (data['mag_field_x'][0,0,:]/np.sqrt(data['density'][0,0,:]))**(4/3) 
 ax[1].plot(x,d,color='k',linewidth=1.5,label='t=1000')
 ax[1].set_ylabel(r'$\mathbf{E_cv^{4/3}_A}$', fontweight='bold', labelpad=2)
 ax[1].legend(fontsize='small')
 ax[1].set_yticks(np.linspace(min(d),max(d),4))
-file = '/home/vinodvp/simdir/piernik/runs/test3/scr_tst_0001.h5'
+file = '/home/vinodvp/simdir/piernik/runs/test7/scr_tst_0001.h5'
 data, cell_dims, origin, spacing = load_and_stitch_data(file)
 ax[2].plot(x,data['escr_01'][0,0,:],color='k',linewidth=1.5, label='t=100')
 
-file = '/home/vinodvp/simdir/piernik/runs/test3/scr_tst_0002.h5'
+file = '/home/vinodvp/simdir/piernik/runs/test7/scr_tst_0002.h5'
 data, cell_dims, origin, spacing = load_and_stitch_data(file)
 ax[2].plot(x,data['escr_01'][0,0,:],color='r',linewidth=1.5, label='t=200',linestyle='dashed')
 
-file = '/home/vinodvp/simdir/piernik/runs/test3/scr_tst_0010.h5'
+file = '/home/vinodvp/simdir/piernik/runs/test7/scr_tst_0010.h5'
 data, cell_dims, origin, spacing = load_and_stitch_data(file)
 ax[2].plot(x,data['escr_01'][0,0,:],color='b',linewidth=1.5, label='t=1000',linestyle='dashed')
 ax[2].legend(fontsize='small')
@@ -142,9 +142,3 @@ ax[2].set_ylabel(r'$\mathbf{E_c}$', fontweight='bold', labelpad=25)
 
 plt.xlim(0,600)
 plt.savefig(r'plot.png',dpi=720)
-
-
-
-
-
-

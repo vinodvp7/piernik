@@ -96,7 +96,7 @@ def load_and_stitch_data(fname):
 import matplotlib.pyplot as plt
 
 plt.rcParams.update({
-    'figure.dpi': 720, 'savefig.dpi': 720,
+    'figure.dpi': 150, 'savefig.dpi': 720,
     'axes.linewidth': 2.5,
     'font.size': 12,
     'xtick.major.size': 5, 'ytick.major.size': 5,
@@ -109,7 +109,7 @@ plt.rcParams.update({
 
 data_to_plot = 'escr_01'
 
-file = '/home/vinodvp/simdir/piernik/runs/test2/scr1_tst_0000.h5'
+file = '/home/vinodvp/simdir/piernik/runs/test2/scr_tst_0000.h5'
 data, cell_dims, origin, spacing = load_and_stitch_data(file)
 N, dx, x0 = cell_dims[0], spacing[0], origin[0]
 xe = x0 + np.arange(N+1)*dx                   # assume x0 is left edge
@@ -117,7 +117,7 @@ x  = 0.5*(xe[:-1] + xe[1:])                   # centers
 y=data[data_to_plot][0,0,:]
 plt.plot(x,y,label='t=0.0',linewidth=1.5,color='k')
 
-file = '/home/vinodvp/simdir/piernik/runs/test2/scr1_tst_0001.h5'
+file = '/home/vinodvp/simdir/piernik/runs/test2/scr_tst_0001.h5'
 data, cell_dims, origin, spacing = load_and_stitch_data(file)
 y=data[data_to_plot][0,0,:]
 plt.plot(x,y,label='t=0.06',linewidth=1.5,color='r')
@@ -162,15 +162,3 @@ ax.text(
     zorder=5,
 )
 plt.savefig(r'{}.png'.format(data_to_plot),dpi=720)
-
-
-
-
-
-
-
-
-
-
-
-

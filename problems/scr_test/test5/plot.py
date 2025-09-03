@@ -98,7 +98,7 @@ from matplotlib.colors import LogNorm  # optional
 import matplotlib.patches as mpatches
 
 plt.rcParams.update({
-    'figure.dpi': 720, 'savefig.dpi': 720,
+    'figure.dpi': 150, 'savefig.dpi': 720,
     'axes.linewidth': 2.5,
     'font.size': 12,
     'xtick.major.size': 5, 'ytick.major.size': 5,
@@ -111,7 +111,7 @@ plt.rcParams.update({
 
 data_to_plot = 'escr_01'
 
-file = '/home/vinodvp/simdir/piernik/runs/test9/scr_tst_0000.h5'
+file = '/home/vinodvp/simdir/piernik/runs/test5/scr_tst_0000.h5'
 data, cell_dims, origin, spacing = load_and_stitch_data(file)
 N, dx, x0 = cell_dims[0], spacing[0], origin[0]
 xe = x0 + np.arange(N+1)*dx                   # assume x0 is left edge
@@ -136,7 +136,7 @@ ax[0,0].set_xlabel(r'$\mathbf{x}$', fontweight='bold')
 ax[0,0].set_ylabel(r'$\mathbf{y}$', fontweight='bold')
 ax[0,0].set_title('t=0.0', fontweight='bold')
 
-file = '/home/vinodvp/simdir/piernik/runs/test9/scr_tst_0001.h5'
+file = '/home/vinodvp/simdir/piernik/runs/test5/scr_tst_0001.h5'
 data, cell_dims, origin, spacing = load_and_stitch_data(file)
 d1=data[data_to_plot][0,:,:]
 ax[0,1].imshow(d1, extent=[x[0], x[-1], y[0], y[-1]],
@@ -152,7 +152,7 @@ ax[0,1].set_ylabel(r'$\mathbf{y}$', fontweight='bold')
 ax[0,1].set_title('t=0.2', fontweight='bold')
 
 
-file = '/home/vinodvp/simdir/piernik/runs/test9/scr_tst_0002.h5'
+file = '/home/vinodvp/simdir/piernik/runs/test5/scr_tst_0002.h5'
 data, cell_dims, origin, spacing = load_and_stitch_data(file)
 d2=data[data_to_plot][0,:,:]
 ax[1,0].imshow(d2, extent=[x[0], x[-1], y[0], y[-1]],

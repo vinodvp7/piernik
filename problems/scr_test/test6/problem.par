@@ -50,7 +50,7 @@ $STREAMING_CR
    vmax                 = 100.0
    sigma_paral          = 1.0
    sigma_perp           = 1e6
-   ord_pc_grad          = 2
+   ord_pc_grad          = 4
    disable_feedback     = .true.      ! feedback to MHD gas
    disable_streaming    = .true.
    cr_sound_speed       = .true.

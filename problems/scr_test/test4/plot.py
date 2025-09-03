@@ -96,7 +96,7 @@ def load_and_stitch_data(fname):
 import matplotlib.pyplot as plt
 
 plt.rcParams.update({
-    'figure.dpi': 720, 'savefig.dpi': 720,
+    'figure.dpi': 150, 'savefig.dpi': 720,
     'axes.linewidth': 2.5,
     'font.size': 12,
     'xtick.major.size': 5, 'ytick.major.size': 5,
@@ -107,13 +107,13 @@ plt.rcParams.update({
 })
 
 sgm = 10
-vx = -1.0
+vx = 1.0
 y_analytical = lambda t,x : 1/np.sqrt(1+160*t/(3*sgm)) * np.exp(- 40 * (x - vx * t)*(x - vx * t)* 1/(1+160*t/(3*sgm)))
 ts, L1s, L2s = [], [], []
 
 data_to_plot = 'escr_01'
 
-file = '/home/vinodvp/simdir/piernik/runs/test9/scr_tst_0000.h5'
+file = '/home/vinodvp/simdir/piernik/runs/test4/scr_tst_0000.h5'
 data, cell_dims, origin, spacing = load_and_stitch_data(file)
 N, dx, x0 = cell_dims[0], spacing[0], origin[0]
 xe = x0 + np.arange(N+1)*dx                   # assume x0 is left edge
@@ -125,7 +125,7 @@ L1 = np.mean(abs(y-y_analytical(0.0,x)))
 L2 =np.sqrt( np.mean((y-y_analytical(0.0,x))**2))
 ts.append(0.0); L1s.append(L1); L2s.append(L2)
 
-file = '/home/vinodvp/simdir/piernik/runs/test9/scr_tst_0001.h5'
+file = '/home/vinodvp/simdir/piernik/runs/test4/scr_tst_0001.h5'
 data, cell_dims, origin, spacing = load_and_stitch_data(file)
 y=data[data_to_plot][0,0,:]
 plt.plot(x,y,label='t=0.2',linewidth=2.0,color='r')
@@ -136,7 +136,7 @@ L2 =np.sqrt( np.mean((y-y_analytical(0.2,x))**2))
 ts.append(0.2); L1s.append(L1); L2s.append(L2)
 
 
-file = '/home/vinodvp/simdir/piernik/runs/test9/scr_tst_0002.h5'
+file = '/home/vinodvp/simdir/piernik/runs/test4/scr_tst_0002.h5'
 data, cell_dims, origin, spacing = load_and_stitch_data(file)
 y=data[data_to_plot][0,0,:]
 plt.plot(x,y,label='t=0.4',linewidth=2.0,color='g')

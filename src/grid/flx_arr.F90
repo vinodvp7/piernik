@@ -41,6 +41,7 @@ module flx_arr
    type :: fluxarray
       real,    dimension(:,:,:), allocatable :: uflx   !< u-fluxes, shape (flind%all, n_b(dir1), n_b(dir2))
       real,    dimension(:,:,:), allocatable :: bflx   !< b-fluxes, shape (psidim,    n_b(dir1), n_b(dir2)) (magnetic field components + psi)
+      real,    dimension(:,:,:), allocatable :: sflx   !< scr-fluxes, shape (4*nscr), n_b(dir2)) (magnetic field components + psi)
       integer, dimension(:,:),   allocatable :: index  !< Index where the flux has to be applied, shape (n_b(dir1), n_b(dir2))
    contains
       procedure :: init     !< Allocate flux array
@@ -58,6 +59,9 @@ contains
       use constants,  only: LO, HI, psidim, has_B
       use dataio_pub, only: die
       use fluidindex, only: flind
+#ifdef STREAM_CR
+      use initstreamingcr,    only: nscr
+#endif /* STREAM_CR */
 
       implicit none
 
@@ -69,6 +73,10 @@ contains
       allocate(           this%index(           i1(LO):i1(HI), i2(LO):i2(HI)), &
            &              this%uflx (flind%all, i1(LO):i1(HI), i2(LO):i2(HI)))
       if (has_B) allocate(this%bflx (psidim,    i1(LO):i1(HI), i2(LO):i2(HI)))
+
+#ifdef STREAM_CR
+      allocate(this%sflx (4*nscr,    i1(LO):i1(HI), i2(LO):i2(HI)))
+#endif /* STREAM_CR */
 
    end subroutine init
 
@@ -83,12 +91,13 @@ contains
       if (allocated(this%index)) deallocate(this%index)
       if (allocated(this%uflx))  deallocate(this%uflx)
       if (allocated(this%bflx))  deallocate(this%bflx)
+      if (allocated(this%sflx))  deallocate(this%sflx)
 
    end subroutine cleanup
 
 !> \brief Pick a point flux
 
-   subroutine fa2fp(this, fp, i1, i2)
+   subroutine fa2fp(this, fp, i1, i2, is_scr)
 
       use constants,  only: has_B
       use dataio_pub, only: die
@@ -100,24 +109,31 @@ contains
       integer,          intent(in)    :: i1    !< 1st index
       integer,          intent(in)    :: i2    !< 2nd index
       type(fluxpoint),  intent(inout) :: fp    !< buffer for the data
+      logical,          intent(in)    :: is_scr
 
       fp%index = this%index(i1, i2)
+      if (.not. is_scr) then
+         if (.not. allocated(this%uflx)) call die("[flx_arr:fa2fp] .not. allocated(this%uflx)")
+         if (.not. allocated(fp%uflx)) call die("[flx_arr:fa2fp] .not. allocated(fp%uflx)")
+         fp%uflx = this%uflx(:, i1, i2)
 
-      if (.not. allocated(this%uflx)) call die("[flx_arr:fa2fp] .not. allocated(this%uflx)")
-      if (.not. allocated(fp%uflx)) call die("[flx_arr:fa2fp] .not. allocated(fp%uflx)")
-      fp%uflx = this%uflx(:, i1, i2)
-
-      if (has_B) then
-         if (.not. allocated(this%bflx)) call die("[flx_arr:fa2fp] .not. allocated(this%bflx)")
-         if (.not. allocated(fp%bflx)) call die("[flx_arr:fa2fp] .not. allocated(fp%bflx)")
-         fp%bflx = this%bflx(:, i1, i2)
+         if (has_B) then
+            if (.not. allocated(this%bflx)) call die("[flx_arr:fa2fp] .not. allocated(this%bflx)")
+            if (.not. allocated(fp%bflx)) call die("[flx_arr:fa2fp] .not. allocated(fp%bflx)")
+            fp%bflx = this%bflx(:, i1, i2)
+         endif
+      else
+#ifdef STREAM_CR
+         if (.not. allocated(this%sflx)) call die("[flx_arr:fa2fp] .not. allocated(this%sflx)")
+         if (.not. allocated(fp%sflx)) call die("[flx_arr:fa2fp] .not. allocated(fp%sflx)")
+         fp%sflx = this%sflx(:, i1, i2)
+#endif /* STREAM_CR */
       endif
-
    end subroutine fa2fp
 
 !> \brief Store a point flux
 
-   subroutine fp2fa(this, fp, i1, i2)
+   subroutine fp2fa(this, fp, i1, i2, is_scr)
 
       use constants,  only: has_B
       use dataio_pub, only: die
@@ -129,11 +145,18 @@ contains
       type(fluxpoint),  intent(in)    :: fp    !< point flux
       integer,          intent(in)    :: i1    !< 1st index
       integer,          intent(in)    :: i2    !< 2nd index
+      logical,          intent(in)    :: is_scr
 
       if (this%index(i1, i2) /= fp%index) call die("[flx_arr:fp2fa] inconsistent index")
-      this%uflx(:, i1, i2) = fp%uflx
-      if (has_B) this%bflx(:, i1, i2) = fp%bflx
 
+      if (.not. is_scr) then
+         this%uflx(:, i1, i2) = fp%uflx
+         if (has_B) this%bflx(:, i1, i2) = fp%bflx
+      else
+#ifdef STREAM_CR
+         this%sflx(:, i1, i2) = fp%sflx
+#endif /* STREAM_CR */
+      endif
    end subroutine fp2fa
 
 end module flx_arr

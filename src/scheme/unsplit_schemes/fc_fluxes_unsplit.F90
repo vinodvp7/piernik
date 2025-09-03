@@ -88,6 +88,8 @@ contains
                cgl%cg%finebnd(in_f_re_i, HI)%uflx(:, :, :) = 0.
                if (allocated(cgl%cg%finebnd(in_f_re_i, LO)%bflx)) cgl%cg%finebnd(in_f_re_i, LO)%bflx(:, :, :) = 0.
                if (allocated(cgl%cg%finebnd(in_f_re_i, HI)%bflx)) cgl%cg%finebnd(in_f_re_i, HI)%bflx(:, :, :) = 0.
+               if (allocated(cgl%cg%finebnd(in_f_re_i, LO)%sflx)) cgl%cg%finebnd(in_f_re_i, LO)%sflx(:, :, :) = 0.
+               if (allocated(cgl%cg%finebnd(in_f_re_i, HI)%sflx)) cgl%cg%finebnd(in_f_re_i, HI)%sflx(:, :, :) = 0.
                if (allocated(cgl%cg%rif_tgt%seg)) then
                   associate ( seg => cgl%cg%rif_tgt%seg )
                      do g = lbound(seg, dim=1), ubound(seg, dim=1)
@@ -107,6 +109,8 @@ contains
             cgl%cg%finebnd(cdim, HI)%uflx(:, :, :) = 0.
             if (allocated(cgl%cg%finebnd(cdim, LO)%bflx)) cgl%cg%finebnd(cdim, LO)%bflx(:, :, :) = 0.
             if (allocated(cgl%cg%finebnd(cdim, HI)%bflx)) cgl%cg%finebnd(cdim, HI)%bflx(:, :, :) = 0.
+            if (allocated(cgl%cg%finebnd(cdim, LO)%sflx)) cgl%cg%finebnd(cdim, LO)%sflx(:, :, :) = 0.
+            if (allocated(cgl%cg%finebnd(cdim, HI)%sflx)) cgl%cg%finebnd(cdim, HI)%sflx(:, :, :) = 0.
             if (allocated(cgl%cg%rif_tgt%seg)) then
                associate ( seg => cgl%cg%rif_tgt%seg )
                   do g = lbound(seg, dim=1), ubound(seg, dim=1)
@@ -176,7 +180,8 @@ contains
                               lh = INVALID
                            endif
                            cg%finebnd(re_c_f_i, lh)%uflx(:, j1(LO):j1(HI), j2(LO):j2(HI)) = seg(g)%buf(:flind%all, :, :)
-                           if (allocated(cg%finebnd(re_c_f_i, lh)%bflx)) cg%finebnd(re_c_f_i, lh)%bflx(:, j1(LO):j1(HI), j2(LO):j2(HI)) = seg(g)%buf(flind%all+1:, :, :)
+                           if (allocated(cg%finebnd(re_c_f_i, lh)%bflx)) cg%finebnd(re_c_f_i, lh)%bflx(:, j1(LO):j1(HI), j2(LO):j2(HI)) = seg(g)%buf(flind%all+1:flind%all+4, :, :)
+                           if (allocated(cg%finebnd(re_c_f_i, lh)%sflx)) cg%finebnd(re_c_f_i, lh)%sflx(:, j1(LO):j1(HI), j2(LO):j2(HI)) = seg(g)%buf(flind%all+5:, :, :)
                         else
                            if (present(all_received)) all_received = .false.
                         endif
@@ -209,7 +214,8 @@ contains
                         lh = INVALID
                      endif
                      cg%finebnd(cdim, lh)%uflx(:, j1(LO):j1(HI), j2(LO):j2(HI)) = seg(g)%buf(:flind%all, :, :)
-                     if (allocated(cg%finebnd(cdim, lh)%bflx)) cg%finebnd(cdim, lh)%bflx(:, j1(LO):j1(HI), j2(LO):j2(HI)) = seg(g)%buf(flind%all+1:, :, :)
+                     if (allocated(cg%finebnd(cdim, lh)%bflx)) cg%finebnd(cdim, lh)%bflx(:, j1(LO):j1(HI), j2(LO):j2(HI)) = seg(g)%buf(flind%all+1:flind%all+4, :, :)
+                     if (allocated(cg%finebnd(cdim, lh)%sflx)) cg%finebnd(cdim, lh)%sflx(:, j1(LO):j1(HI), j2(LO):j2(HI)) = seg(g)%buf(flind%all+5:, :, :)
                   else
                      if (present(all_received)) all_received = .false.
                   endif
@@ -267,8 +273,10 @@ contains
                   seg(g)%buf(:, :, :) = 0.
                   do j = j1(LO), j1(HI)
                      do k = j2(LO), j2(HI)
-                        if (allocated(cg%coarsebnd(se_c_c_i, lh)%bflx)) then
+                        if (allocated(cg%coarsebnd(se_c_c_i, lh)%bflx) .and. .not. allocated(cg%coarsebnd(se_c_c_i, lh)%sflx)) then
                            seg(g)%buf(:, f2c_o(j), f2c_o(k)) = seg(g)%buf(:, f2c_o(j), f2c_o(k)) + [ cg%coarsebnd(se_c_c_i, lh)%uflx(:, j, k), cg%coarsebnd(se_c_c_i, lh)%bflx(:, j, k) ]
+                        else if (allocated(cg%coarsebnd(se_c_c_i, lh)%sflx)) then
+                           seg(g)%buf(:, f2c_o(j), f2c_o(k)) = seg(g)%buf(:, f2c_o(j), f2c_o(k)) + [ cg%coarsebnd(se_c_c_i, lh)%uflx(:, j, k), cg%coarsebnd(se_c_c_i, lh)%bflx(:, j, k), cg%coarsebnd(se_c_c_i, lh)%sflx(:, j, k)  ]
                         else
                            seg(g)%buf(:, f2c_o(j), f2c_o(k)) = seg(g)%buf(:, f2c_o(j), f2c_o(k)) + cg%coarsebnd(se_c_c_i, lh)%uflx(:, j, k)
                         endif
@@ -301,8 +309,10 @@ contains
                   seg(g)%buf(:, :, :) = 0.
                   do j = j1(LO), j1(HI)
                      do k = j2(LO), j2(HI)
-                        if (allocated(cg%coarsebnd(cdim, lh)%bflx)) then
+                        if (allocated(cg%coarsebnd(cdim, lh)%bflx) .and. .not. allocated(cg%coarsebnd(cdim, lh)%sflx)) then
                            seg(g)%buf(:, f2c_o(j), f2c_o(k)) = seg(g)%buf(:, f2c_o(j), f2c_o(k)) + [ cg%coarsebnd(cdim, lh)%uflx(:, j, k), cg%coarsebnd(cdim, lh)%bflx(:, j, k) ]
+                        else if (allocated(cg%coarsebnd(cdim, lh)%sflx)) then
+                           seg(g)%buf(:, f2c_o(j), f2c_o(k)) = seg(g)%buf(:, f2c_o(j), f2c_o(k)) + [ cg%coarsebnd(cdim, lh)%uflx(:, j, k), cg%coarsebnd(cdim, lh)%bflx(:, j, k), cg%coarsebnd(cdim, lh)%sflx(:, j, k)  ]
                         else
                            seg(g)%buf(:, f2c_o(j), f2c_o(k)) = seg(g)%buf(:, f2c_o(j), f2c_o(k)) + cg%coarsebnd(cdim, lh)%uflx(:, j, k)
                         endif

@@ -139,6 +139,9 @@ contains
       use mpisetup,         only: master
       use named_array_list, only: qna, wna
       use refinement,       only: inactive_name
+#ifdef STREAM_CR
+      use fluidindex,       only: iarr_all_escr
+#endif /* STREAM_CR */
 
       implicit none
 
@@ -170,6 +173,9 @@ contains
       else if (trim(vname) == "ener") then
          call alloc_ic(iarr_all_en)
          return
+      else if (trim(vname) == "escr") then
+         call alloc_ic(iarr_all_escr, .true.)
+         return
       endif
       !> \todo identify here all {den,vl[xyz],ene}{d,n,i}
       !> \todo introduce possibility to operate on pressure or other indirect fields
@@ -179,13 +185,15 @@ contains
 
    contains
 
-      subroutine alloc_ic(tab)
+      subroutine alloc_ic(tab,scr_var)
 
          implicit none
 
          integer(kind=4), dimension(:), intent(in) :: tab
+         logical,optional,              intent(in) :: scr_var
 
          iv = wna%fi
+         if (present(scr_var) .and. scr_var) iv = wna%scr
 
          allocate(ic(size(tab)))
          ic = tab

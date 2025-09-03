@@ -33,7 +33,15 @@ module streaming_cr_hlle
 
 ! pulled by STREAM_CR
 
+   use fluxtypes,        only: ext_fluxes
+
    implicit none
+
+   type(ext_fluxes)                           :: eflx
+
+   private
+
+   public :: update_scr_fluid, eflx
 
 contains
 
@@ -46,7 +54,6 @@ contains
       use global,           only: integration_order
       use domain,           only: dom
       use fluidindex,       only: iarr_all_swp, scrind, iarr_all_dn, iarr_all_mx,iarr_all_scr_swp
-      use fluxtypes,        only: ext_fluxes
       use diagnostics,      only: my_allocate, my_deallocate
 
       implicit none
@@ -62,7 +69,6 @@ contains
       real, dimension(:,:), pointer              :: pflux
       real, dimension(:,:),allocatable           :: flux
       real, dimension(:,:),allocatable           :: tflux
-      type(ext_fluxes)                           :: eflx
 
       uhi  = wna%ind(uh_n)
       scri = wna%ind(scrh)
@@ -105,11 +111,11 @@ contains
 
 
 
-               call cg%set_fluxpointers(ddim, i1, i2, eflx)
+               call cg%set_fluxpointers(ddim, i1, i2, eflx,.true.)
 
                call solve_scr(u, vdiff1d,eflx, flux,vx)
 
-               call cg%save_outfluxes(ddim, i1, i2, eflx)
+               call cg%save_outfluxes(ddim, i1, i2, eflx,.true.)
 
                tflux(:,2:) = transpose(flux(:, iarr_all_scr_swp(ddim,:)))
                tflux(:,1) = 0.0
@@ -151,10 +157,10 @@ contains
 
       call riemann_hlle(ql, qr, vdiff, flx) 
 
-      if (associated(eflx%li)) flx(eflx%li%index, :) = eflx%li%uflx
-      if (associated(eflx%ri)) flx(eflx%ri%index, :) = eflx%ri%uflx
-      if (associated(eflx%lo)) eflx%lo%uflx = flx(eflx%lo%index, :)
-      if (associated(eflx%ro)) eflx%ro%uflx = flx(eflx%ro%index, :)
+      if (associated(eflx%li)) flx(eflx%li%index, :) = eflx%li%sflx
+      if (associated(eflx%ri)) flx(eflx%ri%index, :) = eflx%ri%sflx
+      if (associated(eflx%lo)) eflx%lo%sflx = flx(eflx%lo%index, :)
+      if (associated(eflx%ro)) eflx%ro%sflx = flx(eflx%ro%index, :)
 
    end subroutine solve_scr
 

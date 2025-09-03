@@ -145,7 +145,7 @@ contains
 !! The index has to be corrected to match the way of allocation of flux arrays in the RTVD and Riemann solver.
 !<
 
-   subroutine set_fluxpointers(this, cdim, i1, i2, eflx)
+   subroutine set_fluxpointers(this, cdim, i1, i2, eflx, is_scr)
 
       use constants,  only: LO, HI, ydim, zdim, GEO_RPZ
       use domain,     only: dom
@@ -154,21 +154,27 @@ contains
 
       implicit none
 
-      class(grid_container_fcflx_t), intent(in)    :: this  !< object invoking type-bound procedure
-      integer(kind=4),               intent(in)    :: cdim  !< direction of the flux
-      integer,                       intent(in)    :: i1    !< coordinate_1, perpendicular to the f/c face
-      integer,                       intent(in)    :: i2    !< coordinate_2, perpendicular to the f/c face
-      type(ext_fluxes),              intent(inout) :: eflx  !< fluxes stored for the selected cell
+      class(grid_container_fcflx_t), intent(in)    :: this   !< object invoking type-bound procedure
+      integer(kind=4),               intent(in)    :: cdim   !< direction of the flux
+      integer,                       intent(in)    :: i1     !< coordinate_1, perpendicular to the f/c face
+      integer,                       intent(in)    :: i2     !< coordinate_2, perpendicular to the f/c face
+      type(ext_fluxes),              intent(inout) :: eflx   !< fluxes stored for the selected cell
+      logical, optional,             intent(in)    :: is_scr !< is it the streaming_cr
+      
+      logical :: is_scr_g
+      is_scr_g = .false.
+
+      if (present(is_scr)) is_scr_g = .true.
 
       call eflx%init
 
       if (this%finebnd(cdim, LO)%index(i1, i2) >= this%ijkse(cdim, LO)) then
-         call this%finebnd(cdim, LO)%fa2fp(fpl, i1, i2)
+         call this%finebnd(cdim, LO)%fa2fp(fpl, i1, i2, is_scr_g)
          eflx%li => fpl
          eflx%li%index = eflx%li%index - this%lhn(cdim, LO) + 1
       endif
       if (this%finebnd(cdim, HI)%index(i1, i2) <= this%ijkse(cdim, HI)) then
-         call this%finebnd(cdim, HI)%fa2fp(fpr, i1, i2)
+         call this%finebnd(cdim, HI)%fa2fp(fpr, i1, i2, is_scr_g)
          eflx%ri => fpr
          eflx%ri%index = eflx%ri%index - this%lhn(cdim, LO)
       endif
@@ -203,7 +209,7 @@ contains
 
 !> \brief Collect outgoing fine fluxes from 1D solver, do curvilinear scaling and store in appropriate array
 
-   subroutine save_outfluxes(this, cdim, i1, i2, eflx)
+   subroutine save_outfluxes(this, cdim, i1, i2, eflx, is_scr)
 
       use constants, only: LO, HI
       use fluxtypes, only: ext_fluxes
@@ -215,17 +221,23 @@ contains
       integer,                       intent(in)    :: i1    !< coordinate_1, perpendicular to the f/c face
       integer,                       intent(in)    :: i2    !< coordinate_2, perpendicular to the f/c face
       type(ext_fluxes),              intent(inout) :: eflx  !< fluxes stored for the selected cell
+      logical, optional,             intent(in)    :: is_scr !< is it the streaming_cr
+      
+      logical :: is_scr_g
+      is_scr_g = .false.
+
+      if (present(is_scr)) is_scr_g = .true.
 
       if (associated(eflx%lo)) then
          eflx%lo%index = eflx%lo%index + this%lhn(cdim, LO)
          call cyl_scale(eflx%lo)
-         call this%coarsebnd(cdim, LO)%fp2fa(eflx%lo, i1, i2)
+         call this%coarsebnd(cdim, LO)%fp2fa(eflx%lo, i1, i2, is_scr_g)
       endif
 
       if (associated(eflx%ro)) then
          eflx%ro%index = eflx%ro%index + this%lhn(cdim, LO) - 1
          call cyl_scale(eflx%ro)
-         call this%coarsebnd(cdim, HI)%fp2fa(eflx%ro, i1, i2)
+         call this%coarsebnd(cdim, HI)%fp2fa(eflx%ro, i1, i2, is_scr_g)
       endif
 
    contains

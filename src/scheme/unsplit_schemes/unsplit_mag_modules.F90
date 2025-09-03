@@ -204,10 +204,10 @@ contains
       call interpol(ui, ql, qr, bi, bl, br)
       call riemann_wrap(ql, qr, bl, br, cs2, flx, bflx) ! Now we advance the left and right states by a timestep.
 
-      if (associated(eflx%li)) flx(eflx%li%index, :flind%scr(1)%beg - 1 )  = eflx%li%uflx
-      if (associated(eflx%ri)) flx(eflx%ri%index, :flind%scr(1)%beg - 1 )  = eflx%ri%uflx
-      if (associated(eflx%lo)) eflx%lo%uflx = flx(eflx%lo%index, :flind%scr(1)%beg - 1)
-      if (associated(eflx%ro)) eflx%ro%uflx = flx(eflx%ro%index, :flind%scr(1)%beg - 1)
+      if (associated(eflx%li)) flx(eflx%li%index, : )  = eflx%li%uflx(:flind%scr(1)%beg - 1)
+      if (associated(eflx%ri)) flx(eflx%ri%index, :)  = eflx%ri%uflx(:flind%scr(1)%beg - 1 )
+      if (associated(eflx%lo)) eflx%lo%uflx(:flind%scr(1)%beg - 1) = flx(eflx%lo%index, :)
+      if (associated(eflx%ro)) eflx%ro%uflx(:flind%scr(1)%beg - 1) = flx(eflx%ro%index, :)
 
       if (divB_0_method == DIVB_HDC) then
          if (associated(eflx%li)) bflx(eflx%li%index, :) = eflx%li%bflx

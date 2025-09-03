@@ -99,7 +99,7 @@ import matplotlib.patches as mpatches
 from scipy import special as sp
 
 plt.rcParams.update({
-    'figure.dpi': 720, 'savefig.dpi': 720,
+    'figure.dpi': 150, 'savefig.dpi': 720,
     'axes.linewidth': 2.5,
     'font.size': 12,
     'xtick.major.size': 5, 'ytick.major.size': 5,
@@ -111,7 +111,7 @@ plt.rcParams.update({
 
 
 
-file = '/home/vinodvp/simdir/piernik/runs/test6/scr_tst_0000.h5'
+file = '/home/vinodvp/simdir/piernik/runs/test8/scr_tst_0000.h5'
 data, cell_dims, origin, spacing = load_and_stitch_data(file)
 N, dx, x0 = cell_dims[0], spacing[0], origin[0]
 xe = x0 + np.arange(N+1)*dx                   # assume x0 is left edge
@@ -125,15 +125,15 @@ fig,ax=plt.subplots(2,2,figsize=(8,6))
 ax[0,0].axis('off')
 
 
-file = '/home/vinodvp/simdir/piernik/runs/test6/scr_tst_0000.h5'
+file = '/home/vinodvp/simdir/piernik/runs/test8/scr_tst_0000.h5'
 data, cell_dims, origin, spacing = load_and_stitch_data(file)
 ax[0,1].plot(x,data["escr_01"][0,0,:],linewidth=1.5,color='k',label='t=0.0')
 
-file = '/home/vinodvp/simdir/piernik/runs/test6/scr_tst_0001.h5'
+file = '/home/vinodvp/simdir/piernik/runs/test8/scr_tst_0001.h5'
 data, cell_dims, origin, spacing = load_and_stitch_data(file)
 ax[0,1].plot(x,data["escr_01"][0,0,:],linewidth=1.5,color='r',label='t=0.02')
 
-file = '/home/vinodvp/simdir/piernik/runs/test6/scr_tst_0003.h5'
+file = '/home/vinodvp/simdir/piernik/runs/test8/scr_tst_0003.h5'
 data, cell_dims, origin, spacing = load_and_stitch_data(file)
 ax[0,1].plot(x,data["escr_01"][0,0,:],linewidth=1.5,color='g',label='t=0.05')
 
@@ -146,15 +146,15 @@ ax[0,1].set_xlim(-1,1)
 
 
 
-file = '/home/vinodvp/simdir/piernik/runs/test6/scr_tst_0000.h5'
+file = '/home/vinodvp/simdir/piernik/runs/test8/scr_tst_0000.h5'
 data, cell_dims, origin, spacing = load_and_stitch_data(file)
 ax[1,0].plot(x,data["density"][0,0,:],linewidth=1.5,color='k',label='t=0.0')
 
-file = '/home/vinodvp/simdir/piernik/runs/test6/scr_tst_0001.h5'
+file = '/home/vinodvp/simdir/piernik/runs/test8/scr_tst_0001.h5'
 data, cell_dims, origin, spacing = load_and_stitch_data(file)
 ax[1,0].plot(x,data["density"][0,0,:],linewidth=1.5,color='r',label='t=0.02')
 
-file = '/home/vinodvp/simdir/piernik/runs/test6/scr_tst_0003.h5'
+file = '/home/vinodvp/simdir/piernik/runs/test8/scr_tst_0003.h5'
 data, cell_dims, origin, spacing = load_and_stitch_data(file)
 ax[1,0].plot(x,data["density"][0,0,:],linewidth=1.5,color='g',label='t=0.05')
 
@@ -166,15 +166,15 @@ ax[1,0].legend(fontsize='small')
 ax[1,0].set_xlim(-1,1)
 
 
-file = '/home/vinodvp/simdir/piernik/runs/test6/scr_tst_0000.h5'
+file = '/home/vinodvp/simdir/piernik/runs/test8/scr_tst_0000.h5'
 data, cell_dims, origin, spacing = load_and_stitch_data(file)
 ax[1,1].plot(x,data["velocity_x"][0,0,:],linewidth=1.5,color='k',label='t=0.0')
 
-file = '/home/vinodvp/simdir/piernik/runs/test6/scr_tst_0001.h5'
+file = '/home/vinodvp/simdir/piernik/runs/test8/scr_tst_0001.h5'
 data, cell_dims, origin, spacing = load_and_stitch_data(file)
 ax[1,1].plot(x,data["velocity_x"][0,0,:],linewidth=1.5,color='r',label='t=0.02')
 
-file = '/home/vinodvp/simdir/piernik/runs/test6/scr_tst_0003.h5'
+file = '/home/vinodvp/simdir/piernik/runs/test8/scr_tst_0003.h5'
 data, cell_dims, origin, spacing = load_and_stitch_data(file)
 ax[1,1].plot(x,data["velocity_x"][0,0,:],linewidth=1.5,color='g',label='t=0.05')
 

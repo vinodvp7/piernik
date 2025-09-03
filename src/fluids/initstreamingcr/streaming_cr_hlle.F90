@@ -158,10 +158,10 @@ contains
 
       call riemann_hlle(ql, qr, vdiff, flx) 
 
-      if (associated(eflx%li)) flx(eflx%li%index, flind%scr(1)%beg:) = eflx%li%uflx
-      if (associated(eflx%ri)) flx(eflx%ri%index, flind%scr(1)%beg:) = eflx%ri%uflx
-      if (associated(eflx%lo)) eflx%lo%uflx = flx(eflx%lo%index, flind%scr(1)%beg:)
-      if (associated(eflx%ro)) eflx%ro%uflx = flx(eflx%ro%index, flind%scr(1)%beg:)
+      if (associated(eflx%li)) flx(eflx%li%index, :) = eflx%li%uflx(flind%scr(1)%beg:)
+      if (associated(eflx%ri)) flx(eflx%ri%index, :) = eflx%ri%uflx(flind%scr(1)%beg:)
+      if (associated(eflx%lo)) eflx%lo%uflx(flind%scr(1)%beg:) = flx(eflx%lo%index, :)
+      if (associated(eflx%ro)) eflx%ro%uflx(flind%scr(1)%beg:) = flx(eflx%ro%index, :)
 
    end subroutine solve_scr
 

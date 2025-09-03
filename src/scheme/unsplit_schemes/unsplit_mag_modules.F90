@@ -44,13 +44,13 @@ contains
                                   psi_n, psih_n, psidim, cs_i2_n, first_stage, xdim, ydim, zdim, I_ONE
       use global,           only: integration_order
       use domain,           only: dom
-      use fluidindex,       only: iarr_all_swp, iarr_mag_swp
+      use fluidindex,       only: iarr_all_swp, iarr_mag_swp, flind
       use fluxtypes,        only: ext_fluxes
       use unsplit_source,   only: apply_source
       use diagnostics,      only: my_allocate, my_deallocate
 #ifdef STREAM_CR
-      use fluidindex,       only: flind
-      use constants,        only: v_diff
+      use streaming_cr_hlle, only: update_scr_fluid, eflx
+      use scr_helpers,       only: update_rotation_matrix, update_interaction_term, update_vdiff
 #endif /* STREAM_CR */
 
       implicit none
@@ -59,20 +59,23 @@ contains
       integer,                       intent(in) :: istep
 
       integer                                    :: i1, i2
-      integer(kind=4)                            :: uhi, bhi, psii, psihi, ddim
-      real, dimension(:,:),allocatable           :: u, b, b_psi
+      integer(kind=4)                            :: uhi, bhi, psii, psihi, ddim, fle
+      real, dimension(:,:),allocatable           :: u
+      real, dimension(:,:),allocatable           :: b
+      real, dimension(:,:),allocatable           :: b_psi                ! This will carry both b and psi so it will have one extra size in dim=2
       real, dimension(:,:), pointer              :: pu, pb
       real, dimension(:), pointer                :: ppsi
       real, dimension(:,:), pointer              :: pflux, pbflux,apsiflux
       real, dimension(:), pointer                :: ppsiflux
       real, dimension(:),   pointer              :: cs2
-      real, dimension(:,:),allocatable           :: flux, bflux, tflux, tbflux
-      type(ext_fluxes)                           :: eflx
+      real, dimension(:,:),allocatable           :: flux
+      real, dimension(:,:),allocatable           :: bflux
+      real, dimension(:,:),allocatable           :: tflux                 ! to temporarily store transpose of flux
+      real, dimension(:,:),allocatable           :: tbflux                ! to temporarily store transpose of bflux
       integer                                    :: i_cs_iso2
-#ifdef STREAM_CR
-      real, dimension(:,:),allocatable           :: vdiff1d
-      real, dimension(:,:), pointer              :: vdiff
-#endif /* STREAM_CR */
+
+      fle = flind%scr(1)%beg - 1
+
       uhi = wna%ind(uh_n)
       bhi = wna%ind(magh_n)
 
@@ -89,16 +92,14 @@ contains
       do ddim=xdim,zdim
         if (.not. dom%has_dir(ddim)) cycle
 
-         call my_allocate(u,[cg%n_(ddim), size(cg%u,1, kind=4)])
+         call my_allocate(u,[cg%n_(ddim), fle])
          call my_allocate(b,[cg%n_(ddim), size(cg%b,1, kind=4)])
          call my_allocate(b_psi,[size(b,1, kind=4), size(b,2, kind=4) + I_ONE ])
          call my_allocate(flux,[size(u, 1, kind=4)-I_ONE,size(u, 2, kind=4)])
          call my_allocate(tflux,[size(u, 2, kind=4),size(u, 1, kind=4)])
          call my_allocate(bflux,[size(b, 1, kind=4)-I_ONE,size(b_psi, 2, kind=4)])
          call my_allocate(tbflux,[size(b_psi, 2, kind=4),size(b, 1, kind=4)])
-#ifdef STREAM_CR
-         call my_allocate(vdiff1d, [cg%n_(ddim) , flind%nscr])  ! interaction coefficient along one dimension for all species
-#endif /* STREAM_CR */
+
          do i2 = cg%ijkse(pdims(ddim, ORTHO2), LO), cg%ijkse(pdims(ddim, ORTHO2), HI)
             do i1 = cg%ijkse(pdims(ddim, ORTHO1), LO), cg%ijkse(pdims(ddim, ORTHO1), HI)
 
@@ -126,27 +127,24 @@ contains
                     pb   => cg%w(wna%bi)%get_sweep(ddim,i1,i2)
                     ppsi => cg%q(psii)%get_sweep(ddim,i1,i2)
                endif
-#ifdef STREAM_CR
-               vdiff => cg%w(wna%ind(v_diff))%get_sweep(ddim, i1, i2)
-               vdiff1d(:,:) = transpose(vdiff(ddim : 3*(flind%nscr - 1) + ddim : 3,:) )
-#endif /* STREAM_CR */
-               u(:, iarr_all_swp(ddim,:)) = transpose(pu(:,:))
+
+               u(:, iarr_all_swp(ddim,:fle)) = transpose(pu(:fle,:))
                b(:, iarr_mag_swp(ddim,:)) = transpose(pb(:,:))
+
                b_psi(:, xdim:zdim) = b(:,:) ; b_psi(:,psidim) = ppsi(:)
 
                if (i_cs_iso2 > 0) cs2 => cg%q(i_cs_iso2)%get_sweep(ddim,i1,i2)
 
+
                call cg%set_fluxpointers(ddim, i1, i2, eflx)
-#ifdef STREAM_CR
-               call solve(u, b_psi ,cs2, eflx, flux, bflux, vdiff1d)
-#else /* !STREAM_CR */
+
                call solve(u, b_psi ,cs2, eflx, flux, bflux)
-#endif /* !STREAM_CR */
+
                call cg%save_outfluxes(ddim, i1, i2, eflx)
 
-               tflux(:,2:) = transpose(flux(:, iarr_all_swp(ddim,:)))
+               tflux(:,2:) = transpose(flux(:, iarr_all_swp(ddim,:fle)))
                tflux(:,1) = 0.0
-               pflux(:,:) = tflux
+               pflux(:fle,:) = tflux
 
                tbflux(:,2:) = transpose(bflux(:, iarr_mag_swp(ddim,:)))
                tbflux(:,1) = 0
@@ -159,20 +157,23 @@ contains
          call my_deallocate(u); call my_deallocate(flux); call my_deallocate(tflux)
          call my_deallocate(b); call my_deallocate(b_psi); call my_deallocate(tbflux)
          call my_deallocate(bflux)
-#ifdef STREAM_CR
-         call my_deallocate(vdiff1d)
-#endif /* STREAM_CR */
       enddo
       call apply_flux(cg,istep,.true.)
       call apply_flux(cg,istep,.false.)
       call update_psi(cg,istep)
+#ifdef STREAM_CR
+      call update_interaction_term(cg, istep, .false.)
+      call update_rotation_matrix(cg, istep)
+      call update_vdiff(cg,istep)
+      call update_scr_fluid(cg,istep)
+#endif /* STREAM_CR */
       call apply_source(cg,istep)
-
+   
       nullify(cs2)
 
    end subroutine solve_cg_ub
 
-   subroutine solve(ui, bi, cs2, eflx, flx, bflx, vdiff)
+   subroutine solve(ui, bi, cs2, eflx, flx, bflx)
 
       use constants,      only: DIVB_HDC
       use fluxtypes,      only: ext_fluxes
@@ -180,45 +181,33 @@ contains
       use hlld,           only: riemann_wrap
       use interpolations, only: interpol
       use dataio_pub,     only: die
-#ifdef STREAM_CR
-      use streaming_cr_hlle, only: riemann_hlle
-      use fluidindex,        only: iarr_all_dn, iarr_all_mx, flind
-#endif /* STREAM_CR*/
+      use fluidindex,     only: flind
+
       implicit none
 
-      real, dimension(:,:),            intent(in)    :: ui      !< cell-centered initial fluid states
-      real, dimension(:,:),            intent(in)    :: bi      !< cell-centered initial magnetic field states (including psi field when necessary)
-      real, dimension(:,:),            intent(inout) :: flx     !< cell-centered intermediate fluid states
-      real, dimension(:,:),            intent(inout) :: bflx    !< cell-centered intermediate magnetic field states (including psi field when necessary)
-      real, dimension(:), pointer,     intent(in)    :: cs2     !< square of local isothermal sound speed
-      type(ext_fluxes),                intent(inout) :: eflx    !< external fluxes
-      real, dimension(:,:),optional,   intent(in)    :: vdiff   !< diffussive speed for transport corrected with effective optical depth
+      real, dimension(:,:),        intent(in)    :: ui      !< cell-centered initial fluid states
+      real, dimension(:,:),        intent(in)    :: bi      !< cell-centered initial magnetic field states (including psi field when necessary)
+      real, dimension(:,:),        intent(inout) :: flx     !< cell-centered intermediate fluid states
+      real, dimension(:,:),        intent(inout) :: bflx    !< cell-centered intermediate magnetic field states (including psi field when necessary)
+      real, dimension(:), pointer, intent(in)    :: cs2     !< square of local isothermal sound speed
+      type(ext_fluxes),            intent(inout) :: eflx    !< external fluxes
 
       ! left and right states at interfaces 1 .. n-1
       real, dimension(size(ui, 1)-1, size(ui, 2)), target :: ql, qr
       real, dimension(size(bi, 1)-1, size(bi, 2)), target :: bl, br
-
-#ifdef STREAM_CR
-      real, dimension(size(ui, 1))  :: vxl, vxr
-#endif /* STREAM_CR*/
+      integer ::s
 
       ! updates required for higher order of integration will likely have shorter length
 
       bflx = huge(1.)
 
       call interpol(ui, ql, qr, bi, bl, br)
-#ifdef STREAM_CR
-      vxl = ql(:,iarr_all_mx(1))/ql(:,iarr_all_dn(1))
-      vxr = qr(:,iarr_all_mx(1))/qr(:,iarr_all_dn(1))
-      call riemann_wrap(ql(:,:flind%scr(1)%beg - 1), qr(:,:flind%scr(1)%beg - 1), bl, br, cs2, flx(:,:flind%scr(1)%beg - 1), bflx) ! Now we advance the left and right states by a timestep.
-      call riemann_hlle(ql(:,flind%scr(1)%beg:), qr(:,flind%scr(1)%beg:), vxl, vxr, vdiff, flx(:,flind%scr(1)%beg:)) ! Now we advance the left and right states by a timestep.
-#else /* !STREAM_CR */
       call riemann_wrap(ql, qr, bl, br, cs2, flx, bflx) ! Now we advance the left and right states by a timestep.
-#endif /* !STREAM_CR */
-      if (associated(eflx%li)) flx(eflx%li%index, :) = eflx%li%uflx
-      if (associated(eflx%ri)) flx(eflx%ri%index, :) = eflx%ri%uflx
-      if (associated(eflx%lo)) eflx%lo%uflx = flx(eflx%lo%index, :)
-      if (associated(eflx%ro)) eflx%ro%uflx = flx(eflx%ro%index, :)
+
+      if (associated(eflx%li)) flx(eflx%li%index, :flind%scr(1)%beg - 1 )  = eflx%li%uflx
+      if (associated(eflx%ri)) flx(eflx%ri%index, :flind%scr(1)%beg - 1 )  = eflx%ri%uflx
+      if (associated(eflx%lo)) eflx%lo%uflx = flx(eflx%lo%index, :flind%scr(1)%beg - 1)
+      if (associated(eflx%ro)) eflx%ro%uflx = flx(eflx%ro%index, :flind%scr(1)%beg - 1)
 
       if (divB_0_method == DIVB_HDC) then
          if (associated(eflx%li)) bflx(eflx%li%index, :) = eflx%li%bflx
@@ -228,7 +217,6 @@ contains
       else
         call die("[unsplit_mag_modules:solve] Unplit method is only implemented with Hyperbolic Divergence Cleaning")
       endif
-
    end subroutine solve
 
    subroutine apply_flux(cg, istep, mag)
@@ -238,7 +226,7 @@ contains
       use named_array_list,   only: wna
       use constants,          only: xdim, ydim, zdim, last_stage, rk_coef, &
                                      uh_n, I_ONE, ndims, magh_n
-
+      use fluidindex,         only: flind
       implicit none
 
       type :: fxptr
@@ -252,6 +240,7 @@ contains
       logical                     :: active(ndims)
       integer                     :: L0(ndims), U0(ndims), L(ndims), U(ndims), shift(ndims)
       integer                     :: afdim, uhi, bhi
+      integer(kind=4)             :: flb, fle
       real, pointer               :: T(:,:,:,:)
       type(fxptr)                 :: F(ndims)
 
@@ -259,7 +248,8 @@ contains
       active = [ dom%has_dir(xdim), dom%has_dir(ydim), dom%has_dir(zdim) ]
 
       if (mag) then
-
+         flb = lbound(cg%bfx ,1)
+         fle = lbound(cg%bfx ,1)
          F(xdim)%flx => cg%bfx   ;  F(ydim)%flx => cg%bgy   ;  F(zdim)%flx => cg%bhz
 
          L0 = [ lbound(cg%w(wna%bi)%arr,2), lbound(cg%w(wna%bi)%arr,3), lbound(cg%w(wna%bi)%arr,4) ]
@@ -272,8 +262,11 @@ contains
             cg%w(bhi)%arr(:,:,:,:) = cg%w(wna%bi)%arr(:,:,:,:)
             T => cg%w(bhi)%arr
          endif
+
       else
-         F(xdim)%flx => cg%fx   ;  F(ydim)%flx => cg%gy   ;  F(zdim)%flx => cg%hz
+         flb = flind%all_fluids(1)%fl%beg
+         fle = flind%scr(1)%beg - 1
+         F(xdim)%flx => cg%fx   ;  F(ydim)%flx => cg%gy  ;  F(zdim)%flx => cg%hz
 
          L0 = [ lbound(cg%w(wna%fi)%arr,2), lbound(cg%w(wna%fi)%arr,3), lbound(cg%w(wna%fi)%arr,4) ]
          U0 = [ ubound(cg%w(wna%fi)%arr,2), ubound(cg%w(wna%fi)%arr,3), ubound(cg%w(wna%fi)%arr,4) ]
@@ -282,7 +275,7 @@ contains
          if (istep==last_stage(integration_order) .or. integration_order==I_ONE) then
             T => cg%w(wna%fi)%arr
          else
-            cg%w(uhi)%arr(:,:,:,:) = cg%w(wna%fi)%arr(:,:,:,:)
+            cg%w(uhi)%arr(flb:fle,:,:,:) = cg%w(wna%fi)%arr(flb:fle,:,:,:)
             T => cg%w(uhi)%arr
          endif
       endif
@@ -292,10 +285,10 @@ contains
          call bounds_for_flux(L0,U0,active,afdim,L,U)
 
          shift = 0 ;  shift(afdim) = I_ONE
-         T(:, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) = T(:, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) &
+         T(flb:fle, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) = T(flb:fle, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) &
             + dt / cg%dl(afdim) * rk_coef(istep) * ( &
-               F(afdim)%flx(:, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) - &
-               F(afdim)%flx(:, L(xdim)+shift(xdim):U(xdim)+shift(xdim), &
+               F(afdim)%flx(flb:fle, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) - &
+               F(afdim)%flx(flb:fle, L(xdim)+shift(xdim):U(xdim)+shift(xdim), &
                            L(ydim)+shift(ydim):U(ydim)+shift(ydim), &
                            L(zdim)+shift(zdim):U(zdim)+shift(zdim)) )
       enddo

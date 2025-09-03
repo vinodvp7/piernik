@@ -49,9 +49,7 @@ contains
       use named_array_list,      only: wna
       use sources,               only: prepare_sources
       use unsplit_mag_modules,   only: solve_cg_ub
-#ifdef STREAM_CR
-      use scr_helpers,      only: update_rotation_matrix, update_interaction_term, update_vdiff
-#endif /* STREAM_CR */
+
       implicit none
 
       type(grid_container), pointer, intent(in) :: cg
@@ -62,11 +60,7 @@ contains
 
       call prepare_sources(cg)
 
-#ifdef STREAM_CR
-      call update_interaction_term(cg, istep, .false.)
-      call update_rotation_matrix(cg, istep)
-      call update_vdiff(cg,istep)
-#endif /* STREAM_CR */
+
 
       if (wna%exists(mag_n)) then
          !call die("[solve_cg_unsplit:solve_cg_unsplit] Magnetic field is still unsafe for the flux named arrays")

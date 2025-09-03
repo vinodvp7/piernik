@@ -91,7 +91,7 @@ contains
       sigma_perp(:)            = sigma_huge
       disable_feedback         = .false.
       disable_streaming        = .false.
-      cr_sound_speed           = .false.
+      cr_sound_speed           = .true.
       
       if (master) then
          if (.not.nh%initialized) call nh%init()
@@ -169,27 +169,27 @@ contains
          gamma_scr(1:nscr)   = rbuff(nn+1:nn+nscr)
       end if
 
+      if (master) then
+         if (nscr > nscr_max) then
+            write(msg,'(A,I0)') "[initstreamingcr:init_streamingcr] Number of streaming CR species greater than maximum allowed = ", nscr_max
+            call die(msg)
+         endif
 
-      if (nscr > nscr_max) then
-         write(msg,'(A,I0)') "[initstreamingcr:init_streamingcr] Number of streaming CR species greater than maximum allowed = ", nscr_max
-         call die(msg)
-      endif
-
-      do nn=1,nscr
-         if (abs(sigma_paral(nn) - sigma_huge) < 1e-10 .or. abs(sigma_perp(nn) - sigma_huge) < 1e-10 ) then
-            write(msg,'(A,ES0.2)') "[initstreamingcr:init_streamingcr] One or more CR species have default value of diffusion coefficient = ", sigma_huge
-            call warn(msg)
-         end if
-         exit
-      end do
-      do nn=1,nscr
-         if (abs(gamma_scr(nn) - gamma_def) < 1e-10 ) then
-            write(msg,'(A,F0.3)') "[initstreamingcr:init_streamingcr] One or more CR species have default value of adiabatic index = ", gamma_def 
-            call warn(msg)
-         end if
-         exit
-      end do
-
+         do nn=1,nscr
+            if (abs(sigma_paral(nn) - sigma_huge) < 1e-10 .or. abs(sigma_perp(nn) - sigma_huge) < 1e-10 ) then
+               write(msg,'(A,ES0.2)') "[initstreamingcr:init_streamingcr] One or more CR species have default value of diffusion coefficient = ", sigma_huge
+               call warn(msg)
+            end if
+            exit
+         end do
+         do nn=1,nscr
+            if (abs(gamma_scr(nn) - gamma_def) < 1e-10 ) then
+               write(msg,'(A,F0.3)') "[initstreamingcr:init_streamingcr] One or more CR species have default value of adiabatic index = ", gamma_def 
+               call warn(msg)
+            end if
+            exit
+         end do
+      end if
    end subroutine init_streamingcr
 
 end module initstreamingcr

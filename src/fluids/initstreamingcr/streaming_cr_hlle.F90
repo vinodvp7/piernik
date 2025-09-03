@@ -67,14 +67,9 @@ contains
 
       integer                                    :: i1, i2
       integer(kind=4)                            :: uhi, ddim, scrb, scre, nscrd
-      real, dimension(:,:),allocatable           :: u
-      real, dimension(:,:), pointer              :: pu
-      real, dimension(:,:), pointer              :: pflux
+      real, dimension(:,:),allocatable           :: u, uf, vdiff1d, flux, tflux
+      real, dimension(:,:), pointer              :: pu, pflux, vdiff
       real, dimension(:),   pointer              :: cs2
-      real, dimension(:,:),allocatable           :: flux
-      real, dimension(:,:),allocatable           :: tflux
-      real, dimension(:,:),allocatable           :: vdiff1d
-      real, dimension(:,:), pointer              :: vdiff
       real, allocatable                          :: vx(:)
 
       scrb = flind%scr(1)%beg
@@ -90,7 +85,7 @@ contains
          call my_allocate(tflux,[size(u, 2,kind=4),size(u, 1,kind=4)])
          call my_allocate(vdiff1d, [cg%n_(ddim) , flind%nscr])  ! interaction coefficient along one dimension for all species
          call my_allocate(vx,[cg%n_(ddim)])
-
+         call my_allocate(uf,[cg%n_(ddim), size(cg%u,1,kind=4)])
          do i2 = cg%ijkse(pdims(ddim, ORTHO2), LO), cg%ijkse(pdims(ddim, ORTHO2), HI)
             do i1 = cg%ijkse(pdims(ddim, ORTHO1), LO), cg%ijkse(pdims(ddim, ORTHO1), HI)
 
@@ -110,7 +105,9 @@ contains
                
                u(:, iarr_all_only_scr_swp(ddim,:)) = transpose(pu(scrb:scre,:))
 
-               vx(:) = pu(iarr_all_mx(1),:)/pu(iarr_all_dn(1),:)    ! We pass the velocity of the first fluid
+               uf(:, iarr_all_swp(ddim,:)) = transpose(pu(:,:))
+
+               vx(:) = uf(:,iarr_all_mx(1))/uf(:,iarr_all_dn(1))    ! We pass the velocity of the first fluid
 
                call cg%set_fluxpointers(ddim, i1, i2, eflx)
 
@@ -123,7 +120,7 @@ contains
                pflux(scrb:scre,:) = tflux
             enddo
          enddo
-         call my_deallocate(u)
+         call my_deallocate(u); call my_deallocate(uf)
          call my_deallocate(flux) 
          call my_deallocate(tflux)
          call my_deallocate(vdiff1d)

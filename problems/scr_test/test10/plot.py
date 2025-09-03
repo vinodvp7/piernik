@@ -1,206 +1,247 @@
-import sys
 import h5py
 import numpy as np
 
-# --- VTK Imports ---
-# We wrap this in a try/except block to provide a helpful error message
-# if the user doesn't have VTK installed.
+def _get_attr_any(g, *names, default=None):
+    for n in names:
+        if n in g.attrs: return g.attrs[n]
+    return default
 
-
-def get_field_names(h5_file):
+def load_amr_uniform(fname, field_names=None):
     """
-    Scans the first data block in the HDF5 file to find all available
-    dataset names (e.g., 'density', 'pressure').
-
-    Args:
-        h5_file (h5py.File): An open H5py file object.
+    Rasterize a PIERNIK AMR file onto a uniform finest-resolution grid.
 
     Returns:
-        list: A list of strings with the names of the data fields.
+      data: dict[field] -> ndarray (Nz, Ny, Nx) at finest dx
+      origin: 3-vector left edge
+      spacing: 3-vector finest cell size
     """
-    print("Scanning for available data fields...")
-    field_names = []
-    # Get the name of the first grid block (e.g., 'grid_0000000000')
-    first_block_name = list(h5_file["data"].keys())[0]
-    for name in h5_file["data"][first_block_name]:
-        field_names.append(name)
-    print(f"Found fields: {field_names}")
-    return field_names
-
-
-def load_and_stitch_data(fname):
-    """
-    Loads and stitches a 3D field from multiple blocks in an HDF5 file.
-    This function is based on the user-provided reference code and the
-    HDF5 inspection report.
-
-    Args:
-        fname (str): Path to the HDF5 file.
-        field_names (list): A list of all field names to extract.
-
-    Returns:
-        tuple: A tuple containing:
-            - dict: A dictionary of the stitched 3D data arrays for each field.
-            - np.ndarray: The global dimensions of the stitched cell grid (Nx, Ny, Nz).
-            - np.ndarray: The physical coordinates of the grid origin (x0, y0, z0).
-            - np.ndarray: The cell spacing in each direction (dx, dy, dz).
-    """
-    stitched_data = {}
+    data = {}
     with h5py.File(fname, "r") as f:
-        field_names = get_field_names(f)
-    with h5py.File(fname, "r") as f:
-        # --- 1. Read metadata from the HDF5 file ---
-        block_names = list(f["data"].keys())
-        all_offsets = np.array([f["data"][name].attrs["off"] for name in block_names], dtype=int)
-        all_dims = np.array([f["data"][name].attrs["n_b"] for name in block_names], dtype=int)
+        sim = f["simulation_parameters"]
+        left_edge  = sim.attrs["domain_left_edge"].astype(float)
+        right_edge = sim.attrs["domain_right_edge"].astype(float)
+        domain_size = right_edge - left_edge
 
-        # Determine the full size of the stitched grid of cells
-        global_cell_dims = np.max(all_offsets + all_dims, axis=0)
-        print(f"Global cell grid dimensions determined to be: {global_cell_dims}")
+        blocks = [f["data"][k] for k in f["data"].keys()]
+        if field_names is None:
+            # Take fields from the first block
+            field_names = list(blocks[0].keys())
 
-        # Get global grid physical properties from the root attributes
-        origin = f["simulation_parameters"].attrs["domain_left_edge"]
-        domain_size = f["simulation_parameters"].attrs["domain_right_edge"] - origin
+        # ---- collect block metadata ----
+        meta = []
+        levels = []
+        dxs = []
+        for g in blocks:
+            # level key can be 'level', 'lev', or 'l'
+            lev = int(_get_attr_any(g, "level", "lev", "l", default=0))
+            levels.append(lev)
 
-        # For cell-centered data, spacing is domain size / number of cells.
-        spacing = domain_size / np.maximum(1, global_cell_dims)
+            # Try direct geometry; else infer from dims and level
+            left = _get_attr_any(g, "left_edge", default=None)
+            right = _get_attr_any(g, "right_edge", default=None)
+            nb = np.array(_get_attr_any(g, "n_b", default=g[next(iter(g.keys()))].shape[::-1]), dtype=int)  # (Nx,Ny,Nz)
+            ng = int(_get_attr_any(g, "ng", "n_ghost", "ghost", default=0))
+            # Per-level dx
+            dxyz = _get_attr_any(g, "delta", "dl", default=None)
+            if dxyz is not None:
+                dxyz = np.array(dxyz, dtype=float)
+            else:
+                # Fallback: infer dx_lev from base dims and level
+                # Assume base-level dims are max nb at the minimum level
+                # (this matches typical block-structured AMR)
+                # Use x-dim only (assumed isotropic)
+                pass
 
-        print(f"Global grid origin: {origin}")
-        print(f"Cell spacing: {spacing}")
+            if left is None or right is None:
+                # Fall back to offset+dx if present
+                off = np.array(_get_attr_any(g, "off", default=[0,0,0]), dtype=int)
+                # Need dx for this block:
+                if dxyz is None:
+                    # Infer dx_lev from level using base resolution
+                    # Find minimum level across all blocks on first pass later
+                    pass
+                # compute physical edges from off & dx
+                # IMPORTANT: off is in *active* cells; shift by ng to get interior
+                left = left_edge + (off)* (dxyz if dxyz is not None else 1.0)
+                right = left + nb * (dxyz if dxyz is not None else 1.0)
 
-        # --- 2. Load and stitch each data field ---
-        for field in field_names:
-            print(f"  Processing field: {field}")
-            # Create an empty array to hold the full stitched data
-            # The data on disk is (z, y, x), so we create the numpy array in that order.
-            stitched_field = np.empty((global_cell_dims[2], global_cell_dims[1], global_cell_dims[0]), dtype=np.float32)
+            meta.append(dict(group=g, level=lev, nb=nb, ng=ng,
+                             left=np.array(left, float), right=np.array(right, float),
+                             dxyz=np.array(dxyz if dxyz is not None else 0.0, float)))
 
-            # Iterate over each block and place its data into the large array
-            for i, name in enumerate(block_names):
-                block_data = f["data"][name][field][:]  # This is already (z, y, x)
-                offset = all_offsets[i]
-                dims = all_dims[i]
+            if dxyz is not None:
+                dxs.append(dxyz)
+        # Finest spacing
+        if dxs:
+            finest_dx = np.min(np.vstack(dxs), axis=0)
+        else:
+            # Last resort: infer finest spacing from highest level and domain size
+            Lmax = max(levels) if levels else 0
+            # estimate base dims from any level-0 block:
+            base_nb = None
+            for m in meta:
+                if m["level"] == 0:
+                    base_nb = m["nb"]; break
+            if base_nb is None:
+                base_nb = meta[0]["nb"]
+            finest_dx = domain_size / (base_nb * (2**Lmax))
 
-                # Define the slice where this block goes in the big array
-                slc = np.s_[
-                    offset[2]: offset[2] + dims[2],
-                    offset[1]: offset[1] + dims[1],
-                    offset[0]: offset[0] + dims[0],
-                ]
-                stitched_field[slc] = block_data
+        # Global dims on finest grid
+        global_dims = np.round(domain_size / finest_dx).astype(int)
 
-            stitched_data[field] = stitched_field
+        # Allocate outputs
+        for fld in field_names:
+            data[fld] = np.full((global_dims[2], global_dims[1], global_dims[0]), np.nan, dtype=np.float32)
 
-    return stitched_data, global_cell_dims.astype(int), origin, spacing
+        # Composite from coarse to fine (fine overwrites)
+        order = np.argsort(levels)
+        for idx in order:
+            m = meta[idx]
+            g = m["group"]
+            lev = m["level"]
+            dx = m["dxyz"] if np.any(m["dxyz"]) else finest_dx * (2**(max(levels)-lev))
+            # integer upscale factor from this level to finest
+            scale = np.round(dx / finest_dx).astype(int)
+
+            # Compute finest-grid index window for this block (interior only)
+            # Skip ghost if present
+            nb_int = m["nb"]  # assume stored as interior count
+            left_phys = m["left"]
+            right_phys = m["right"]
+
+            start = np.floor((left_phys - left_edge) / finest_dx).astype(int)
+            stop  = np.floor((right_phys - left_edge) / finest_dx).astype(int)
+
+            # slices on finest grid
+            z0,z1 = start[2], stop[2]
+            y0,y1 = start[1], stop[1]
+            x0,x1 = start[0], stop[0]
+
+            for fld in field_names:
+                arr = g[fld][:]
+                # Expect on-disk order (z,y,x). Remove ghosts if they’re present in the dataset:
+                gz = max(0, arr.shape[0] - nb_int[2]) // 2 if arr.shape[0] != nb_int[2] else 0
+                gy = max(0, arr.shape[1] - nb_int[1]) // 2 if arr.shape[1] != nb_int[1] else 0
+                gx = max(0, arr.shape[2] - nb_int[0]) // 2 if arr.shape[2] != nb_int[0] else 0
+                arr = arr[gz:arr.shape[0]-gz, gy:arr.shape[1]-gy, gx:arr.shape[2]-gx]
+
+                # Upsample to finest grid by integer repetition
+                az = np.repeat(arr, scale[2], axis=0)
+                ayz = np.repeat(az, scale[1], axis=1)
+                axyz = np.repeat(ayz, scale[0], axis=2)
+
+                # Trim in case boundaries are not exact multiples
+                tz = z1 - z0; ty = y1 - y0; tx = x1 - x0
+                axyz = axyz[:tz, :ty, :tx]
+
+                data[fld][z0:z1, y0:y1, x0:x1] = axyz  # fine overwrites coarse
+
+        return data, left_edge, finest_dx, global_dims
+
 #%%
+import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.colors import LogNorm  # optional
 import matplotlib.patches as mpatches
-from scipy import special as sp
+
+# --- import the AMR loader you defined earlier ---
+# from your_module import load_amr_uniform
 
 plt.rcParams.update({
     'figure.dpi': 720, 'savefig.dpi': 720,
-    'axes.linewidth': 2.5,
-    'font.size': 12,
+    'axes.linewidth': 2.5, 'font.size': 12,
     'xtick.major.size': 5, 'ytick.major.size': 5,
     'xtick.major.width': 1.0, 'ytick.major.width': 1.0,
     'xtick.direction': 'out', 'ytick.direction': 'out',
     'legend.frameon': True, 'legend.edgecolor': 'black', 'legend.framealpha': 1.0,
-    'figure.figsize': (8, 6)
+    'figure.figsize': (8, 6),
 })
 
+# ---- helpers ---------------------------------------------------------------
+def pick_key(keys_available, *candidates):
+    """Return the first candidate present in keys_available (raise if none)."""
+    for c in candidates:
+        if c in keys_available:
+            return c
+    raise KeyError(f"None of {candidates} found. Available: {sorted(keys_available)}")
 
-data_to_plot = 'escr_01'
+def build_coords(origin, dx, dims):
+    """Return x,y center coords for a (Nz,Ny,Nx) array rasterized at finest dx."""
+    Nx, Ny, Nz = dims[0], dims[1], dims[2]
+    x = origin[0] + (np.arange(Nx) + 0.5) * dx[0]
+    y = origin[1] + (np.arange(Ny) + 0.5) * dx[1]
+    return x, y
 
-file = '/home/vinodvp/simdir/piernik/runs/test8/scr_dif_0005.h5'
-data, cell_dims, origin, spacing = load_and_stitch_data(file)
-N, dx, x0 = cell_dims[0], spacing[0], origin[0]
-xe = x0 + np.arange(N+1)*dx                   # assume x0 is left edge
-x  = 0.5*(xe[:-1] + xe[1:])                   # centers
+# ---- files (use different files for diffusion/streaming if you have them) --
+file_diff = '/home/vinodvp/simdir/piernik/runs/test10/scr_tst_0000.h5'
+file_stream = '/home/vinodvp/simdir/piernik/runs/test10/scr_tst_0005.h5'
 
-N, dy, y0 = cell_dims[1], spacing[1], origin[1]
-ye = y0 + np.arange(N+1)*dy                   # assume x0 is left edge
-y  = 0.5*(ye[:-1] + ye[1:])                   # centers
+# ---- load (AMR-aware) ------------------------------------------------------
+dataD, originD, dxD, dimsD = load_amr_uniform(file_diff)
+dataS, originS, dxS, dimsS = load_amr_uniform(file_stream)
 
-Xc, Yc = np.meshgrid(x, y, indexing="xy")
+# coords (finest grid)
+xD, yD = build_coords(originD, dxD, dimsD)
+xS, yS = build_coords(originS, dxS, dimsS)
 
-fig,ax=plt.subplots(2,2,figsize=(8,6))
+# mid-plane index in z
+zD = 0 if dataD[next(iter(dataD))].shape[0] == 1 else dataD[next(iter(dataD))].shape[0] // 2
+zS = 0 if dataS[next(iter(dataS))].shape[0] == 1 else dataS[next(iter(dataS))].shape[0] // 2
 
-d0=data["density"][0,:,:]
-ax[0,0].imshow(d0, extent=[x[0], x[-1], y[0], y[-1]],
-               origin="lower",
-               cmap="RdGy_r")
+# resolve field names
+keysD = set(dataD.keys())
+keysS = set(dataS.keys())
 
-ax[0,0].streamplot(x,y,
-    data["velocity_x"][0,:,:],data["velocity_y"][0,:,:],
-    density=0.8,color='k')
+k_rhoD = pick_key(keysD, 'density', 'dens')
+k_vxD  = pick_key(keysD, 'velocity_x', 'velx', 'vx')
+k_vyD  = pick_key(keysD, 'velocity_y', 'vely', 'vy')
+k_bxD  = pick_key(keysD, 'mag_field_x', 'magx', 'bx', 'b_x') if keysD & {'mag_field_x','magx','bx','b_x'} else None
+k_byD  = pick_key(keysD, 'mag_field_y', 'magy', 'by', 'b_y') if keysD & {'mag_field_y','magy','by','b_y'} else None
+k_ecD  = pick_key(keysD, 'escr_01', 'escr')
 
-ax[0,0].set_xlabel(r'$\mathbf{x}$', fontweight='bold')
-ax[0,0].set_ylabel(r'$\mathbf{y}$', fontweight='bold')
-ax[0,0].set_title('t=0.1,diffusion', fontweight='bold')
-cb = fig.colorbar(ax[0,0].images[-1], ax=ax[0,0], fraction=0.046, pad=0.04)
-cb.set_label(r'$\mathbf{\rho}$', fontweight='bold', labelpad=6)  # bold E with subscript c
+k_rhoS = pick_key(keysS, 'density', 'dens')
+k_vxS  = pick_key(keysS, 'velocity_x', 'velx', 'vx')
+k_vyS  = pick_key(keysS, 'velocity_y', 'vely', 'vy')
+k_bxS  = pick_key(keysS, 'mag_field_x', 'magx', 'bx', 'b_x') if keysS & {'mag_field_x','magx','bx','b_x'} else None
+k_byS  = pick_key(keysS, 'mag_field_y', 'magy', 'by', 'b_y') if keysS & {'mag_field_y','magy','by','b_y'} else None
+k_ecS  = pick_key(keysS, 'escr_01', 'escr')
+
+# ---- plot ------------------------------------------------------------------
+fig, ax = plt.subplots(2, 2, figsize=(8, 6))
+
+# (0,0) density + velocity (diffusion)
+im = ax[0,0].imshow(dataD[k_rhoD][zD,:,:], extent=[xD[0], xD[-1], yD[0], yD[-1]],
+                    origin='lower', cmap='RdGy_r', aspect='equal')
+# ax[0,0].streamplot(xD, yD, dataD[k_vxD][zD,:,:], dataD[k_vyD][zD,:,:], density=0.8, color='k')
+ax[0,0].set(title='t=0.1, diffusion', xlabel=r'$\mathbf{x}$', ylabel=r'$\mathbf{y}$')
+cb = fig.colorbar(im, ax=ax[0,0], fraction=0.046, pad=0.04); cb.set_label(r'$\mathbf{\rho}$', fontweight='bold')
+
+# (0,1) Ec + (optional) B streamlines (diffusion)
+im = ax[0,1].imshow(dataD[k_ecD][zD,:,:], extent=[xD[0], xD[-1], yD[0], yD[-1]],
+                    origin='lower', cmap='RdGy_r', aspect='equal')
+if k_bxD and k_byD:
+    ax[0,1].streamplot(xD, yD, dataD[k_bxD][zD,:,:], dataD[k_byD][zD,:,:], density=0.5, color='white')
+ax[0,1].set(title='t=0.1, diffusion', xlabel=r'$\mathbf{x}$', ylabel=r'$\mathbf{y}$')
+cb = fig.colorbar(im, ax=ax[0,1], fraction=0.046, pad=0.04); cb.set_label(r'$\mathbf{E_c}$', fontweight='bold')
+
+# (1,0) density + velocity (streaming)
+im = ax[1,0].imshow(dataS[k_rhoS][zS,:,:], extent=[xS[0], xS[-1], yS[0], yS[-1]],
+                    origin='lower', cmap='RdGy_r', aspect='equal')
+# ax[1,0].streamplot(xS, yS, dataS[k_vxS][zS,:,:], dataS[k_vyS][zS,:,:], density=0.8, color='k')
+ax[1,0].set(title='t=0.1, streaming', xlabel=r'$\mathbf{x}$', ylabel=r'$\mathbf{y}$')
+cb = fig.colorbar(im, ax=ax[1,0], fraction=0.046, pad=0.04); cb.set_label(r'$\mathbf{\rho}$', fontweight='bold')
 cb.set_ticks(np.arange(0.15,1.20,0.15))
-
-
-d0=data["escr_01"][0,:,:]
-ax[0,1].imshow(d0, extent=[x[0], x[-1], y[0], y[-1]],
-               origin="lower",
-               cmap="RdGy_r", norm=LogNorm(np.min(d0),np.max(d0)))
-
-ax[0,1].streamplot(x,y,
-    data["mag_field_x"][0,:,:],data["mag_field_y"][0,:,:],
-    density=0.5,color='white')
-
-ax[0,1].set_xlabel(r'$\mathbf{x}$', fontweight='bold')
-ax[0,1].set_ylabel(r'$\mathbf{y}$', fontweight='bold')
-ax[0,1].set_title('t=0.1,diffusion', fontweight='bold')
-cb = fig.colorbar(ax[0,1].images[-1] ,ax=ax[0,1], fraction=0.046, pad=0.04)
-cb.set_label(r'$\mathbf{E_c}$', fontweight='bold', labelpad=6)  # bold E with subscript c
-ax[0,1].set_ylim(np.min(y),np.max(y))
-
-file = '/home/vinodvp/simdir/piernik/runs/test8/scr_stm_0005.h5'
-data, cell_dims, origin, spacing = load_and_stitch_data(file)
-
-
-d0=data["density"][0,:,:]
-ax[1,0].imshow(d0, extent=[x[0], x[-1], y[0], y[-1]],
-               origin="lower",
-               cmap="RdGy_r")
-
-ax[1,0].streamplot(x,y,
-    data["velocity_x"][0,:,:],data["velocity_y"][0,:,:],
-    density=0.8,color='k')
-
-ax[1,0].set_xlabel(r'$\mathbf{x}$', fontweight='bold')
-ax[1,0].set_ylabel(r'$\mathbf{y}$', fontweight='bold')
-ax[1,0].set_title('t=0.1,streaming', fontweight='bold')
-cb = fig.colorbar(ax[1,0].images[-1], ax=ax[1,0], fraction=0.046, pad=0.04)
-cb.set_label(r'$\mathbf{\rho}$', fontweight='bold', labelpad=6)  # bold E with subscript c
-cb.set_ticks(np.arange(0.15,1.20,0.15))
-
-d0=data["escr_01"][0,:,:]
-ax[1,1].imshow(d0, extent=[x[0], x[-1], y[0], y[-1]],
-               origin="lower",
-               cmap="RdGy_r", norm=LogNorm(np.min(d0),np.max(d0)))
-
-ax[1,1].streamplot(x,y,
-    data["mag_field_x"][0,:,:],data["mag_field_y"][0,:,:],
-    density=0.5,color='white')
-
-ax[1,1].set_xlabel(r'$\mathbf{x}$', fontweight='bold')
-ax[1,1].set_ylabel(r'$\mathbf{y}$', fontweight='bold')
-ax[1,1].set_title('t=0.1,streaming', fontweight='bold')
-cb = fig.colorbar(ax[1,1].images[-1], ax=ax[1,1], fraction=0.046, pad=0.04)
-cb.set_label(r'$\mathbf{E_c}$', fontweight='bold', labelpad=6)  # bold E with subscript c
-
-ax[1,1].set_ylim(np.min(y),np.max(y))
+# (1,1) Ec + (optional) B streamlines (streaming)
+im = ax[1,1].imshow(dataS[k_ecS][zS,:,:], extent=[xS[0], xS[-1], yS[0], yS[-1]],
+                    origin='lower', cmap='RdGy_r', aspect='equal')
+# if k_bxS and k_byS:
+    # ax[1,1].streamplot(xS, yS, dataS[k_bxS][zS,:,:], dataS[k_byS][zS,:,:], density=0.5, color='white')
+ax[1,1].set(title='t=0.1, streaming', xlabel=r'$\mathbf{x}$', ylabel=r'$\mathbf{y}$')
+cb = fig.colorbar(im, ax=ax[1,1], fraction=0.046, pad=0.04); cb.set_label(r'$\mathbf{E_c}$', fontweight='bold')
 
 plt.tight_layout()
-for a in (ax[0,0], ax[0,1], ax[1,0], ax[1,1]):
+for a in ax.ravel():
     for s in a.spines.values(): s.set_linewidth(3)
 
-# Bold border around the whole figure
 fig.add_artist(mpatches.Rectangle((0.005, 0.005), 0.99, 0.99,
                                   transform=fig.transFigure, fill=False, lw=4, ec='black'))
-plt.savefig(r'{}.png'.format(data_to_plot),dpi=720)
+plt.savefig('escr_01.png', dpi=720)

@@ -119,7 +119,7 @@ contains
       use cg_list,     only: cg_list_element
       use constants,   only: xdim, ydim, zdim, LO, HI
       use dataio_pub,  only: die
-      use fluidindex,  only: flind, scrind
+      use fluidindex,  only: flind
       use fluidtypes,  only: component_fluid, component_scr
       use func,        only: ekin, emag
       use grid_cont,   only: grid_container
@@ -179,8 +179,8 @@ contains
 
       fl => flind%all_fluids(1)%fl
 
-      do p = 1, scrind%stcosm
-         scr_fluid = scrind%scr(p)
+      do p = 1, flind%nscr
+         scr_fluid = flind%scr(p)
          cgl => leaves%first
          do while (associated(cgl))
             cg => cgl%cg
@@ -192,13 +192,13 @@ contains
                      zk = cg%z(k)
                      r = sqrt(xi * xi + yj * yj)
                      if (r<r0) then
-                        cg%scr(scr_fluid%iescr, i,j,k) = ecin 
+                        cg%u(scr_fluid%iescr, i,j,k) = ecin 
                      else
-                        cg%scr(scr_fluid%iescr, i,j,k) = ecout
+                        cg%u(scr_fluid%iescr, i,j,k) = ecout
                      endif 
-                     cg%scr(scr_fluid%ixfscr,i,j,k) = 0.0
-                     cg%scr(scr_fluid%iyfscr,i,j,k) = 0.0
-                     cg%scr(scr_fluid%izfscr,i,j,k) = 0.0
+                     cg%u(scr_fluid%ixfscr,i,j,k) = 0.0
+                     cg%u(scr_fluid%iyfscr,i,j,k) = 0.0
+                     cg%u(scr_fluid%izfscr,i,j,k) = 0.0
                   enddo
                enddo
             enddo

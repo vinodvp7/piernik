@@ -135,7 +135,7 @@ contains
 
       use constants,        only: INVALID, cbuff_len
       use dataio_pub,       only: msg, warn
-      use fluidindex,       only: iarr_all_dn, iarr_all_mx, iarr_all_my, iarr_all_mz, iarr_all_en
+      use fluidindex,       only: iarr_all_dn, iarr_all_mx, iarr_all_my, iarr_all_mz, iarr_all_en,iarr_all_escr
       use mpisetup,         only: master
       use named_array_list, only: qna, wna
       use refinement,       only: inactive_name
@@ -169,6 +169,9 @@ contains
          return
       else if (trim(vname) == "ener") then
          call alloc_ic(iarr_all_en)
+         return
+      else if (trim(vname) == "escr") then
+         call alloc_ic(iarr_all_escr)
          return
       endif
       !> \todo identify here all {den,vl[xyz],ene}{d,n,i}

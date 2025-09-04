@@ -208,58 +208,85 @@ contains
    end subroutine problem_initial_conditions
 !-----------------------------------------------------------------------------
    subroutine custom_boundary(dir, side, cg, wn, qn, emfdir)
-
-      use constants,        only: xdim,ydim,zdim,LO,HI
+      use constants,        only: xdim, ydim, zdim, LO, HI
       use domain,           only: dom
-      use named_array_list, only: wna        
-      use fluidindex,       only: scrind
+      use named_array_list, only: wna
+      use fluidindex,       only: scrind, iarr_all_dn, iarr_all_mx, iarr_all_my, iarr_all_mz, iarr_all_en
       use grid_cont,        only: grid_container
-
       implicit none
-
       integer(kind=4),               intent(in)    :: dir, side
       type(grid_container), pointer, intent(inout) :: cg
       integer(kind=4),     optional, intent(in)    :: wn, qn, emfdir
 
       integer(kind=4) :: ib, ssign, l(3,LO:HI), r(3,LO:HI)
-      integer(kind=4) :: iflux(3)
+      integer(kind=4) :: imn, iflux(3)
       real(kind=8), pointer :: A(:,:,:,:)
 
       A => cg%w(wn)%arr
+      ssign = 2*side - (LO+HI)
+      l = cg%lhn ; r = l
 
-      if (wn /= wna%scr) then                  ! Do simple outflow for magnetic field and MHD gas
-         ssign = 2*side - (LO+HI)
-         l = cg%lhn ; r = l
-         do ib=1, dom%nb
+      ! ---------- GAS ----------
+      if (wn == wna%fi) then
+         ! which momentum is normal?
+         select case (dir)
+            case (xdim); imn = iarr_all_mx(1)
+            case (ydim); imn = iarr_all_my(1)
+            case (zdim); imn = iarr_all_mz(1)
+         end select
+         do ib = 1, dom%nb
             l(dir,:) = cg%ijkse(dir,side) + ssign*ib
             r(dir,:) = cg%ijkse(dir,side) + ssign*(1-ib)
+            ! default: copy (outflow)
             A(:, l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = &
             A(:, r(xdim,LO):r(xdim,HI), r(ydim,LO):r(ydim,HI), r(zdim,LO):r(zdim,HI))
+            ! special case: LEFT reflecting for gas
+            if (side == LO) then
+               A(imn, l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = &
+               -A(imn, r(xdim,LO):r(xdim,HI), r(ydim,LO):r(ydim,HI), r(zdim,LO):r(zdim,HI))
+            end if
          end do
          return
       end if
 
-      ! map flux component indices for SCR(1)
-      iflux(xdim) = scrind%scr(1)%ixfscr          ! xFc
-      iflux(ydim) = scrind%scr(1)%iyfscr          ! yFc
-      iflux(zdim) = scrind%scr(1)%izfscr          ! zFc
+      ! ---------- CRs ----------
+      if (wn == wna%scr) then
+         ! CR flux component indices for species 1 (extend if multiple species)
+         iflux(xdim) = scrind%scr(1)%ixfscr
+         iflux(ydim) = scrind%scr(1)%iyfscr
+         iflux(zdim) = scrind%scr(1)%izfscr
+         do ib = 1, dom%nb
+            l(dir,:) = cg%ijkse(dir,side) + ssign*ib
+            r(dir,:) = cg%ijkse(dir,side) + ssign*(1-ib)
 
-      ssign = 2*side - (LO+HI)
-      l = cg%lhn ; r = l
-      do ib=1, dom%nb
+            if (side == LO) then
+               ! Fix Ec to source value El and reflect normal CR flux
+               A(scrind%scr(1)%iescr, l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = El
+               A(iflux(dir),          l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = &
+               -A(iflux(dir),          r(xdim,LO):r(xdim,HI), r(ydim,LO):r(ydim,HI), r(zdim,LO):r(zdim,HI))
+               ! copy tangential CR fluxes
+               if (dir /= xdim) A(iflux(xdim), l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = &
+                                 A(iflux(xdim), r(xdim,LO):r(xdim,HI), r(ydim,LO):r(ydim,HI), r(zdim,LO):r(zdim,HI))
+               if (dir /= ydim) A(iflux(ydim), l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = &
+                                 A(iflux(ydim), r(xdim,LO):r(xdim,HI), r(ydim,LO):r(ydim,HI), r(zdim,LO):r(zdim,HI))
+               if (dir /= zdim) A(iflux(zdim), l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = &
+                                 A(iflux(zdim), r(xdim,LO):r(xdim,HI), r(ydim,LO):r(ydim,HI), r(zdim,LO):r(zdim,HI))
+            else
+               ! HI side: outflow copy for CRs
+               A(:, l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = &
+               A(:, r(xdim,LO):r(xdim,HI), r(ydim,LO):r(ydim,HI), r(zdim,LO):r(zdim,HI))
+            end if
+         end do
+         return
+      end if
+
+      ! ---------- everything else (e.g. B): simple outflow ----------
+      do ib = 1, dom%nb
          l(dir,:) = cg%ijkse(dir,side) + ssign*ib
          r(dir,:) = cg%ijkse(dir,side) + ssign*(1-ib)
-         ! left: Ec=3 and reflect the normal CR flux
-         A(scrind%scr(1)%iescr, l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = El
-         A(iflux(dir),          l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = &
-         -A(iflux(dir),       r(xdim,LO):r(xdim,HI), r(ydim,LO):r(ydim,HI), r(zdim,LO):r(zdim,HI))
-         ! copy tangential fluxes
-         if (dir /= xdim) A(iflux(xdim), l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = &
-                           A(iflux(xdim), r(xdim,LO):r(xdim,HI), r(ydim,LO):r(ydim,HI), r(zdim,LO):r(zdim,HI))
-         if (dir /= ydim) A(iflux(ydim), l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = &
-                           A(iflux(ydim), r(xdim,LO):r(xdim,HI), r(ydim,LO):r(ydim,HI), r(zdim,LO):r(zdim,HI))
-         if (dir /= zdim) A(iflux(zdim), l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = &
-                           A(iflux(zdim), r(xdim,LO):r(xdim,HI), r(ydim,LO):r(ydim,HI), r(zdim,LO):r(zdim,HI))
+         A(:, l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = &
+         A(:, r(xdim,LO):r(xdim,HI), r(ydim,LO):r(ydim,HI), r(zdim,LO):r(zdim,HI))
       end do
    end subroutine custom_boundary
+
 end module initproblem

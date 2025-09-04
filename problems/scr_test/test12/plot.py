@@ -94,11 +94,9 @@ def load_and_stitch_data(fname):
     return stitched_data, global_cell_dims.astype(int), origin, spacing
 #%%
 import matplotlib.pyplot as plt
-from matplotlib.colors import LogNorm  # optional
-import matplotlib.patches as mpatches
 
 plt.rcParams.update({
-    'figure.dpi': 720, 'savefig.dpi': 720,
+    'figure.dpi': 150, 'savefig.dpi': 720,
     'axes.linewidth': 2.5,
     'font.size': 12,
     'xtick.major.size': 5, 'ytick.major.size': 5,
@@ -109,74 +107,38 @@ plt.rcParams.update({
 })
 
 
-data_to_plot = 'escr_01'
+fig,ax=plt.subplots(3,1,figsize=(8,6),sharex=True)
 
-file = '/home/vinodvp/simdir/piernik/runs/test9/scr_tst_0000.h5'
+file = '/home/vinodvp/simdir/piernik/runs/test12/scr_tst_0001.h5'
 data, cell_dims, origin, spacing = load_and_stitch_data(file)
 N, dx, x0 = cell_dims[0], spacing[0], origin[0]
 xe = x0 + np.arange(N+1)*dx                   # assume x0 is left edge
 x  = 0.5*(xe[:-1] + xe[1:])                   # centers
 
-N, dy, y0 = cell_dims[1], spacing[1], origin[1]
-ye = y0 + np.arange(N+1)*dy                   # assume x0 is left edge
-y  = 0.5*(ye[:-1] + ye[1:])                   # centers
+ax[0].plot(x,data['density'][0,0,:],color='k',linewidth=1.5)
+ax[0].set_ylabel(r'$\mathbf{\rho}$', fontweight='bold', labelpad=10)
 
-fig,ax=plt.subplots(2,2,figsize=(8,6))
-
-d0=data[data_to_plot][0,:,:]
-ax[0,0].imshow(d0, extent=[x[0], x[-1], y[0], y[-1]],
-               origin="lower",
-               cmap="RdGy_r", norm=LogNorm(vmin=1e-6, vmax=1))
-
-ax[0,0].streamplot(x,y,
-    data["mag_field_x"][0,:,:],data["mag_field_y"][0,:,:],
-    density=0.1,color='b')
-
-ax[0,0].set_xlabel(r'$\mathbf{x}$', fontweight='bold')
-ax[0,0].set_ylabel(r'$\mathbf{y}$', fontweight='bold')
-ax[0,0].set_title('t=0.0', fontweight='bold')
-
-file = '/home/vinodvp/simdir/piernik/runs/test9/scr_tst_0001.h5'
+file = '/home/vinodvp/simdir/piernik/runs/test12/scr_tst_0010.h5'
 data, cell_dims, origin, spacing = load_and_stitch_data(file)
-d1=data[data_to_plot][0,:,:]
-ax[0,1].imshow(d1, extent=[x[0], x[-1], y[0], y[-1]],
-               origin="lower",
-               cmap="RdGy_r", norm=LogNorm(vmin=1e-6, vmax=1))
-
-ax[0,1].streamplot(x,y,
-    data["mag_field_x"][0,:,:],data["mag_field_y"][0,:,:],
-    density=0.1,color='b')
-
-ax[0,1].set_xlabel(r'$\mathbf{x}$', fontweight='bold')
-ax[0,1].set_ylabel(r'$\mathbf{y}$', fontweight='bold')
-ax[0,1].set_title('t=0.2', fontweight='bold')
-
-
-file = '/home/vinodvp/simdir/piernik/runs/test9/scr_tst_0002.h5'
+d = data['escr_01'][0,0,:] * (data['mag_field_x'][0,0,:]/np.sqrt(data['density'][0,0,:]))**(4/3) 
+ax[1].plot(x,d,color='k',linewidth=1.5,label='t=1000')
+ax[1].set_ylabel(r'$\mathbf{E_cv^{4/3}_A}$', fontweight='bold', labelpad=2)
+ax[1].legend(fontsize='small')
+ax[1].set_yticks(np.linspace(min(d),max(d),4))
+file = '/home/vinodvp/simdir/piernik/runs/test12/scr_tst_0001.h5'
 data, cell_dims, origin, spacing = load_and_stitch_data(file)
-d2=data[data_to_plot][0,:,:]
-ax[1,0].imshow(d2, extent=[x[0], x[-1], y[0], y[-1]],
-               origin="lower",
-               cmap="RdGy_r", norm=LogNorm(vmin=1e-6, vmax=1))
+ax[2].plot(x,data['escr_01'][0,0,:],color='k',linewidth=1.5, label='t=100')
 
-ax[1,0].streamplot(x,y,
-    data["mag_field_x"][0,:,:],data["mag_field_y"][0,:,:],
-    density=0.1,color='b')
+file = '/home/vinodvp/simdir/piernik/runs/test12/scr_tst_0002.h5'
+data, cell_dims, origin, spacing = load_and_stitch_data(file)
+ax[2].plot(x,data['escr_01'][0,0,:],color='r',linewidth=1.5, label='t=200',linestyle='dashed')
 
-ax[1,0].set_xlabel(r'$\mathbf{x}$', fontweight='bold')
-ax[1,0].set_ylabel(r'$\mathbf{y}$', fontweight='bold')
-ax[1,0].set_title('t=0.4', fontweight='bold')
+file = '/home/vinodvp/simdir/piernik/runs/test12/scr_tst_0010.h5'
+data, cell_dims, origin, spacing = load_and_stitch_data(file)
+ax[2].plot(x,data['escr_01'][0,0,:],color='b',linewidth=1.5, label='t=1000',linestyle='dashed')
+ax[2].legend(fontsize='small')
+ax[2].set_xlabel(r'$\mathbf{x}$', fontweight='bold')
+ax[2].set_ylabel(r'$\mathbf{E_c}$', fontweight='bold', labelpad=25)
 
-for a in (ax[0,0], ax[0,1], ax[1,0]):
-    cb = fig.colorbar(a.images[-1], ax=a, fraction=0.046, pad=0.04)
-    cb.set_label(r'$\mathbf{E}_c$', fontweight='bold', labelpad=6)  # bold E with subscript c
-
-ax[1,1].axis('off')
-plt.tight_layout()
-for a in (ax[0,0], ax[0,1], ax[1,0]):
-    for s in a.spines.values(): s.set_linewidth(3)
-
-# Bold border around the whole figure
-fig.add_artist(mpatches.Rectangle((0.005, 0.005), 0.99, 0.99,
-                                  transform=fig.transFigure, fill=False, lw=4, ec='black'))
-plt.savefig(r'{}.png'.format(data_to_plot),dpi=720)
+plt.xlim(0,600)
+plt.savefig(r'plot.png',dpi=720)

@@ -1,5 +1,5 @@
 $BASE_DOMAIN
-  n_d = 1025,1,1
+  n_d = 1024,1,1
   nb  = 4
   bnd_xl = 'user'
   bnd_xr = 'user'

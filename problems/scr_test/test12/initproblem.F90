@@ -28,13 +28,14 @@
 #include "piernik.h"
 
 module initproblem
-! ------------------------------------------------!
+! ----------------------------------------------- !
 ! A New Numerical Scheme for Cosmic-Ray Transport !
 ! Yan-Fei Jiang and S. Peng Oh : ApJ 854 5        !
 ! DOI 10.3847/1538-4357/aaa6ce                    !
-! ------------------------------------------------!
+! ----------------------------------------------- !
 ! Initial condition                               !
-! See section 4.1.5 Anisotropic Diffusion         ! 
+! See section 4.1.3 Bottleneck Effect: Balance    !
+!  between CR Streaming and Heating Terms         ! 
 ! ------------------------------------------------!
 
    implicit none
@@ -42,18 +43,23 @@ module initproblem
    private
    public :: read_problem_par, problem_initial_conditions, problem_pointers
 
-   real               :: a, b, bx, by
+   real               :: dh, dc, x0, dx, El, E0
 
-   namelist /PROBLEM_CONTROL/  a, b, bx, by
+   namelist /PROBLEM_CONTROL/  dh, dc, x0, dx, El, E0
 
 contains
 
 !-----------------------------------------------------------------------------
    subroutine problem_pointers
 
+      use fluidboundaries_funcs, only: user_fluidbnd
+
       implicit none
 
+      user_fluidbnd => custom_boundary
+
    end subroutine problem_pointers
+
 
 !-----------------------------------------------------------------------------
 
@@ -65,10 +71,12 @@ contains
 
       implicit none
 
-      a  = 40.0
-      b  = 40.0
-      bx = 1.0
-      by = 1.0
+      dh = 0.01 
+      dc = 1.0
+      x0 = 200.0
+      dx = 25.0
+      El = 3.0
+      E0 = 1e-6
 
 
       if (master) then
@@ -89,10 +97,12 @@ contains
          close(nh%lun)
          call nh%compare_namelist()
 
-         rbuff(1)  = a
-         rbuff(2)  = b
-         rbuff(3)  = bx
-         rbuff(4)  = by
+         rbuff(1)  = dh
+         rbuff(2)  = dc
+         rbuff(3)  = x0
+         rbuff(4)  = dx
+         rbuff(5)  = El
+         rbuff(6)  = E0
 
       endif
 
@@ -100,10 +110,12 @@ contains
 
       if (slave) then
 
-         a   = rbuff(1)
-         b   = rbuff(2)
-         bx  = rbuff(3)
-         by  = rbuff(4)
+         dh = rbuff(1)
+         dc = rbuff(2)
+         x0 = rbuff(3)
+         dx = rbuff(4)
+         El = rbuff(5)
+         E0 = rbuff(6)
 
       endif
 
@@ -119,18 +131,20 @@ contains
       use fluidtypes,  only: component_fluid, component_scr
       use func,        only: ekin, emag
       use grid_cont,   only: grid_container
-
-
+#ifndef ISO
+!      use global,      only: smallei
+#endif /* !ISO */
       implicit none
 
       class(component_fluid), pointer :: fl
       class(component_scr),allocatable:: scr_fluid
       integer                         :: i, j, k
-      real                            :: xi, yj, zk
+      real                            :: xi, yj, zk, vx, vy, vz, rho, pre
       type(cg_list_element),  pointer :: cgl
       type(grid_container),   pointer :: cg
       integer                         :: p
 
+      !   Secondary parameters
       do p = 1, flind%fluids
 
          fl => flind%all_fluids(p)%fl
@@ -144,19 +158,24 @@ contains
                   xi = cg%x(i)
                   do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
                      zk = cg%z(k)
-                     cg%u(fl%idn,i,j,k) = 1.0
+                     cg%u(fl%idn,i,j,k) = dh + (dc - dh) * (1. + tanh((xi-x0)/dx)) * (1. + tanh((x0-xi)/dx))
                      cg%u(fl%imx,i,j,k) = 0.0
                      cg%u(fl%imy,i,j,k) = 0.0
                      cg%u(fl%imz,i,j,k) = 0.0
                      if (fl%has_energy) then
+
                         cg%u(fl%ien,i,j,k) = 1.0/fl%gam_1
                         cg%u(fl%ien,i,j,k) = cg%u(fl%ien,i,j,k) + ekin(cg%u(fl%imx,i,j,k), cg%u(fl%imy,i,j,k), cg%u(fl%imz,i,j,k), cg%u(fl%idn,i,j,k))
+
                         if (fl%is_magnetized) then
-                           cg%b(xdim,i,j,k)   =  bx
-                           cg%b(ydim,i,j,k)   =  by
+
+                           cg%b(xdim,i,j,k)   =  1.0
+                           cg%b(ydim,i,j,k)   =  0.0
                            cg%b(zdim,i,j,k)   =  0.0
                            cg%u(fl%ien,i,j,k) = cg%u(fl%ien,i,j,k) + emag(cg%b(xdim,i,j,k), cg%b(ydim,i,j,k), cg%b(zdim,i,j,k))
+
                         endif
+
                      endif
                   enddo
                enddo
@@ -164,7 +183,7 @@ contains
             cgl => cgl%nxt
          enddo
       enddo
-! Initializing streaming cosmic ray fluid components Ec, Fcx, Fcy, Fcz
+
       do p = 1, scrind%stcosm
          scr_fluid = scrind%scr(p)
          cgl => leaves%first
@@ -176,7 +195,7 @@ contains
                   xi = cg%x(i)
                   do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
                      zk = cg%z(k)
-                     cg%scr(scr_fluid%iescr, i,j,k) = exp(- a * xi * xi - b * yj * yj)
+                     cg%scr(scr_fluid%iescr, i,j,k) = E0
                      cg%scr(scr_fluid%ixfscr,i,j,k) = 0.0
                      cg%scr(scr_fluid%iyfscr,i,j,k) = 0.0
                      cg%scr(scr_fluid%izfscr,i,j,k) = 0.0
@@ -188,4 +207,59 @@ contains
       enddo
    end subroutine problem_initial_conditions
 !-----------------------------------------------------------------------------
+   subroutine custom_boundary(dir, side, cg, wn, qn, emfdir)
+
+      use constants,        only: xdim,ydim,zdim,LO,HI
+      use domain,           only: dom
+      use named_array_list, only: wna        
+      use fluidindex,       only: scrind
+      use grid_cont,        only: grid_container
+
+      implicit none
+
+      integer(kind=4),               intent(in)    :: dir, side
+      type(grid_container), pointer, intent(inout) :: cg
+      integer(kind=4),     optional, intent(in)    :: wn, qn, emfdir
+
+      integer(kind=4) :: ib, ssign, l(3,LO:HI), r(3,LO:HI)
+      integer(kind=4) :: iflux(3)
+      real(kind=8), pointer :: A(:,:,:,:)
+
+      A => cg%w(wn)%arr
+
+      if (wn /= wna%scr) then                  ! Do simple outflow for magnetic field and MHD gas
+         ssign = 2*side - (LO+HI)
+         l = cg%lhn ; r = l
+         do ib=1, dom%nb
+            l(dir,:) = cg%ijkse(dir,side) + ssign*ib
+            r(dir,:) = cg%ijkse(dir,side) + ssign*(1-ib)
+            A(:, l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = &
+            A(:, r(xdim,LO):r(xdim,HI), r(ydim,LO):r(ydim,HI), r(zdim,LO):r(zdim,HI))
+         end do
+         return
+      end if
+
+      ! map flux component indices for SCR(1)
+      iflux(xdim) = scrind%scr(1)%ixfscr          ! xFc
+      iflux(ydim) = scrind%scr(1)%iyfscr          ! yFc
+      iflux(zdim) = scrind%scr(1)%izfscr          ! zFc
+
+      ssign = 2*side - (LO+HI)
+      l = cg%lhn ; r = l
+      do ib=1, dom%nb
+         l(dir,:) = cg%ijkse(dir,side) + ssign*ib
+         r(dir,:) = cg%ijkse(dir,side) + ssign*(1-ib)
+         ! left: Ec=3 and reflect the normal CR flux
+         A(scrind%scr(1)%iescr, l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = El
+         A(iflux(dir),          l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = &
+         -A(iflux(dir),       r(xdim,LO):r(xdim,HI), r(ydim,LO):r(ydim,HI), r(zdim,LO):r(zdim,HI))
+         ! copy tangential fluxes
+         if (dir /= xdim) A(iflux(xdim), l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = &
+                           A(iflux(xdim), r(xdim,LO):r(xdim,HI), r(ydim,LO):r(ydim,HI), r(zdim,LO):r(zdim,HI))
+         if (dir /= ydim) A(iflux(ydim), l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = &
+                           A(iflux(ydim), r(xdim,LO):r(xdim,HI), r(ydim,LO):r(ydim,HI), r(zdim,LO):r(zdim,HI))
+         if (dir /= zdim) A(iflux(zdim), l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = &
+                           A(iflux(zdim), r(xdim,LO):r(xdim,HI), r(ydim,LO):r(ydim,HI), r(zdim,LO):r(zdim,HI))
+      end do
+   end subroutine custom_boundary
 end module initproblem

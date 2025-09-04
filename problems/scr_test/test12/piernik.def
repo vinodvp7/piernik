@@ -8,6 +8,6 @@
 
 #define STREAM_CR
 
-
+#define MAGNETIC
 
 #undef GRAV

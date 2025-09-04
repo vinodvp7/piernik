@@ -48,16 +48,16 @@ $FLUID_IONIZED
 $STREAMING_CR
    nscr                 = 1
    vmax                 = 100.0
-   sigma_paral          = 1e6
+   sigma_paral          = 10
    sigma_perp           = 1e6
    ord_pc_grad          = 4
    disable_feedback     = .false.      ! feedback to MHD gas 
-   disable_streaming    = .false.  
+   disable_streaming    = .true.  
    cr_sound_speed       = .true.
 
 /
 $NUMERICAL_SETUP
-  cfl     = 0.1
+  cfl     = 0.5
   smalld  = 1.e-5
   disallow_negatives = .false.
   smallei = 1.e-5
@@ -74,10 +74,9 @@ $PROBLEM_CONTROL
 /
 
 $AMR
-
-   bsize = 3*16
-   level_max = 3
-   n_updAMR = 3
-   refine_vars(1) = "escr", "relgrad", 1e-2 ! equivalent to the default problem criteria
+    bsize = 3*8
+    level_max = 4
+    n_updAMR = 3
+    refine_vars(1) = "escr", "threshold", 0.9 , 1,        ! refine the sedov shell to level 1
 
 /

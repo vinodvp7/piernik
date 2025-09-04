@@ -157,7 +157,7 @@ contains
 
 ! Initializing streaming cosmic ray fluid components Ec, Fcx, Fcy, Fcz
       
-      do p = 1, scrind%stcosm
+      do p = 1, scrind%nscr
          scr_fluid = scrind%scr(p)
          cgl => leaves%first
          do while (associated(cgl))

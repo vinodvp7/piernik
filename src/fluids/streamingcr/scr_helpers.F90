@@ -181,14 +181,14 @@ contains
 
       if (.not. at_source) call grad_pc(cg,scri)
 
-      do ns = 1, scrind%stcosm
+      do ns = 1, scrind%nscr
          cg%w(sgmd)%arr(2*(ns - 1) + xdim ,:,:,:) = sigma_paral(ns) * vmax 
          cg%w(sgmd)%arr(2*(ns - 1) + ydim ,:,:,:) = sigma_perp(ns) * vmax    ! z and y are equivalent
       end do
 
 #ifdef MAGNETIC
       if (.not. disable_streaming) then
-         do ns = 1, scrind%stcosm 
+         do ns = 1, scrind%nscr 
 
             bdotpc(:,:,:) = 0.0 
             do ddim = xdim, zdim
@@ -318,7 +318,7 @@ contains
       associate( sd => cg%w(wna%ind(sgmn))%arr, &
                  v  => cg%w(wna%ind(v_diff  ))%arr )
 
-         do ns = 1, scrind%stcosm
+         do ns = 1, scrind%nscr
             do cdim = xdim, zdim
                do concurrent (k = cg%lhn(zdim,LO):cg%lhn(zdim,HI), j = cg%lhn(ydim,LO):cg%lhn(ydim,HI), &
                & i = cg%lhn(xdim,LO):cg%lhn(xdim,HI))
@@ -345,7 +345,7 @@ contains
       end associate
 
 #ifdef MAGNETIC
-      do ns = 1, scrind%stcosm
+      do ns = 1, scrind%nscr
          do concurrent (k = cg%lhn(zdim,LO):cg%lhn(zdim,HI), j = cg%lhn(ydim,LO):cg%lhn(ydim,HI), &
          & i = cg%lhn(xdim,LO):cg%lhn(xdim,HI))
             cp = cg%w(rtmi)%arr(cphi  ,i,j,k)
@@ -364,7 +364,7 @@ contains
 #endif /* MAGNETIC */
 
       if (cr_sound_speed) then
-         do ns = 1, scrind%stcosm
+         do ns = 1, scrind%nscr
             do cdim = xdim, zdim   ! c_scr = sqrt (gamma * (gamma-1) Ec /rho )
                do concurrent (k = cg%lhn(zdim,LO):cg%lhn(zdim,HI), j = cg%lhn(ydim,LO):cg%lhn(ydim,HI), &
                & i = cg%lhn(xdim,LO):cg%lhn(xdim,HI))
@@ -399,7 +399,7 @@ subroutine gradient_2nd_order(cg, ind)
       ny   = cg%n_(ydim)
       nz   = cg%n_(zdim)
 
-      do ns = 1, scrind%stcosm 
+      do ns = 1, scrind%nscr 
 ! --- X-Direction Gradient ---
          if (dom%has_dir(xdim)) then
             ! Loop over the entire domain (including ghosts), except the very first and last cells
@@ -500,7 +500,7 @@ subroutine gradient_4th_order(cg, ind)
       ny   = cg%n_(ydim)
       nz   = cg%n_(zdim)
 
-      do ns = 1, scrind%stcosm
+      do ns = 1, scrind%nscr
 
 ! --- X-Direction Gradient ---
          if (dom%has_dir(xdim)) then

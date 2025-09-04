@@ -79,7 +79,7 @@ contains
          call my_allocate(u,[cg%n_(ddim), size(cg%scr,1,kind=4)])
          call my_allocate(flux,[size(u, 1,kind=4)-I_ONE,size(u, 2,kind=4)])
          call my_allocate(tflux,[size(u, 2,kind=4),size(u, 1,kind=4)])
-         call my_allocate(vdiff1d, [cg%n_(ddim) , scrind%stcosm])        ! interaction coefficient along one dimension for all species
+         call my_allocate(vdiff1d, [cg%n_(ddim) , scrind%nscr])        ! interaction coefficient along one dimension for all species
          call my_allocate(vx,[cg%n_(ddim)])
          do i2 = cg%ijkse(pdims(ddim, ORTHO2), LO), cg%ijkse(pdims(ddim, ORTHO2), HI)
             do i1 = cg%ijkse(pdims(ddim, ORTHO1), LO), cg%ijkse(pdims(ddim, ORTHO1), HI)
@@ -94,7 +94,7 @@ contains
 
                vdiff => cg%w(wna%ind(v_diff))%get_sweep(ddim, i1, i2)
 
-               vdiff1d(:,:) = transpose(vdiff(ddim : I_THREE*(scrind%stcosm - I_ONE) + ddim : I_THREE,:) )
+               vdiff1d(:,:) = transpose(vdiff(ddim : I_THREE*(scrind%nscr - I_ONE) + ddim : I_THREE,:) )
 
                pu => cg%w(scri)%get_sweep(ddim,i1,i2)
                pf => cg%w(uhi)%get_sweep(ddim,i1,i2)
@@ -269,7 +269,7 @@ contains
       vl(:) = ql(:,nvar)                   ! last term is vxl
       vr(:) = qr(:,nvar)                   ! last term is vrl
 
-      do j = 1,scrind%stcosm
+      do j = 1,scrind%nscr
          vdiff_l(1:size(flx,1)) = vdiff(1:size(flx,1),   j)
          vdiff_r(1:size(flx,1)) = vdiff(2:size(flx,1)+1, j)
          do i = 1,size(flx,1)

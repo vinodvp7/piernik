@@ -151,7 +151,7 @@ contains
 
       real, dimension(size(u, 1), size(u, 2)) :: q
        
-      do p = 1, scrind%stcosm
+      do p = 1, scrind%nscr
          q(:,1 + 4 * (p-1)) = u(:,1 + 4 * (p-1))
          q(:,2 + 4 * (p-1)) = u(:,2 + 4 * (p-1))       
          q(:,3 + 4 * (p-1)) = u(:,3 + 4 * (p-1))

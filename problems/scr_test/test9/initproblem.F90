@@ -178,7 +178,7 @@ contains
 
       fl => flind%all_fluids(1)%fl               ! The flux is set w.r.t to first fluid
 
-      do p = 1, scrind%stcosm
+      do p = 1, scrind%nscr
          scr_fluid = scrind%scr(p)
          cgl => leaves%first
          do while (associated(cgl))

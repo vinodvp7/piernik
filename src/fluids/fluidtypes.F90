@@ -160,7 +160,7 @@ module fluidtypes
 
    type :: var_numbers_scr
       integer(kind=4) :: all         = 0      !< total number of fluid variables = the size of array \a u(:,:,:,:) in the first index
-      integer(kind=4) :: stcosm      = 0      !< number of streaming CR species
+      integer(kind=4) :: nscr        = 0      !< number of streaming CR species
       class(component_scr), allocatable, dimension(:) :: scr
    end type var_numbers_scr
 #endif /* STREAM_CR */
@@ -427,7 +427,7 @@ contains
 
          this%pos = this%pos + iscr
          iscr = iscr + I_ONE
-         scrind%stcosm     = scrind%stcosm + I_ONE       ! # of streaming cosmic rays
+         scrind%nscr     = scrind%nscr + I_ONE       ! # of streaming cosmic rays
          scrind%all        = scrind%all+ I_FOUR          
          
          ma1d = [this%all]

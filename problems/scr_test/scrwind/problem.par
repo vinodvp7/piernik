@@ -50,12 +50,12 @@
 
 $STREAMING_CR
    nscr                    = 1
-   vmax                    = 100.0
+   vmax                    = 1000.0                     ! For accurate result this needs to be high
    sigma_paral             = 3.333e-5
-   sigma_perp              = 3.333e-5
+   sigma_perp              = 1e10
    ord_pc_grad             = 2
    disable_feedback        = .false.      ! feedback to MHD gas
-   disable_streaming       = .false.
+   disable_streaming       = .true.
    cr_sound_speed          = .true.
    escr_floor              = 0.e-2
 /
@@ -63,7 +63,7 @@ $NUMERICAL_SETUP
   cfl     = 0.1
   smalld  = 1.e-5
   smallei = 1.e-4
-  limiter = 'moncen'
+  limiter = 'vanleer'
   solver_type = 'unsplit'
   solver_str = 'riemann'
   integration_order = 2

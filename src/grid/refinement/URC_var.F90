@@ -135,13 +135,10 @@ contains
 
       use constants,        only: INVALID, cbuff_len
       use dataio_pub,       only: msg, warn
-      use fluidindex,       only: iarr_all_dn, iarr_all_mx, iarr_all_my, iarr_all_mz, iarr_all_en
+      use fluidindex,       only: iarr_all_dn, iarr_all_mx, iarr_all_my, iarr_all_mz, iarr_all_en, iarr_all_escr
       use mpisetup,         only: master
       use named_array_list, only: qna, wna
       use refinement,       only: inactive_name
-#ifdef STREAM_CR
-      use fluidindex,       only: iarr_all_escr
-#endif /* STREAM_CR */
 
       implicit none
 
@@ -193,8 +190,9 @@ contains
          logical,optional,              intent(in) :: scr_var
 
          iv = wna%fi
+#ifdef STREAM_CR
          if (present(scr_var) .and. scr_var) iv = wna%scr
-
+#endif /* STREAM_CR */
          allocate(ic(size(tab)))
          ic = tab
 

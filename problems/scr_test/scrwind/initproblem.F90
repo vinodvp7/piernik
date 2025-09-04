@@ -219,7 +219,7 @@ contains
          cgl => cgl%nxt
       enddo
 #ifdef STREAM_CR
-      do p = 1, scrind%stcosm
+      do p = 1, scrind%nscr
          scr_fluid = scrind%scr(p)
          cgl => leaves%first
          do while (associated(cgl))

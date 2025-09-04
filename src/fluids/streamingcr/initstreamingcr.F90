@@ -61,7 +61,7 @@ module initstreamingcr
    integer, parameter                      :: nscr_max   = 50     !< Maximum number of allowed streaming cr component 
    real, parameter                         :: tau_asym   = 1e-3   !< Used in the calculation of R in streaming_cr_hlle where below this value the function is taylor expanded in tau
    real, parameter                         :: sigma_huge = 1e10   !< Default huge value for interaction coefficient that essentially means diffusion is switched off
-   real, parameter                         :: gamma_def  = 5./3.  !< Default huge value for interaction coefficient that essentially means diffusion is switched off
+   real, parameter                         :: gamma_def  = 4./3.  !< Default huge value for interaction coefficient that essentially means diffusion is switched off
 
 contains
 

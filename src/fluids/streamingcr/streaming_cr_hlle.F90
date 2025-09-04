@@ -258,14 +258,12 @@ contains
       real, intent(in)    :: vdiff(:,:)        ! cell-centered, length = ncells
       real, intent(inout) :: flx(:,:)          ! nint x nvars
 
-      real, dimension(4)         :: fl, fr
+      real, dimension(4)              :: fl, fr
+      real, dimension(size(ql,1))     :: vl, vr
+      real, dimension(size(flx,1))    :: vdiff_l, vdiff_r
+      real                            :: mean_adv, mean_diff, al, ar, bp, bm, tmp
+      integer                         :: nvar, nx, i, j
 
-      real, dimension(size(ql,1))     :: vl, vr, al, ar, bp, bm
-      real, dimension(size(flx,1))     :: vdiff_l, vdiff_r
-      real :: mean_adv, mean_diff
-
-      integer :: nvar, nx, i, j
-      real:: tmp
       nx = size(ql,1)
       nvar = size(ql,2)
       vl(:) = ql(:,nvar)                   ! last term is vxl
@@ -287,14 +285,14 @@ contains
 
             bp = max(ar, 0.0)   
             bm = min(al, 0.0)
-            fl(1) = ql(i,2 + 4 * (j-1)) * vmax - bm(i) * ql(i,1+ 4 * (j-1))
-            fr(1) = qr(i,2 + 4 * (j-1)) * vmax  - bp(i) * qr(i,1+ 4 * (j-1))
-            fl(2) = vmax  / 3.0  * ql(i,1 + 4 * (j-1)) - bm(i) * ql(i,2+ 4 * (j-1))
-            fr(2) = vmax  / 3.0  * qr(i,1 + 4 * (j-1)) - bp(i) * qr(i,2+ 4 * (j-1))
-            fl(3) =   - bm(i) * ql(i,3+ 4 * (j-1)) ; fr(3) =   - bp(i) * qr(i,3+ 4 * (j-1)) 
-            fl(4) =   - bm(i) * ql(i,4+ 4 * (j-1))  ; fr(4) =  - bp(i) * qr(i,4+ 4 * (j-1)) 
+            fl(1) = ql(i,2 + 4 * (j-1)) * vmax - bm * ql(i,1+ 4 * (j-1))
+            fr(1) = qr(i,2 + 4 * (j-1)) * vmax - bp * qr(i,1+ 4 * (j-1))
+            fl(2) = vmax / 3.0  * ql(i,1 + 4 * (j-1)) - bm * ql(i,2+ 4 * (j-1))
+            fr(2) = vmax / 3.0  * qr(i,1 + 4 * (j-1)) - bp * qr(i,2+ 4 * (j-1))
+            fl(3) = - bm * ql(i,3+ 4 * (j-1)) ; fr(3) = - bp * qr(i,3+ 4 * (j-1)) 
+            fl(4) = - bm * ql(i,4+ 4 * (j-1)) ; fr(4) = - bp * qr(i,4+ 4 * (j-1)) 
             tmp = 0.0
-            if (abs(bp(i) - bm(i)) > 1e-20) tmp = 0.5*(bp(i) + bm(i))/(bp(i) - bm(i))
+            if (abs(bp - bm) > 1e-20) tmp = 0.5*(bp + bm)/(bp - bm)
             flx(i,1+4*(j-1):4+4*(j-1)) = 0.5 * (fl + fr) + (fl - fr) * tmp
          end do
       end do

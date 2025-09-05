@@ -44,11 +44,13 @@ contains
                                   psi_n, psih_n, psidim, cs_i2_n, first_stage, xdim, ydim, zdim, I_ONE
       use global,           only: integration_order
       use domain,           only: dom
-      use fluidindex,       only: iarr_all_swp, iarr_mag_swp
+      use fluidindex,       only: iarr_all_swp, iarr_mag_swp, flind
       use fluxtypes,        only: ext_fluxes
       use unsplit_source,   only: apply_source
       use diagnostics,      only: my_allocate, my_deallocate
-
+#ifdef STREAM_CR
+      use constants,        only: v_diff
+#endif /* STREAM_CR */
       implicit none
 
       type(grid_container), pointer, intent(in) :: cg
@@ -70,7 +72,10 @@ contains
       real, dimension(:,:),allocatable           :: tbflux                ! to temporarily store transpose of bflux
       type(ext_fluxes)                           :: eflx
       integer                                    :: i_cs_iso2
-
+#ifdef STREAM_CR
+      real, dimension(:,:), allocatable          :: vdiff1d
+      real, dimension(:,:), pointer              :: vdiff
+#endif /* STREAM_CR */
       uhi = wna%ind(uh_n)
       bhi = wna%ind(magh_n)
 
@@ -94,7 +99,9 @@ contains
          call my_allocate(tflux,[size(u, 2, kind=4),size(u, 1, kind=4)])
          call my_allocate(bflux,[size(b, 1, kind=4)-I_ONE,size(b_psi, 2, kind=4)])
          call my_allocate(tbflux,[size(b_psi, 2, kind=4),size(b, 1, kind=4)])
-
+#ifdef STREAM_CR
+         call my_allocate(vdiff1d, [cg%n_(ddim) , flind%nscr])  ! interaction coefficient along one dimension for all species
+#endif /* STREAM_CR */
          do i2 = cg%ijkse(pdims(ddim, ORTHO2), LO), cg%ijkse(pdims(ddim, ORTHO2), HI)
             do i1 = cg%ijkse(pdims(ddim, ORTHO1), LO), cg%ijkse(pdims(ddim, ORTHO1), HI)
 
@@ -122,7 +129,10 @@ contains
                     pb   => cg%w(wna%bi)%get_sweep(ddim,i1,i2)
                     ppsi => cg%q(psii)%get_sweep(ddim,i1,i2)
                endif
-
+#ifdef STREAM_CR
+               vdiff => cg%w(wna%ind(v_diff))%get_sweep(ddim, i1, i2)
+               vdiff1d(:,:) = transpose(vdiff(ddim : 3*(flind%nscr - 1) + ddim : 3,:))
+#endif /* STREAM_CR */
 
                u(:, iarr_all_swp(ddim,:)) = transpose(pu(:,:))
                b(:, iarr_mag_swp(ddim,:)) = transpose(pb(:,:))
@@ -133,9 +143,11 @@ contains
 
 
                call cg%set_fluxpointers(ddim, i1, i2, eflx)
-
+#ifdef STREAM_CR
+               call solve(u, b_psi ,cs2, eflx, flux, bflux, vdiff1d)
+#else /* !STREAM_CR */
                call solve(u, b_psi ,cs2, eflx, flux, bflux)
-
+#endif /* !STREAM_CR */
 
                call cg%save_outfluxes(ddim, i1, i2, eflx)
 
@@ -155,6 +167,9 @@ contains
          call my_deallocate(u); call my_deallocate(flux); call my_deallocate(tflux)
          call my_deallocate(b); call my_deallocate(b_psi); call my_deallocate(tbflux)
          call my_deallocate(bflux)
+#ifdef STREAM_CR
+         call my_deallocate(vdiff1d)
+#endif /* STREAM_CR */ 
       enddo
       call apply_flux(cg,istep,.true.)
       call apply_flux(cg,istep,.false.)
@@ -164,7 +179,7 @@ contains
 
    end subroutine solve_cg_ub
 
-   subroutine solve(ui, bi, cs2, eflx, flx, bflx)
+   subroutine solve(ui, bi, cs2, eflx, flx, bflx, vdiff)
 
       use constants,      only: DIVB_HDC
       use fluxtypes,      only: ext_fluxes
@@ -172,27 +187,42 @@ contains
       use hlld,           only: riemann_wrap
       use interpolations, only: interpol
       use dataio_pub,     only: die
-
+#ifdef STREAM_CR
+      use streaming_cr_hlle,  only: riemann_hlle_scr
+      use fluidindex,         only: flind, iarr_all_dn, iarr_all_mx
+#endif /* STREAM_CR */
       implicit none
 
-      real, dimension(:,:),        intent(in)    :: ui      !< cell-centered initial fluid states
-      real, dimension(:,:),        intent(in)    :: bi      !< cell-centered initial magnetic field states (including psi field when necessary)
-      real, dimension(:,:),        intent(inout) :: flx     !< cell-centered intermediate fluid states
-      real, dimension(:,:),        intent(inout) :: bflx    !< cell-centered intermediate magnetic field states (including psi field when necessary)
-      real, dimension(:), pointer, intent(in)    :: cs2     !< square of local isothermal sound speed
-      type(ext_fluxes),            intent(inout) :: eflx    !< external fluxes
+      real, dimension(:,:),             intent(in)   :: ui      !< cell-centered initial fluid states
+      real, dimension(:,:),            intent(in)    :: bi      !< cell-centered initial magnetic field states (including psi field when necessary)
+      real, dimension(:,:),            intent(inout) :: flx     !< cell-centered intermediate fluid states
+      real, dimension(:,:),            intent(inout) :: bflx    !< cell-centered intermediate magnetic field states (including psi field when necessary)
+      real, dimension(:), pointer,     intent(in)    :: cs2     !< square of local isothermal sound speed
+      type(ext_fluxes),                intent(inout) :: eflx    !< external fluxes
+      real, dimension(:,:), optional,  intent(in)    :: vdiff   !< diffussive speed for transport corrected with effective optical depth
 
       ! left and right states at interfaces 1 .. n-1
       real, dimension(size(ui, 1)-1, size(ui, 2)), target :: ql, qr
       real, dimension(size(bi, 1)-1, size(bi, 2)), target :: bl, br
-
+#ifdef STREAM_CR
+      integer :: scr_beg_1, scr_beg 
+      real, dimension(size(ui, 1)-1) :: vl, vr
+      scr_beg_1 = flind%scr(1)%beg - 1 
+      scr_beg   = flind%scr(1)%beg 
+#endif /* STREAM_CR*/
       ! updates required for higher order of integration will likely have shorter length
 
       bflx = huge(1.)
 
       call interpol(ui, ql, qr, bi, bl, br)
+#ifdef STREAM_CR
+      vl(:) = ql(:,iarr_all_mx(1)) / ql(:,iarr_all_dn(1))
+      vr(:) = qr(:,iarr_all_mx(1)) / qr(:,iarr_all_dn(1))
+      call riemann_wrap(ql(:,:scr_beg_1), qr(:,:scr_beg_1), bl, br, cs2, flx(:,:scr_beg_1), bflx) ! Now we advance the left and right states by a timestep.
+      call riemann_hlle_scr(ql(:,scr_beg:), qr(:,scr_beg:), vdiff, vl, vr, flx(:,scr_beg:)) ! Now we advance the left and right states by a timestep.
+#else /* !STREAM_CR */
       call riemann_wrap(ql, qr, bl, br, cs2, flx, bflx) ! Now we advance the left and right states by a timestep.
-
+#endif /* !STREAM_CR */
       if (associated(eflx%li)) flx(eflx%li%index, :) = eflx%li%uflx
       if (associated(eflx%ri)) flx(eflx%ri%index, :) = eflx%ri%uflx
       if (associated(eflx%lo)) eflx%lo%uflx = flx(eflx%lo%index, :)

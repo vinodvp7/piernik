@@ -49,12 +49,21 @@ contains
       use named_array_list,      only: wna
       use sources,               only: prepare_sources
       use unsplit_mag_modules,   only: solve_cg_ub
+#ifdef STREAM_CR
+      use scr_helpers,           only: update_interaction_term, update_rotation_matrix, update_vdiff
+#endif /* STREAM_CR */
 
       implicit none
 
       type(grid_container), pointer, intent(in) :: cg
       integer,                       intent(in) :: istep     ! stage in the time integration scheme
       integer :: nmag, i
+      
+#ifdef STREAM_CR
+         call update_interaction_term(cg, istep, .false.)
+         if (wna%exists(mag_n))  call update_rotation_matrix(cg, istep)
+         call update_vdiff(cg,istep)
+#endif /* STREAM_CR */
 
       if (dom%geometry_type /= GEO_XYZ) call die("[solve_cg_unsplit:solve_cg_unsplit] Non-cartesian geometry is not implemented yet in this Unsplit solver.")
 

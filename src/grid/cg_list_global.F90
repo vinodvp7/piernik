@@ -242,6 +242,10 @@ contains
       &                     psi_n, psih_n, xbflx_n, ybflx_n, zbflx_n, psiflx_n
       use global,     only: cc_mag, ord_mag_prolong
 #endif /* MAGNETIC */
+#ifdef STREAM_CR
+      use constants,        only: rtmn, gpcn, sgmn, v_diff
+      use initstreamingcr,  only: nscr
+#endif /* STREAM_CR */
 
       implicit none
 
@@ -275,6 +279,15 @@ contains
 #ifdef CRESP
       call set_cresp_names
 #endif /* CRESP */
+
+#ifdef STREAM_CR
+         call this%reg_var(rtmn,   vital = .false., restart_mode = AT_NO_B, dim4 = 4, ord_prolong = ord_fluid_prolong)   !! X Face-Fluid flux array
+         call this%reg_var(gpcn,   vital = .false., restart_mode = AT_NO_B, dim4 = ndims * nscr, ord_prolong = ord_fluid_prolong)   !! Y Face-Fluid flux array
+         call this%reg_var(sgmn,   vital = .false., restart_mode = AT_NO_B, dim4 = 2 * nscr, ord_prolong = ord_fluid_prolong)   !! Z Face-Fluid flux array
+         call this%reg_var(v_diff, vital = .false., restart_mode = AT_NO_B, dim4 = ndims * nscr, ord_prolong = ord_fluid_prolong)   !! Z Face-Fluid flux array
+
+         call set_streamingcr_names
+#endif STREAM_CR /* STREAM_CR */
 
 #ifdef MAGNETIC
       call this%reg_var(mag_n,  vital = .true.,  dim4 = ndims, ord_prolong = ord_mag_prolong, restart_mode = AT_OUT_B, position=pia)  !! Main array of magnetic field's components, "b"
@@ -442,6 +455,35 @@ contains
 
       end subroutine set_magnetic_names
 #endif /* MAGNETIC */
+
+#ifdef STREAM_CR
+      subroutine set_streamingcr_names
+         use constants,        only: dsetnamelen, I_ONE
+         use named_array_list, only: wna, na_var_4d
+         use initstreamingcr,  only: nscr
+
+         implicit none
+
+         integer(kind=4) :: i
+         character(len=dsetnamelen) :: var
+
+         select type (lst => wna%lst)
+            type is (na_var_4d)
+            do i=I_ONE,nscr
+               write(var, '(a,i2.2)') "escr_", i
+               call lst(wna%fi)%set_compname(flind%scr(i)%iescr, var)
+               write(var, '(a,i2.2)') "fxscr_", i
+               call lst(wna%fi)%set_compname(flind%scr(i)%ixfscr , var)
+               write(var, '(a,i2.2)') "fyscr_", i
+               call lst(wna%fi)%set_compname(flind%scr(i)%iyfscr , var)
+               write(var, '(a,i2.2)') "fzscr_", i
+               call lst(wna%fi)%set_compname(flind%scr(i)%izfscr , var)
+            end do
+            class default
+               call die("[cg_list_global:set_streamingcr_names] Unknown list type")
+         end select
+      end subroutine set_streamingcr_names
+#endif /* STREAM_CR */
 
    end subroutine register_fluids
 

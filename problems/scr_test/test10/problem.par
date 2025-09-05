@@ -1,0 +1,81 @@
+$BASE_DOMAIN
+  n_d = 64,64,1
+  nb  = 4
+  bnd_xl = 'out'
+  bnd_xr = 'out'
+  bnd_yl = 'out'
+  bnd_yr = 'out'
+  bnd_zl = 'out'
+  bnd_zr = 'out'
+  xmin   =  -0.5
+  xmax   =  0.5
+  ymin   =  -0.5
+  ymax   =  0.5
+  zmin   =  0.0
+  zmax   =  1.0
+/
+
+$MPI_BLOCKS
+/
+
+$UNITS
+/
+
+$RESTART_CONTROL
+   restart  = 'last'
+   res_id   = ''
+   nrestart = 0
+/
+
+$END_CONTROL
+  tend = 0.1
+  nend = 100000000
+/
+
+$OUTPUT_CONTROL
+   problem_name = 'scr'
+   run_id = 'tst'
+   dt_hdf = 0.02
+   dt_res = 0.0
+   dt_log = 0.02
+   dt_tsl = 0.02
+   vars(1:) = 'dens', 'ener', 'velx', 'vely' , 'pres', 'escr', 'xfscr', 'yfscr', 'magx','magy'
+/
+
+$FLUID_IONIZED
+  gamma = 1.6667
+/
+$STREAMING_CR
+   nscr                    = 1
+   vmax                    = 100.0
+   sigma_paral             = 1e6
+   sigma_perp              = 1e6
+   ord_pc_grad             = 4
+   disable_feedback        = .false.      ! feedback to MHD gas 
+   disable_streaming       = .false.  
+/
+$NUMERICAL_SETUP
+  cfl     = 0.1
+  smalld  = 1.e-5
+  disallow_negatives = .false.
+  smallei = 1.e-5
+  limiter = 'moncen'
+  cfl_glm = 0.3
+  !glm_alpha = 0.1
+  print_divb = 10
+  solver_type = 'unsplit'
+  solver_str = 'riemann'
+  integration_order = 2
+/
+
+$PROBLEM_CONTROL
+/
+
+$AMR
+
+   bsize = 3*16
+   level_max = 3
+   n_updAMR = 3
+   refine_vars(1) = "escr", "relgrad", 1e-2 ! equivalent to the default problem criteria
+
+/

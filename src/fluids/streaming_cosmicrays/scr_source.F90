@@ -51,7 +51,7 @@ contains
       use scr_helpers,      only: update_interaction_term 
 #ifdef MAGNETIC  
       use constants,        only: rtmn, magh_n, cphi, ctheta, sphi, stheta, sgmn   
-      use scr_helpers,      only: rotate_vec, inverse_rotate_vec    
+      use scr_helpers,      only: rotate_vec, inverse_rotate_vec, update_rotation_matrix  
 #endif /* MAGNETIC */
 
       implicit none
@@ -79,6 +79,7 @@ contains
          uhi   = wna%ind(uh_n)
 #ifdef MAGNETIC
          magi   = wna%ind(magh_n)
+         call update_rotation_matrix(cg,istep,.true.)
 #endif /* MAGNETIC */
       endif
       call update_gradpc_here(cg)

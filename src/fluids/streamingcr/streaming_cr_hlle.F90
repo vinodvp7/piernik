@@ -91,13 +91,16 @@ contains
                vdiff1d(:,:) = transpose(vdiff(ddim : I_THREE*(scrind%stcosm - I_ONE) + ddim : I_THREE,:) )
 
                pu => cg%w(scri)%get_sweep(ddim,i1,i2)
-               pf => cg%w(uhi)%get_sweep(ddim,i1,i2)
 
                if (istep == first_stage(integration_order) .or. integration_order < 2 ) then
                   pu => cg%w(wna%scr)%get_sweep(ddim,i1,i2)
-                  pf => cg%w(wna%fi)%get_sweep(ddim,i1,i2)
                endif
 
+               pf => cg%w(wna%fi)%get_sweep(ddim,i1,i2)
+               if (istep == first_stage(integration_order) .and. integration_order > 1 ) then
+                  pf => cg%w(uhi)%get_sweep(ddim,i1,i2)
+               endif
+               
                u(:, iarr_all_scr_swp(ddim,:)) = transpose(pu(:,:))
                uf(:, iarr_all_swp(ddim,:)) = transpose(pf(:,:))
 

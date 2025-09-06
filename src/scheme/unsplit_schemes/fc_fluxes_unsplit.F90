@@ -109,8 +109,8 @@ contains
             cgl%cg%finebnd(cdim, HI)%uflx(:, :, :) = 0.
             if (allocated(cgl%cg%finebnd(cdim, LO)%bflx)) cgl%cg%finebnd(cdim, LO)%bflx(:, :, :) = 0.
             if (allocated(cgl%cg%finebnd(cdim, HI)%bflx)) cgl%cg%finebnd(cdim, HI)%bflx(:, :, :) = 0.
-            if (allocated(cgl%cg%finebnd(cdim, LO)%sflx)) cgl%cg%finebnd(cdim, LO)%sflx(:, :, :) = 0.
-            if (allocated(cgl%cg%finebnd(cdim, HI)%sflx)) cgl%cg%finebnd(cdim, HI)%sflx(:, :, :) = 0.
+            if (allocated(cgl%cg%finebnd(cdim, LO)%sflx)) cgl%cg%finebnd(cdim, LO)%sflx(:, :, :) = 0.0
+            if (allocated(cgl%cg%finebnd(cdim, HI)%sflx)) cgl%cg%finebnd(cdim, HI)%sflx(:, :, :) = 0.0
             if (allocated(cgl%cg%rif_tgt%seg)) then
                associate ( seg => cgl%cg%rif_tgt%seg )
                   do g = lbound(seg, dim=1), ubound(seg, dim=1)
@@ -324,9 +324,9 @@ contains
                      do k = j2(LO), j2(HI)
                         if (allocated(cg%coarsebnd(cdim, lh)%bflx) .and. .not. allocated(cg%coarsebnd(cdim, lh)%sflx)) then
                            seg(g)%buf(:, f2c_o(j), f2c_o(k)) = seg(g)%buf(:, f2c_o(j), f2c_o(k)) + [ cg%coarsebnd(cdim, lh)%uflx(:, j, k), cg%coarsebnd(cdim, lh)%bflx(:, j, k) ]
-                        else if (allocated(cg%coarsebnd(cdim, lh)%sflx .and. allocated(cg%coarsebnd(cdim, lh)%bflx))) then
+                        else if (allocated(cg%coarsebnd(cdim, lh)%sflx) .and. allocated(cg%coarsebnd(cdim, lh)%bflx)) then
                            seg(g)%buf(:, f2c_o(j), f2c_o(k)) = seg(g)%buf(:, f2c_o(j), f2c_o(k)) + [ cg%coarsebnd(cdim, lh)%uflx(:, j, k), cg%coarsebnd(cdim, lh)%bflx(:, j, k), cg%coarsebnd(cdim, lh)%sflx(:, j, k)]
-                        else if (allocated(cg%coarsebnd(cdim, lh)%sflx .and. .not. allocated(cg%coarsebnd(cdim, lh)%bflx))) then
+                        else if (allocated(cg%coarsebnd(cdim, lh)%sflx) .and. .not. allocated(cg%coarsebnd(cdim, lh)%bflx)) then
                            seg(g)%buf(:, f2c_o(j), f2c_o(k)) = seg(g)%buf(:, f2c_o(j), f2c_o(k)) + [ cg%coarsebnd(cdim, lh)%uflx(:, j, k), cg%coarsebnd(cdim, lh)%sflx(:, j, k)]
                         else
                            seg(g)%buf(:, f2c_o(j), f2c_o(k)) = seg(g)%buf(:, f2c_o(j), f2c_o(k)) + cg%coarsebnd(cdim, lh)%uflx(:, j, k)

@@ -187,7 +187,7 @@ contains
                dFz = dFz + (newf3 - f3)/vmax
             endif
             
-            !cg%w(scri)%arr(iarr_all_escr(ns),i,j,k)  = new_ec         ! For test 1 and test 2 comment me 
+            cg%w(scri)%arr(iarr_all_escr(ns),i,j,k)  = new_ec         ! For test 1 and test 2 comment me 
             cg%w(scri)%arr(iarr_all_xfscr(ns),i,j,k) = newf1
             cg%w(scri)%arr(iarr_all_yfscr(ns),i,j,k) = newf2
             cg%w(scri)%arr(iarr_all_zfscr(ns),i,j,k) = newf3

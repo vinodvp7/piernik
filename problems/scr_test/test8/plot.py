@@ -164,6 +164,8 @@ ax[1,0].set_xlabel(r'$\mathbf{x}$', fontweight='bold')
 ax[1,0].set_ylabel(r'$\mathbf{\rho}$', fontweight='bold')
 ax[1,0].legend(fontsize='small')
 ax[1,0].set_xlim(-1,1)
+ax[1,0].set_ylim(0.94,1.06)
+ax[1,0].set_yticks(np.arange(0.94,1.06,0.02))
 
 
 file = '/home/vinodvp/simdir/piernik/runs/test8/scr_tst_0000.h5'

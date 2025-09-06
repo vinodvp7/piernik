@@ -127,7 +127,7 @@ contains
       use cg_list,     only: cg_list_element
       use constants,   only: xdim, ydim, zdim, LO, HI
       use dataio_pub,  only: die
-      use fluidindex,  only: flind, scrind
+      use fluidindex,  only: flind
       use fluidtypes,  only: component_fluid, component_scr
       use func,        only: ekin, emag
       use grid_cont,   only: grid_container
@@ -184,8 +184,8 @@ contains
          enddo
       enddo
 
-      do p = 1, scrind%stcosm
-         scr_fluid = scrind%scr(p)
+      do p = 1, flind%nscr
+         scr_fluid = flind%scr(p)
          cgl => leaves%first
          do while (associated(cgl))
             cg => cgl%cg
@@ -195,10 +195,10 @@ contains
                   xi = cg%x(i)
                   do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
                      zk = cg%z(k)
-                     cg%scr(scr_fluid%iescr, i,j,k) = E0
-                     cg%scr(scr_fluid%ixfscr,i,j,k) = 0.0
-                     cg%scr(scr_fluid%iyfscr,i,j,k) = 0.0
-                     cg%scr(scr_fluid%izfscr,i,j,k) = 0.0
+                     cg%u(scr_fluid%iescr, i,j,k) = E0
+                     cg%u(scr_fluid%ixfscr,i,j,k) = 0.0
+                     cg%u(scr_fluid%iyfscr,i,j,k) = 0.0
+                     cg%u(scr_fluid%izfscr,i,j,k) = 0.0
                   enddo
                enddo
             enddo
@@ -212,7 +212,7 @@ contains
       use constants,        only: xdim,ydim,zdim,LO,HI
       use domain,           only: dom
       use named_array_list, only: wna        
-      use fluidindex,       only: scrind
+      use fluidindex,       only: flind
       use grid_cont,        only: grid_container
 
       implicit none
@@ -222,12 +222,11 @@ contains
       integer(kind=4),     optional, intent(in)    :: wn, qn, emfdir
 
       integer(kind=4) :: ib, ssign, l(3,LO:HI), r(3,LO:HI)
-      integer(kind=4) :: iflux(3)
       real(kind=8), pointer :: A(:,:,:,:)
 
       A => cg%w(wn)%arr
 
-      if (wn /= wna%scr) then                  ! Do simple outflow for magnetic field and MHD gas
+      if (wn /= wna%fi) then                  ! Do simple outflow for magnetic field and MHD gas
          ssign = 2*side - (LO+HI)
          l = cg%lhn ; r = l
          do ib=1, dom%nb
@@ -239,27 +238,19 @@ contains
          return
       end if
 
-      ! map flux component indices for SCR(1)
-      iflux(xdim) = scrind%scr(1)%ixfscr          ! xFc
-      iflux(ydim) = scrind%scr(1)%iyfscr          ! yFc
-      iflux(zdim) = scrind%scr(1)%izfscr          ! zFc
-
       ssign = 2*side - (LO+HI)
       l = cg%lhn ; r = l
       do ib=1, dom%nb
          l(dir,:) = cg%ijkse(dir,side) + ssign*ib
          r(dir,:) = cg%ijkse(dir,side) + ssign*(1-ib)
+         A(:, l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = &
+         A(:, r(xdim,LO):r(xdim,HI), r(ydim,LO):r(ydim,HI), r(zdim,LO):r(zdim,HI))
          ! left: Ec=3 and reflect the normal CR flux
-         A(scrind%scr(1)%iescr, l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = El
-         A(iflux(dir),          l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = &
-         -A(iflux(dir),       r(xdim,LO):r(xdim,HI), r(ydim,LO):r(ydim,HI), r(zdim,LO):r(zdim,HI))
-         ! copy tangential fluxes
-         if (dir /= xdim) A(iflux(xdim), l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = &
-                           A(iflux(xdim), r(xdim,LO):r(xdim,HI), r(ydim,LO):r(ydim,HI), r(zdim,LO):r(zdim,HI))
-         if (dir /= ydim) A(iflux(ydim), l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = &
-                           A(iflux(ydim), r(xdim,LO):r(xdim,HI), r(ydim,LO):r(ydim,HI), r(zdim,LO):r(zdim,HI))
-         if (dir /= zdim) A(iflux(zdim), l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = &
-                           A(iflux(zdim), r(xdim,LO):r(xdim,HI), r(ydim,LO):r(ydim,HI), r(zdim,LO):r(zdim,HI))
+         A(flind%scr(1)%iescr, l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = El
+         A(flind%scr(1)%ixfscr, l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = &
+         -A(flind%scr(1)%ixfscr, r(xdim,LO):r(xdim,HI), r(ydim,LO):r(ydim,HI), r(zdim,LO):r(zdim,HI))
+         A(flind%all_fluids(1)%fl%imx, l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = &
+         -A(flind%all_fluids(1)%fl%imx, r(xdim,LO):r(xdim,HI), r(ydim,LO):r(ydim,HI), r(zdim,LO):r(zdim,HI))
       end do
    end subroutine custom_boundary
 end module initproblem

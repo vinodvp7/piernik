@@ -33,15 +33,13 @@ module streaming_cr_hlle
 
 ! pulled by STREAM_CR
 
-   use fluxtypes,        only: ext_fluxes
 
    implicit none
 
-   type(ext_fluxes)                           :: eflx
 
    private
 
-   public :: update_scr_fluid, eflx
+   public :: update_scr_fluid
 
 contains
 
@@ -55,6 +53,7 @@ contains
       use domain,           only: dom
       use fluidindex,       only: iarr_all_swp, scrind, iarr_all_dn, iarr_all_mx,iarr_all_scr_swp
       use diagnostics,      only: my_allocate, my_deallocate
+      use fluxtypes,        only: ext_fluxes
 
       implicit none
 
@@ -69,6 +68,7 @@ contains
       real, dimension(:,:), pointer              :: pflux
       real, dimension(:,:),allocatable           :: flux
       real, dimension(:,:),allocatable           :: tflux
+      type(ext_fluxes)                           :: eflx
 
       uhi  = wna%ind(uh_n)
       scri = wna%ind(scrh)
@@ -108,8 +108,6 @@ contains
                uf(:, iarr_all_swp(ddim,:)) = transpose(pf(:,:))
 
                vx(:) = uf(:,iarr_all_mx(1))/uf(:,iarr_all_dn(1))    ! We pass the velocity of the first fluid
-
-
 
                call cg%set_fluxpointers(ddim, i1, i2, eflx,.true.)
 

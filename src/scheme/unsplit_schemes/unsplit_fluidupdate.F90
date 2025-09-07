@@ -45,7 +45,6 @@ contains
     subroutine fluid_update_unsplit
 
       use cg_list_dataop,      only: expanded_domain
-      use dataio_pub,          only: halfstep
       use global,              only: dt, t
       use hdc,                 only: update_chspeed,glmdamping, eglm
       use mass_defect,         only: update_magic_mass
@@ -62,7 +61,6 @@ contains
 #ifdef CRESP
       use cresp_grid,          only: cresp_update_grid, cresp_clean_grid
 #endif /* CRESP */
-      use user_hooks,          only: problem_customize_solution
 #ifdef COSM_RAYS
 #ifdef MULTIGRID
       use multigrid_diffusion, only: inworth_mg_diff
@@ -78,7 +76,6 @@ contains
       implicit none
 
       call repeat_fluidstep
-      halfstep = .true.
       call update_chspeed
 #ifdef SHEAR
       call shear_3sweeps
@@ -111,8 +108,7 @@ contains
 #endif /* NBODY */
       if (need_update) call source_terms_grav
 #endif /* GRAV */
-      call external_sources(.true.)
-      if (associated(problem_customize_solution)) call problem_customize_solution(.true.)
+      call external_sources(.true.)                 ! This is obviously wrong so need to understand its function to correct it
       call eglm
       call glmdamping(.true.)
 

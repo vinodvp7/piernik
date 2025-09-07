@@ -100,7 +100,7 @@ contains
       use cg_list,           only: cg_list_element
       use cg_list_dataop,    only: cg_list_dataop_t
       use constants,         only: first_stage, last_stage, INVALID, PPP_CG, UNSPLIT
-      use dataio_pub,        only: die
+      use dataio_pub,        only: die, halfstep
       use fc_fluxes_unsplit, only: initiate_flx_recv, recv_cg_finebnd, send_cg_coarsebnd
       use global,            only: integration_order, which_solver_type
       use grid_cont,         only: grid_container
@@ -111,6 +111,7 @@ contains
       use pppmpi,            only: req_ppp
       use sources,           only: prepare_sources
       use solvecg_unsplit,   only: solve_cg_unsplit
+      use user_hooks,        only: problem_customize_solution
 
       implicit none
 
@@ -138,6 +139,8 @@ contains
          cgl => cgl%nxt
       enddo
       call ppp_main%stop(init_src_label)
+
+      halfstep = .true.
 
       ! This is the loop over Runge-Kutta stages
       do istep = first_stage(integration_order), last_stage(integration_order)
@@ -196,9 +199,10 @@ contains
 
          call req%waitall("sweeps")
 
+         if (associated(problem_customize_solution)) call problem_customize_solution(halfstep)
+         halfstep = .false.
          call update_boundaries(istep)
       enddo
-
       call sl%delete
       deallocate(sl)
 

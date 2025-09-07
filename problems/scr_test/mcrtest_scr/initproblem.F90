@@ -204,7 +204,7 @@ contains
       enddo
 
 #ifdef STREAM_CR
-      do p = 1, scrind%stcosm
+      do p = 1, scrind%nscr
          scr_fluid = scrind%scr(p)
          cgl => leaves%first
          do while (associated(cgl))
@@ -245,7 +245,7 @@ contains
       enddo
 #endif /* STREAM_CR */
 #ifdef STREAM_CR
-      do icr = 1, scrind%stcosm
+      do icr = 1, scrind%nscr
 
          maxv = - huge(1.)
          cgl => leaves%first

@@ -207,14 +207,17 @@ contains
 #ifdef COSM_RAYS
 !>
 !! \brief Routine that inserts an amount of cosmic ray energy around the position of supernova
-!! \param pos real, dimension(3), array of supernova position components
+!! \param pos real, dimension(3), array of supernova position components 
+!!\ For the unsplit scheme the energy should be added to the half stage array uh_n if integration order is not 1
 !<
    subroutine cr_sn(pos, ampl)
 
       use cg_leaves,        only: leaves
       use cg_list,          only: cg_list_element
-      use constants,        only: xdim, ydim, zdim
+      use constants,        only: xdim, ydim, zdim, UNSPLIT, uh_n
+      use named_array_list, only: wna
       use domain,           only: dom
+      use global,           only: which_solver_type, integration_order
       use grid_cont,        only: grid_container
       use cr_data,          only: cr_index, cr_table, cr_mass, cr_primary, eCRSP, icr_H1, icr_C12, icr_N14, icr_O16
       use initcosmicrays,   only: iarr_crn
@@ -240,62 +243,59 @@ contains
       real                               :: e_tot_sn
 #endif /* CRESP */
 
+      integer                            :: uhi 
+
       cgl => leaves%first
       do while (associated(cgl))
          cg => cgl%cg
-
 #ifdef SHEAR
          ysnoi(2) = pos(ydim)
          call sn_shear(cg, ysnoi)
 #else /* !SHEAR */
          ysna = pos(ydim)
 #endif /* !SHEAR */
-
-         do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
-            posr(zdim) = ((cg%z(k)-pos(zdim))/r_sn)**2
-            do j = cg%lhn(ydim,LO), cg%lhn(ydim,HI)
-               do i = cg%lhn(xdim,LO), cg%lhn(xdim,HI)
-
-                  decr = 0.0
-                  do ipm = auxper(xdim,LO), auxper(xdim,HI)
-                     posr(xdim) = ((cg%x(i)-pos(xdim) + real(ipm)*dom%L_(xdim))/r_sn)**2
+         do (uhi= wna%ind(uh_n), wna%fi , wna%fi - wna%ind(uh_n) )
+            do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
+               posr(zdim) = ((cg%z(k)-pos(zdim))/r_sn)**2
+               do j = cg%lhn(ydim,LO), cg%lhn(ydim,HI)
+                  do i = cg%lhn(xdim,LO), cg%lhn(xdim,HI)
+                     decr = 0.0
+                     do ipm = auxper(xdim,LO), auxper(xdim,HI)
+                        posr(xdim) = ((cg%x(i)-pos(xdim) + real(ipm)*dom%L_(xdim))/r_sn)**2
 #ifdef SHEAR
-                     ysna = ysnoi(ipm+2)
+                        ysna = ysnoi(ipm+2)
 #endif /* SHEAR */
-                     if (dom%eff_dim > 0) then
-                        do jpm = auxper(ydim,LO), auxper(ydim,HI)
-                           posr(ydim) = ((cg%y(j)-ysna + real(jpm)*dom%L_(ydim))/r_sn)**2
-                           ! BEWARE:  for num < -744.6 the exp(num) is the underflow
-                           decr = decr + exp(-sum(posr, mask=dom%has_dir))
-                        enddo
-                     endif
-                  enddo
-                  decr = decr * ampl
+                        if (dom%eff_dim > 0) then
+                           do jpm = auxper(ydim,LO), auxper(ydim,HI)
+                              posr(ydim) = ((cg%y(j)-ysna + real(jpm)*dom%L_(ydim))/r_sn)**2
+                              ! BEWARE:  for num < -744.6 the exp(num) is the underflow
+                              decr = decr + exp(-sum(posr, mask=dom%has_dir))
+                           enddo
+                        endif
+                     enddo
+                     decr = decr * ampl
 
-                  if (eCRSP(icr_H1 )) cg%u(iarr_crn(cr_index(icr_H1 )),i,j,k) = cg%u(iarr_crn(cr_index(icr_H1 )),i,j,k) + decr
-                  if (eCRSP(icr_C12)) cg%u(iarr_crn(cr_index(icr_C12)),i,j,k) = cg%u(iarr_crn(cr_index(icr_C12)),i,j,k) + cr_primary(cr_table(icr_C12)) * cr_mass(cr_table(icr_C12)) * decr
-                  if (eCRSP(icr_N14)) cg%u(iarr_crn(cr_index(icr_N14)),i,j,k) = cg%u(iarr_crn(cr_index(icr_N14)),i,j,k) + cr_primary(cr_table(icr_N14)) * cr_mass(cr_table(icr_N14)) * decr
-                  if (eCRSP(icr_O16)) cg%u(iarr_crn(cr_index(icr_O16)),i,j,k) = cg%u(iarr_crn(cr_index(icr_O16)),i,j,k) + cr_primary(cr_table(icr_O16)) * cr_mass(cr_table(icr_O16)) * decr
-
+                     if (eCRSP(icr_H1 )) cg%w(uhi)%arr(iarr_crn(cr_index(icr_H1 )),i,j,k) = cg%w(uhi)%arr(iarr_crn(cr_index(icr_H1 )),i,j,k) + decr
+                     if (eCRSP(icr_C12)) cg%w(uhi)%arr(iarr_crn(cr_index(icr_C12)),i,j,k) = cg%w(uhi)%arr(iarr_crn(cr_index(icr_C12)),i,j,k) + cr_primary(cr_table(icr_C12)) * cr_mass(cr_table(icr_C12)) * decr
+                     if (eCRSP(icr_N14)) cg%w(uhi)%arr(iarr_crn(cr_index(icr_N14)),i,j,k) = cg%w(uhi)%arr(iarr_crn(cr_index(icr_N14)),i,j,k) + cr_primary(cr_table(icr_N14)) * cr_mass(cr_table(icr_N14)) * decr
+                     if (eCRSP(icr_O16)) cg%w(uhi)%arr(iarr_crn(cr_index(icr_O16)),i,j,k) = cg%w(uhi)%arr(iarr_crn(cr_index(icr_O16)),i,j,k) + cr_primary(cr_table(icr_O16)) * cr_mass(cr_table(icr_O16)) * decr
 #ifdef CRESP
-                  if (use_cresp) then
-                     e_tot_sn = decr * cre_eff
-                     if (e_tot_sn > smallcree) then
-                        cresp%n =  0.0;  cresp%e = 0.0
-                        call cresp_get_scaled_init_spectrum(cresp%n, cresp%e, e_tot_sn) !< injecting source spectrum scaled with e_tot_sn
-                        cg%u(iarr_cre_n,i,j,k) = cg%u(iarr_cre_n,i,j,k) + cresp%n   !< update, TODO need to talk to the team if this should be inside if-clause
-                        cg%u(iarr_cre_e,i,j,k) = cg%u(iarr_cre_e,i,j,k) + cresp%e   !< if outside, cresp%n and cresp%e needs to be zeroed
+                     if (use_cresp) then
+                        e_tot_sn = decr * cre_eff
+                        if (e_tot_sn > smallcree) then
+                           cresp%n =  0.0;  cresp%e = 0.0
+                           call cresp_get_scaled_init_spectrum(cresp%n, cresp%e, e_tot_sn) !< injecting source spectrum scaled with e_tot_sn
+                           cg%w(uhi)%arr(iarr_cre_n,i,j,k) = cg%w(uhi)%arr(iarr_cre_n,i,j,k) + cresp%n   !< update, TODO need to talk to the team if this should be inside if-clause
+                           cg%w(uhi)%arr(iarr_cre_e,i,j,k) = cg%w(uhi)%arr(iarr_cre_e,i,j,k) + cresp%e   !< if outside, cresp%n and cresp%e needs to be zeroed
+                        endif
                      endif
-                  endif
 #endif /* CRESP */
-
+                  enddo
                enddo
             enddo
-         enddo
-
+         end do
          cgl => cgl%nxt
       enddo
-
    end subroutine cr_sn
 #endif /* COSM_RAYS */
 
@@ -311,11 +311,13 @@ contains
 
       use cg_leaves,        only: leaves
       use cg_list,          only: cg_list_element
-      use constants,        only: xdim, ydim, zdim
+      use constants,        only: xdim, ydim, zdim, UNSPLIT, scrh
       use domain,           only: dom
       use grid_cont,        only: grid_container
       use fluidindex,       only: iarr_all_escr
       use initstreamingcr,  only: nscr
+      use named_array_list, only: wna
+      use global,           only: which_solver_type, integration_order
 
 
       implicit none
@@ -331,7 +333,7 @@ contains
       real, dimension(3)                 :: ysnoi
 #endif /* SHEAR */
 
-      integer :: ns
+      integer                            :: ns
 
       cgl => leaves%first
       do while (associated(cgl))
@@ -365,6 +367,7 @@ contains
                   enddo
                   decr = decr * ampl
                   do ns = 1, nscr
+                     cg%w(wna%ind(scrh))%arr(iarr_all_escr(ns),i,j,k) =  cg%w(wna%ind(scrh))%arr(iarr_all_escr(ns),i,j,k) + decr
                      cg%scr(iarr_all_escr(ns),i,j,k) =  cg%scr(iarr_all_escr(ns),i,j,k) + decr
                   end do
                enddo

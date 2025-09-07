@@ -129,30 +129,29 @@ fig,ax=plt.subplots(2,2,figsize=(8,6))
 d0=data[data_to_plot][0,:,:]
 ax[0,0].imshow(d0, extent=[x[0], x[-1], y[0], y[-1]],
                origin="lower",
-               cmap="jet")
+               cmap="viridis")
 
 ax[0,0].streamplot(x,y,
     data["mag_field_x"][0,:,:],data["mag_field_y"][0,:,:],
-    density=0.5,color='k')
+    density=0.5,color='white')
 
 ax[0,0].set_xlabel(r'$\mathbf{x}$', fontweight='bold')
 ax[0,0].set_ylabel(r'$\mathbf{y}$', fontweight='bold')
 ax[0,0].set_title('t=0.0', fontweight='bold')
+ax[0,0].set_xlim(-1,1)
 
 file = '/home/vinodvp/simdir/piernik/runs/test6/scr_tst_0001.h5'
 data, cell_dims, origin, spacing = load_and_stitch_data(file)
 d1=data[data_to_plot][0,:,:]
 ax[0,1].imshow(d1, extent=[x[0], x[-1], y[0], y[-1]],
                origin="lower",
-               cmap="jet")
+               cmap="viridis")
 
-ax[0,1].streamplot(x,y,
-    data["mag_field_x"][0,:,:],data["mag_field_y"][0,:,:],
-    density=0.5,color='k')
+
 
 ax[0,1].set_xlabel(r'$\mathbf{x}$', fontweight='bold')
 ax[0,1].set_ylabel(r'$\mathbf{y}$', fontweight='bold')
-ax[0,1].set_title('t=0.26', fontweight='bold')
+ax[0,1].set_title('t=0.26 (Numerical)', fontweight='bold')
 
 r   = np.hypot(Xc, Yc)
 phi = np.arctan2(Yc, Xc)                      # (-π, π]
@@ -170,7 +169,7 @@ Ec[mask] += sp.erfc(arg1[mask]) - sp.erfc(arg2[mask])
 
 ax[1,0].imshow(Ec, extent=[x[0], x[-1], y[0], y[-1]],
                origin="lower",
-               cmap="jet")
+               cmap="viridis")
 
 ax[1,0].set_xlabel(r'$\mathbf{x}$', fontweight='bold')
 ax[1,0].set_ylabel(r'$\mathbf{y}$', fontweight='bold')
@@ -179,13 +178,13 @@ ax[1,0].set_title('t=0.26 (Analytical)', fontweight='bold')
 L1 = np.mean(abs(np.ravel(Ec)-np.ravel(d1)))
 L2 =np.sqrt( np.mean((np.ravel(Ec)-np.ravel(d1))**2))
 
-ax[1,1].imshow(100*abs(Ec-d1)/Ec, extent=[x[0], x[-1], y[0], y[-1]],
+ax[1,1].imshow(100*(Ec-d1)/Ec, extent=[x[0], x[-1], y[0], y[-1]],
                origin="lower",
-               cmap="jet")
+               cmap="viridis")
 
 ax[1,1].set_xlabel(r'$\mathbf{x}$', fontweight='bold')
 ax[1,1].set_ylabel(r'$\mathbf{y}$', fontweight='bold')
-ax[1,1].set_title(fr'% error, $L_1={L1:.3e}$, $L_2={L2:.3e}$', fontweight='bold',fontsize=11)
+ax[1,1].set_title(fr'% Error', fontweight='bold',fontsize=11)
 
 
 for a in (ax[0,0], ax[0,1], ax[1,0], ax[1,1]):
@@ -199,4 +198,4 @@ for a in (ax[0,0], ax[0,1], ax[1,0], ax[1,1]):
 # Bold border around the whole figure
 fig.add_artist(mpatches.Rectangle((0.005, 0.005), 0.99, 0.99,
                                   transform=fig.transFigure, fill=False, lw=4, ec='black'))
-plt.savefig(r'{}.png'.format(data_to_plot),dpi=720)
+plt.savefig(r'/home/vinodvp/poster_PIERNIK_A1_fixed_v2/images/test3.png'.format(data_to_plot),dpi=1080)

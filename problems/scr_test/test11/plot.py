@@ -99,7 +99,7 @@ import matplotlib.patches as mpatches
 from scipy import special as sp
 
 plt.rcParams.update({
-    'figure.dpi': 150, 'savefig.dpi': 720,
+    'figure.dpi': 150, 'savefig.dpi': 1080,
     'axes.linewidth': 2.5,
     'font.size': 12,
     'xtick.major.size': 5, 'ytick.major.size': 5,
@@ -129,7 +129,7 @@ fig,ax=plt.subplots(2,2,figsize=(8,6))
 d0=data["density"][0,:,:]
 ax[0,0].imshow(d0, extent=[x[0], x[-1], y[0], y[-1]],
                origin="lower",
-               cmap="RdGy_r")
+               cmap="viridis")
 
 ax[0,0].streamplot(x,y,
     data["velocity_x"][0,:,:],data["velocity_y"][0,:,:],
@@ -146,7 +146,7 @@ cb.set_ticks(np.arange(0.15,1.20,0.15))
 d0=data["escr_01"][0,:,:]
 ax[0,1].imshow(d0, extent=[x[0], x[-1], y[0], y[-1]],
                origin="lower",
-               cmap="RdGy_r", norm=LogNorm(0.1,10))
+               cmap="viridis", norm=LogNorm(0.1,10))
 
 ax[0,1].streamplot(x,y,
     data["mag_field_x"][0,:,:],data["mag_field_y"][0,:,:],
@@ -167,7 +167,7 @@ data, cell_dims, origin, spacing = load_and_stitch_data(file)
 d0=data["density"][0,:,:]
 ax[1,0].imshow(d0, extent=[x[0], x[-1], y[0], y[-1]],
                origin="lower",
-               cmap="RdGy_r",norm=Normalize(0.15,1.35))
+               cmap="viridis",norm=Normalize(0.15,1.35))
 
 ax[1,0].streamplot(x,y,
     data["velocity_x"][0,:,:],data["velocity_y"][0,:,:],
@@ -183,7 +183,7 @@ cb.set_ticks(np.arange(0.15,1.20,0.15))
 d0=data["escr_01"][0,:,:]
 ax[1,1].imshow(d0, extent=[x[0], x[-1], y[0], y[-1]],
                origin="lower",
-               cmap="RdGy_r", norm=LogNorm(np.min(d0),10))
+               cmap="viridis", norm=LogNorm(np.min(d0),10))
 
 ax[1,1].streamplot(x,y,
     data["mag_field_x"][0,:,:],data["mag_field_y"][0,:,:],

@@ -83,6 +83,9 @@ contains
 #ifdef RESISTIVE
       use resistivity,           only: init_resistivity
 #endif /* RESISTIVE */
+#ifdef RESIST
+      use resistance,            only: init_resistivity
+#endif /* RESIST */
 #ifdef GRAV
       use gravity,               only: init_grav, init_terms_grav, source_terms_grav
       use hydrostatic,           only: init_hydrostatic, cleanup_hydrostatic
@@ -229,9 +232,13 @@ contains
       call init_grid                         ! Most of the cg's vars are now initialized, only arrays left
       code_progress = PIERNIK_INIT_GRID      ! Now we can initialize things that depend on all the above fundamental calls
 
-#ifdef RESISTIVE
+#ifdef RESISTIVE 
       call init_resistivity                  ! depends on grid
 #endif /* RESISTIVE */
+
+#ifdef RESIST
+      call init_resistivity                  ! depends on grid
+#endif /* RESIST */
 
       call init_sources                      ! depends on: geometry, fluids, grid
 

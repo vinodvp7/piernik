@@ -129,6 +129,12 @@ contains
       use crhelpers,  only: div_v
       use fluidindex, only: flind
 #endif /* COSM_RAYS && IONIZED */
+#ifdef RESIST
+      use resistance_helpers, only: update_current
+      use resistance,         only: eta0, eta_n
+      use constants,          only: INVALID
+      use named_array_list,   only: qna
+#endif /* RESIST */
 
       implicit none
 
@@ -138,7 +144,10 @@ contains
       call div_v(flind%ion%pos, cg)
 #endif /* COSM_RAYS && IONIZED */
       if (.false. .and. cg%is_old) return ! to suppress compiler warnings
-
+#ifdef RESIST
+      call update_current(cg,INVALID)
+      cg%q(qna%ind(eta_n))%arr(:,:,:) = eta0
+#endif /* RESIST */
    end subroutine prepare_sources
 
 !/*

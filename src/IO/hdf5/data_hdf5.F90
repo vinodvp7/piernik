@@ -120,7 +120,7 @@ contains
             f%fu = "\rm{Gs}"
             f%f2cgs = 1.0 / (fpi * sqrt(cm / (miu0 * gram)) * sek)
             f%stag = 1
-         case ("divbc", "divbf", "divbc4", "divbf4", "divbc6", "divbf6", "divbc8", "divbf8")
+         case ("divbc", "divbf", "divbc4", "divbf4", "divbc6", "divbf6", "divbc8", "divbf8", "cur_den_x", "cur_den_y", "cur_den_z")
             f%fu= "\rm{Gs}/\rm{cm}" ! I'm not sure if it is a best description
             f%f2cgs = 1.0 / (fpi * sqrt(cm / (miu0 * gram)) * sek * cm)
          case ("divb_norm")
@@ -401,7 +401,10 @@ contains
       use named_array_list,   only: wna
       use fluidindex,         only: scrind
 #endif /* STREAM_CR */
-
+#ifdef RESIST
+      use resistance,         only: jn
+      use named_array_list,   only: wna
+#endif /* RESIST */
       implicit none
 
       character(len=dsetnamelen),      intent(in)    :: var
@@ -575,6 +578,14 @@ contains
             read(var, '(A7,I2)') aux, is
             tab(:,:,:) = 1.0/vmax * cg%w(wna%ind(sgmn))%arr( 2 * (is-1) + 2, RNG ) 
 #endif /* STREAM_CR */
+#ifdef RESIST
+         case('cur_den_x')
+            tab(:,:,:) = cg%w(wna%ind(jn))%arr(xdim, RNG)
+         case('cur_den_y')
+            tab(:,:,:) = cg%w(wna%ind(jn))%arr(ydim, RNG)
+         case('cur_den_z')
+            tab(:,:,:) = cg%w(wna%ind(jn))%arr(zdim, RNG)
+#endif /* RESIST */
 #ifdef TRACER
          case ("trcr")
             tab(:,:,:) = cg%u(flind%trc%beg, RNG)

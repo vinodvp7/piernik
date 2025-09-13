@@ -134,6 +134,9 @@ contains
 #ifdef RESISTIVE
       use resistivity,        only: timestep_resist
 #endif /* RESISTIVE */
+#ifdef RESIST
+      use resistance,        only: timestep_resist
+#endif /* RESIST */
 #ifdef DEBUG
       use constants,          only: V_DEBUG
       use dataio_pub,         only: printinfo
@@ -188,6 +191,9 @@ contains
 #ifdef RESISTIVE
       call timestep_resist(dt)
 #endif /* RESISTIVE */
+#ifdef RESIST
+      call timestep_resist(dt)
+#endif /* RESIST */
 #ifdef STREAM_CR
       call timestep_scr(dt)
 #endif /* STREAM_CR */

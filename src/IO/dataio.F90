@@ -946,27 +946,15 @@ contains
          open(newunit=unlink_stat, file='restart_list.tmp', status='unknown')
          close(unlink_stat, status='delete')
 
-         do nres = 999, 0, -1
-            inquire(file = trim(output_fname(RD,'.res', nres)), exist = exist)
-            if (exist) then
-               restart_number = nres
-               restarted_sim = .true.
-               return
-            endif
-         enddo
-      else
-         open(newunit=unlink_stat, file='restart_list.tmp', status='unknown')
-         close(unlink_stat, status='delete')
-         nres = restart_number
+      do nres = 9999, 0, -1
          inquire(file = trim(output_fname(RD,'.res', nres)), exist = exist)
          if (exist) then
             restart_number = nres
             restarted_sim = .true.
             return
-         else
-            call die("[dataio:find_last_restart] specified restart file unavailable")
          endif
-      endif
+      enddo
+
    end subroutine find_last_restart
 #endif /* HDF5 */
 !>

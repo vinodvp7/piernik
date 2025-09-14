@@ -967,6 +967,15 @@ contains
             call die("[dataio:find_last_restart] specified restart file unavailable")
          endif
       endif
+      do nres = 9999, 0, -1
+         inquire(file = trim(output_fname(RD,'.res', nres)), exist = exist)
+         if (exist) then
+            restart_number = nres
+            restarted_sim = .true.
+            return
+         endif
+      enddo
+
    end subroutine find_last_restart
 #endif /* HDF5 */
 !>

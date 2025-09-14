@@ -65,7 +65,7 @@ contains
 
       implicit none
 
-      b0  = 1.0
+      b0  = 0.1
 
 
       if (master) then

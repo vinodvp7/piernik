@@ -107,7 +107,7 @@ contains
       eta_scale  = 4
       j_crit     = 1.0e6
       deint_max  = 0.01
-      ord_curl_grad = 2
+      ord_curl_grad = 4
 
       if (master) then
 

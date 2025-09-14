@@ -95,7 +95,27 @@ contains
 
    end subroutine update_j_and_curl_j
 
+   subroutine first_eta_j_update
 
+      use resistivity,        only: compute_resist, eta_n, eta_jn, jn
+      use cg_list,            only: cg_list_element
+      use cg_leaves,          only: leaves
+      use grid_cont,          only: grid_container
+
+      implicit none
+
+      type(cg_list_element), pointer         :: cgl
+      type(grid_container),  pointer         :: cg
+
+      call compute_resist
+      cgl => leaves%first
+      do while (associated(cgl))
+         cg => cgl%cg
+         call update_j_and_curl_j(cg)
+         cgl => cgl%nxt
+      enddo
+
+   end subroutine first_eta_j_update
 
 function gradient_2nd_order(cg, ind, dir) result(dB)
 

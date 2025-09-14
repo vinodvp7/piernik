@@ -161,7 +161,7 @@ contains
                      call cg%cleanup_flux()      ! Seems unnecessary.This just sets the flux array to 0.0
 
                      call cg%costs%start
-                     call solve_cg_unsplit(cg, istep)
+                     call solve_cg_unsplit(cg, istep)      ! MHD update using RK2 + HLLD (ideal no resistive pieces inside)
                      call cg%costs%stop(I_MHD)
 
                      call ppp_main%stop(cg_label, PPP_CG)
@@ -219,14 +219,12 @@ contains
       type(cg_list_element), pointer         :: cgl
       type(grid_container),  pointer         :: cg
       real, dimension(:,:,:), pointer        :: eta
-      real, dimension(:,:,:, :), pointer        :: cej
+      real, dimension(:,:,:, :), pointer     :: cej
 
-      call compute_resist
       
       cgl => leaves%first
       do while (associated(cgl))
          cg => cgl%cg
-         call update_j_and_curl_j(cg)
          eta => cg%q(qna%ind(eta_n))%arr
          cej => cg%w(wna%ind(eta_jn))%arr
          cg%b(:,:,:,:) = cg%b(:,:,:,:) - rk_coef(first_stage(integration_order)) * dt * cej(:,:,:,:)
@@ -241,6 +239,15 @@ contains
          cgl => cgl%nxt
       enddo
       call update_boundaries(last_stage(integration_order))         ! last_stage because that is the one that does ghost exchange on u and b  instead of the half stage array uh_n and magh_n
+      
+      call compute_resist
+      cgl => leaves%first
+      do while (associated(cgl))
+         cg => cgl%cg
+         call update_j_and_curl_j(cg)
+         cgl => cgl%nxt
+      enddo
+
    end subroutine add_resistivity
 #endif /* RESISTIVE */
 

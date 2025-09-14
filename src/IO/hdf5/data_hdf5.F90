@@ -369,9 +369,10 @@ contains
 #ifndef ISO
       use units,            only: kboltz, mH
 #endif /* !ISO */
-#ifdef RESISTIVITY
+#ifdef RESISTIVE
       use resistivity,      only: jn
-#endif /* RESISTIVITY */
+      use named_array_list, only: wna 
+#endif /* RESISTIVE */
 
       implicit none
 
@@ -496,14 +497,14 @@ contains
             read(var,'(A4,I2.2)') aux, i !> \deprecated BEWARE 0 <= i <= 99, no other indices can be dumped to hdf file
             tab(:,:,:) = cg%w(wna%ind(dfpq%q_nam))%arr(i,RNG)  !flind%cre%fbeg+i-1, RNG)
 #endif /* CRESP */
-#ifdef RESISTIVITY
+#ifdef RESISTIVE
          case('current_x')
             tab(:,:,:) = cg%w(wna%ind(jn))%arr(xdim, RNG)
          case('current_y')
             tab(:,:,:) = cg%w(wna%ind(jn))%arr(ydim, RNG)
          case('current_z')
             tab(:,:,:) = cg%w(wna%ind(jn))%arr(zdim, RNG)
-#endif /* RESISTIVITY */
+#endif /* RESISTIVE */
 #ifdef TRACER
          case ("trcr")
             tab(:,:,:) = cg%u(flind%trc%beg, RNG)

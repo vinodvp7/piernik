@@ -42,9 +42,9 @@ module initproblem
    private
    public :: read_problem_par, problem_initial_conditions, problem_pointers
 
-   real               :: b0
+   real               :: beta, dy,  kx, ky, eps, bg
 
-   namelist /PROBLEM_CONTROL/  b0
+   namelist /PROBLEM_CONTROL/  beta, dy, kx, ky, eps, bg
 
 contains
 
@@ -62,10 +62,16 @@ contains
       use bcast,      only: piernik_MPI_Bcast
       use dataio_pub, only: nh
       use mpisetup,   only: rbuff, master, slave
+      use constants,  only: pi
 
       implicit none
 
-      b0  = 0.1
+      beta  = 0.1
+      dy    = 0.3
+      kx    = pi/10        ! 2pi/Lx
+      ky    = pi/6         ! 2pi/Ly
+      eps   = 0.1
+      bg    = 10.0
 
 
       if (master) then
@@ -86,7 +92,12 @@ contains
          close(nh%lun)
          call nh%compare_namelist()
 
-         rbuff(1)  = b0
+         rbuff(1)  = beta
+         rbuff(2)  = dy
+         rbuff(3)  = kx
+         rbuff(4)  = ky
+         rbuff(5)  = eps
+         rbuff(6)  = bg
 
       endif
 
@@ -94,8 +105,12 @@ contains
 
       if (slave) then
 
-         b0  = rbuff(1)
-
+         beta  = rbuff(1)
+         dy    = rbuff(2)
+         kx    = rbuff(3)
+         ky    = rbuff(4)
+         eps   = rbuff(5)
+         bg    = rbuff(6)
 
       endif
 
@@ -133,17 +148,17 @@ contains
                   xi = cg%x(i)
                   do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
                      zk = cg%z(k)
-                     cg%u(fl%idn,i,j,k) = 1.0
+                     cg%u(fl%idn,i,j,k) = (beta + 1/cosh(yj/dy) * 1/cosh(yj/dy) )**(1/fl%gam)
                      cg%u(fl%imx,i,j,k) = 0.0
                      cg%u(fl%imy,i,j,k) = 0.0
                      cg%u(fl%imz,i,j,k) = 0.0
                      if (fl%has_energy) then
-                        cg%u(fl%ien,i,j,k) = 1.0/fl%gam_1
+                        cg%u(fl%ien,i,j,k) = 1.0/fl%gam_1 * (beta + 1/cosh(yj/dy) * 1/cosh(yj/dy) )
                         cg%u(fl%ien,i,j,k) = cg%u(fl%ien,i,j,k) + ekin(cg%u(fl%imx,i,j,k), cg%u(fl%imy,i,j,k), cg%u(fl%imz,i,j,k), cg%u(fl%idn,i,j,k))
                         if (fl%is_magnetized) then
-                           cg%b(xdim,i,j,k)   =  0.0
-                           cg%b(ydim,i,j,k)   =  b0 * sin(6.283185307 * xi)
-                           cg%b(zdim,i,j,k)   =  0.0
+                           cg%b(xdim,i,j,k)   =  tanh(yj/dy) + eps * sin(kx*xi) * cos(ky*yj)
+                           cg%b(ydim,i,j,k)   =  -eps * kx/ky * cos(kx*xi) * sin(ky*yj)
+                           cg%b(zdim,i,j,k)   =  bg
                            cg%u(fl%ien,i,j,k) = cg%u(fl%ien,i,j,k) + emag(cg%b(xdim,i,j,k), cg%b(ydim,i,j,k), cg%b(zdim,i,j,k))
                         endif
                      endif

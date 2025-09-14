@@ -120,7 +120,8 @@ contains
             f%fu = "\rm{Gs}"
             f%f2cgs = 1.0 / (fpi * sqrt(cm / (miu0 * gram)) * sek)
             f%stag = 1
-         case ("divbc", "divbf", "divbc4", "divbf4", "divbc6", "divbf6", "divbc8", "divbf8", "current_x", "current_y", "current_z")
+         case ("divbc", "divbf", "divbc4", "divbf4", "divbc6", "divbf6", "divbc8", "divbf8",&
+              & "current_x", "current_y", "current_z", "current_mag")
             f%fu= "\rm{Gs}/\rm{cm}" ! I'm not sure if it is a best description
             f%f2cgs = 1.0 / (fpi * sqrt(cm / (miu0 * gram)) * sek * cm)
          case ("divb_norm")
@@ -504,6 +505,9 @@ contains
             tab(:,:,:) = cg%w(wna%ind(jn))%arr(ydim, RNG)
          case('current_z')
             tab(:,:,:) = cg%w(wna%ind(jn))%arr(zdim, RNG)
+         case('current_mag')
+            tab(:,:,:) = sqrt(sum(cg%w(wna%ind(jn))%arr(xdim:zdim, RNG)* cg%w(wna%ind(jn))%arr(xdim:zdim, RNG),dim=1))
+
 #endif /* RESISTIVE */
 #ifdef TRACER
          case ("trcr")

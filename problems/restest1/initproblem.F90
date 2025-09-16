@@ -145,7 +145,6 @@ contains
                         cg%u(fl%ien,i,j,k) = cg%u(fl%ien,i,j,k) + &
                            ekin(cg%u(fl%imx,i,j,k), cg%u(fl%imy,i,j,k), cg%u(fl%imz,i,j,k), cg%u(fl%idn,i,j,k))
                         if (fl%is_magnetized) then
-                           ! ---- 2D divergence-free field from A_z = A0 cos(kx x) cos(ky y) ----
                            cg%b(xdim,i,j,k) = 0.0
                            cg%b(ydim,i,j,k) =  b0 * sin(kx*xi) 
                            cg%b(zdim,i,j,k) =  0.0

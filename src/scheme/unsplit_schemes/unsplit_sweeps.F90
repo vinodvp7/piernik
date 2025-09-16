@@ -217,24 +217,34 @@ contains
       type(cg_list_element), pointer    :: cgl
       type(grid_container), pointer     :: cg
       real, dimension(:,:,:,:), pointer :: cej
+      real, dimension(:,:,:,:), pointer :: pb, pbf
+      integer                           :: istep
 
-      call compute_resist
-      cgl => leaves%first
-      do while (associated(cgl))
-         cg => cgl%cg
-         call update_j_and_curl_j(cg,first_stage(integration_order))
-         cej => cg%w(wna%ind(eta_jn))%arr
-         cg%b(:,:,:,:) = cg%b(:,:,:,:) - 0.5 * dt * cej(:,:,:,:)
-         cgl => cgl%nxt
-      enddo
-      call update_boundaries(last_stage(integration_order)) ! last_stage because that is the one that does ghost exchange on u and b instead of the half stage array uh_n and magh_n
-      call compute_resist
-      cgl => leaves%first
-      do while (associated(cgl))
-         cg => cgl%cg
-         call update_j_and_curl_j(cg,first_stage(integration_order))
-         cgl => cgl%nxt
-      enddo
+      do istep = first_stage(integration_order), last_stage(integration_order)
+         call compute_resist
+         cgl => leaves%first
+         do while (associated(cgl))
+            cg => cgl%cg
+            pb   => cg%w(wna%bi)%arr
+            pbf  => cg%w(wna%bi)%arr
+            if (istep == first_stage(integration_order) .or. integration_order < 2 ) then
+               pb   => cg%w(wna%bi)%arr
+               pbf  => cg%w(wna%ind(magh_n))%arr
+            endif
+            call update_j_and_curl_j(cg,istep)
+            cej => cg%w(wna%ind(eta_jn))%arr
+            pbf(:,:,:,:) = pb(:,:,:,:) - rk_coef(istep) * 0.5 * dt * cej(:,:,:,:)
+            cgl => cgl%nxt
+         enddo
+         call update_boundaries(istep) ! last_stage because that is the one that does ghost exchange on u and b instead of the half stage array uh_n and magh_n
+         call compute_resist
+         cgl => leaves%first
+         do while (associated(cgl))
+            cg => cgl%cg
+            call update_j_and_curl_j(cg,istep)
+            cgl => cgl%nxt
+         enddo
+      end do
    end subroutine add_resistivity
 #endif /* RESISTIVE */
 

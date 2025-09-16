@@ -76,7 +76,6 @@ contains
 #ifdef RESISTIVE
       real, dimension(:,:), pointer                :: resterm
       real, dimension(:), pointer                  :: res_term
-
       call update_j_and_curl_j(cg, istep)
 #endif /* RESISTIVE */
       uhi = wna%ind(uh_n)

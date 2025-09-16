@@ -1,5 +1,5 @@
 $BASE_DOMAIN
-  n_d = 1024,1,1
+  n_d = 256,1,1
   nb  = 4
   bnd_xl = 'per'
   bnd_xr = 'per'
@@ -61,6 +61,7 @@ $NUMERICAL_SETUP
    eta_0      = 0.005
    cfl_resist = 0.2
    eta_1      = 0.0
+   ord_curl_grad = 4
    j_crit     = 1.0
    deint_max  = 0.01
  /

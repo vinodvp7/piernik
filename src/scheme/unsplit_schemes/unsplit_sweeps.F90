@@ -81,174 +81,163 @@ contains
    end subroutine update_boundaries
 
    subroutine unsplit_sweep()
+   use cg_cost_data,      only: I_MHD, I_REFINE
+   use cg_leaves,         only: leaves
+   use cg_list,           only: cg_list_element
+   use cg_list_dataop,    only: cg_list_dataop_t
+   use constants,         only: first_stage, last_stage, INVALID, PPP_CG, UNSPLIT
+   use dataio_pub,        only: die
+   use fc_fluxes_unsplit, only: initiate_flx_recv, recv_cg_finebnd, send_cg_coarsebnd
+   use global,            only: integration_order, which_solver_type
+   use grid_cont,         only: grid_container
+   use MPIF,              only: MPI_STATUS_IGNORE
+   use MPIFUN,            only: MPI_Waitany
+   use mpisetup,          only: err_mpi
+   use ppp,               only: ppp_main
+   use pppmpi,            only: req_ppp
+   use sources,           only: prepare_sources
+   use solvecg_unsplit,   only: solve_cg_unsplit
 
-      use cg_cost_data,      only: I_MHD, I_REFINE
-      use cg_leaves,         only: leaves
-      use cg_list,           only: cg_list_element
-      use cg_list_dataop,    only: cg_list_dataop_t
-      use constants,         only: first_stage, last_stage, INVALID, PPP_CG, UNSPLIT
-      use dataio_pub,        only: die
-      use fc_fluxes_unsplit, only: initiate_flx_recv, recv_cg_finebnd, send_cg_coarsebnd
-      use global,            only: integration_order, which_solver_type
-      use grid_cont,         only: grid_container
-      use MPIF,              only: MPI_STATUS_IGNORE
-      use MPIFUN,            only: MPI_Waitany
-      use mpisetup,          only: err_mpi
-      use ppp,               only: ppp_main
-      use pppmpi,            only: req_ppp
-      use sources,           only: prepare_sources
-      use solvecg_unsplit,   only: solve_cg_unsplit
+   implicit none
 
-      implicit none
+   integer                          :: istep
+   type(cg_list_element), pointer   :: cgl
+   type(grid_container),  pointer   :: cg
+   type(cg_list_dataop_t), pointer  :: sl
+   type(req_ppp)                    :: req
+   logical                          :: all_processed, all_received
+   integer                          :: blocks_done
+   integer(kind=4)                  :: n_recv, g
+   character(len=*), parameter :: solve_cgs_label = "solve_bunch_of_cg", cg_label = "solve_cg", init_src_label = "init_src"
 
-      integer                          :: istep
-      type(cg_list_element), pointer   :: cgl
-      type(grid_container),  pointer   :: cg
-      type(cg_list_dataop_t), pointer  :: sl
-      type(req_ppp)                    :: req
-      logical                          :: all_processed, all_received
-      integer                          :: blocks_done
-      integer(kind=4)                  :: n_recv, g
-      character(len=*), parameter :: solve_cgs_label = "solve_bunch_of_cg", cg_label = "solve_cg", init_src_label = "init_src"
+   call ppp_main%start("unsplit_sweep")
 
-      call ppp_main%start("unsplit_sweep")
+   if (which_solver_type /= UNSPLIT) call die("[unsplit_sweeps:unsplit_sweep] Only compatible with UNSPLIT solver")
 
-      if (which_solver_type /= UNSPLIT) call die("[unsplit_sweeps:unsplit_sweep] Only compatible with UNSPLIT solver")
+   sl => leaves%prioritized_cg(INVALID, covered_too = .true.)
 
-      sl => leaves%prioritized_cg(INVALID, covered_too = .true.)
-
-      call ppp_main%start(init_src_label)
-      ! for use with GLM divergence cleaning we also make a copy of b and psi fields
-      cgl => leaves%first
-      do while (associated(cgl))
-         call prepare_sources(cgl%cg)
-         cgl => cgl%nxt
-      enddo
-      call ppp_main%stop(init_src_label)
+   call ppp_main%start(init_src_label)
+   ! for use with GLM divergence cleaning we also make a copy of b and psi fields
+   cgl => leaves%first
+   do while (associated(cgl))
+      call prepare_sources(cgl%cg)
+      cgl => cgl%nxt
+   enddo
+   call ppp_main%stop(init_src_label)
 
 #ifdef RESISTIVE
-      call add_resistivity                                  ! dt/2 
+   call add_resistivity ! dt/2
 #endif /* RESISTIVE */
 
-      ! This is the loop over Runge-Kutta stages
-      do istep = first_stage(integration_order), last_stage(integration_order)
+   ! This is the loop over Runge-Kutta stages
+   do istep = first_stage(integration_order), last_stage(integration_order)
 
-         call initiate_flx_recv(req, INVALID)
-         n_recv = req%n
-         all_processed = .false.
+      call initiate_flx_recv(req, INVALID)
+      n_recv = req%n
+      all_processed = .false.
 
-         do while (.not. all_processed)
-            all_processed = .true.
-            blocks_done = 0
-            ! OPT this loop should probably go from finest to coarsest for better compute-communicate overlap.
-            cgl => sl%first
+      do while (.not. all_processed)
+         all_processed = .true.
+         blocks_done = 0
+         ! OPT this loop should probably go from finest to coarsest for better compute-communicate overlap.
+         cgl => sl%first
 
-            call ppp_main%start(solve_cgs_label)
-            do while (associated(cgl))
-               cg => cgl%cg
-               call cg%costs%start
+         call ppp_main%start(solve_cgs_label)
+         do while (associated(cgl))
+            cg => cgl%cg
+            call cg%costs%start
 
-               if (.not. cg%processed) then
-                  call recv_cg_finebnd(req, INVALID, cg, all_received)
+            if (.not. cg%processed) then
+               call recv_cg_finebnd(req, INVALID, cg, all_received)
 
-                  if (all_received) then
-                     call ppp_main%start(cg_label, PPP_CG)
-                     call cg%costs%stop(I_REFINE)
-                     ! The recv_cg_finebnd and send_cg_coarsebnd aren't MHD, so we should count them separately.
-                     ! The tricky part is that we need to fit all the switching inside the conditional part
-                     ! and don't mess pairing and don't let them to nest.
+               if (all_received) then
+                  call ppp_main%start(cg_label, PPP_CG)
+                  call cg%costs%stop(I_REFINE)
+                  ! The recv_cg_finebnd and send_cg_coarsebnd aren't MHD, so we should count them separately.
+                  ! The tricky part is that we need to fit all the switching inside the conditional part
+                  ! and don't mess pairing and don't let them to nest.
 
-                     call cg%cleanup_flux()      ! Seems unnecessary.This just sets the flux array to 0.0
+                  call cg%cleanup_flux()      ! Seems unnecessary.This just sets the flux array to 0.0
 
-                     call cg%costs%start
-                     call solve_cg_unsplit(cg, istep)      ! MHD update using RK2 + HLLD (ideal no resistive pieces inside)
-                     call cg%costs%stop(I_MHD)
+                  call cg%costs%start
+                  call solve_cg_unsplit(cg, istep)      ! MHD update using RK2 + HLLD (ideal no resistive pieces inside)
+                  call cg%costs%stop(I_MHD)
 
-                     call ppp_main%stop(cg_label, PPP_CG)
+                  call ppp_main%stop(cg_label, PPP_CG)
 
-                     call cg%costs%start
-                     call send_cg_coarsebnd(req, INVALID, cg)
-                     blocks_done = blocks_done + 1
-                  else
-                     all_processed = .false.
-                  endif
+                  call cg%costs%start
+                  call send_cg_coarsebnd(req, INVALID, cg)
+                  blocks_done = blocks_done + 1
+               else
+                  all_processed = .false.
                endif
-
-               call cg%costs%stop(I_REFINE)
-               cgl => cgl%nxt
-            enddo
-            call ppp_main%stop(solve_cgs_label)
-
-            if (.not. all_processed .and. blocks_done == 0) then
-               if (n_recv > 0) call MPI_Waitany(n_recv, req%r(:n_recv), g, MPI_STATUS_IGNORE, err_mpi)
-               ! g is the number of completed operations
             endif
+
+            call cg%costs%stop(I_REFINE)
+            cgl => cgl%nxt
          enddo
+         call ppp_main%stop(solve_cgs_label)
 
-         call req%waitall("sweeps")
-
-         call update_boundaries(istep)
+         if (.not. all_processed .and. blocks_done == 0) then
+            if (n_recv > 0) call MPI_Waitany(n_recv, req%r(:n_recv), g, MPI_STATUS_IGNORE, err_mpi)
+            ! g is the number of completed operations
+         endif
       enddo
 
-      call sl%delete
-      deallocate(sl)
+      call req%waitall("sweeps")
+
+      call update_boundaries(istep)
+   enddo
+
+   call sl%delete
+   deallocate(sl)
 
 #ifdef RESISTIVE
-      call add_resistivity                                  ! dt/2 
+   call add_resistivity ! dt/2
 #endif /* RESISTIVE */
 
-      call ppp_main%stop("unsplit_sweep")
+   call ppp_main%stop("unsplit_sweep")
 
    end subroutine unsplit_sweep
 
 #ifdef RESISTIVE
    subroutine add_resistivity
-      
-      use resistivity,        only: compute_resist, eta_n, eta_jn, jn
-      use cg_list,            only: cg_list_element
-      use cg_leaves,          only: leaves
-      use grid_cont,          only: grid_container
-      use fluidindex,         only: flind
-      use named_array_list,   only: wna, qna
-      use global,             only: dt, integration_order
-      use constants,          only: first_stage, rk_coef, last_stage, xdim, ydim, zdim
+      use resistivity, only: compute_resist, eta_n, eta_jn, jn
+      use cg_list, only: cg_list_element
+      use cg_leaves, only: leaves
+      use grid_cont, only: grid_container
+      use fluidindex, only: flind
+      use named_array_list, only: wna, qna
+      use global, only: dt, integration_order
+      use constants, only: first_stage, rk_coef, last_stage, xdim, ydim, zdim, magh_n
       use resistance_helpers, only: update_j_and_curl_j
 
       implicit none
 
-      type(cg_list_element), pointer         :: cgl
-      type(grid_container),  pointer         :: cg
-      real, dimension(:,:,:), pointer        :: eta
-      real, dimension(:,:,:, :), pointer     :: cej
+      type(cg_list_element), pointer    :: cgl
+      type(grid_container), pointer     :: cg
+      real, dimension(:,:,:,:), pointer :: cej
 
-      
-      cgl => leaves%first
-      do while (associated(cgl))
-         cg => cgl%cg
-         eta => cg%q(qna%ind(eta_n))%arr
-         cej => cg%w(wna%ind(eta_jn))%arr
-         cg%b(:,:,:,:) = cg%b(:,:,:,:) - rk_coef(first_stage(integration_order)) * dt * cej(:,:,:,:)
-#ifndef ISO
-#ifdef IONIZED
-         cg%u(flind%ion%ien,:,:,:) = cg%u(flind%ion%ien,:,:,:) + rk_coef(first_stage(integration_order)) * dt * eta(:,:,:) * &
-         &  (cg%w(wna%ind(jn))%arr(xdim,:,:,:) * cg%w(wna%ind(jn))%arr(xdim,:,:,:) +  &
-         &   cg%w(wna%ind(jn))%arr(ydim,:,:,:) * cg%w(wna%ind(jn))%arr(ydim,:,:,:) + & 
-         &   cg%w(wna%ind(jn))%arr(zdim,:,:,:) * cg%w(wna%ind(jn))%arr(zdim,:,:,:))
-#endif /* IONIZED */
-#endif /* !ISO */
-         cgl => cgl%nxt
-      enddo
-      call update_boundaries(last_stage(integration_order))         ! last_stage because that is the one that does ghost exchange on u and b  instead of the half stage array uh_n and magh_n
-      
       call compute_resist
       cgl => leaves%first
       do while (associated(cgl))
          cg => cgl%cg
-         call update_j_and_curl_j(cg)
+         call update_j_and_curl_j(cg,first_stage(integration_order))
+         cej => cg%w(wna%ind(eta_jn))%arr
+         cg%b(:,:,:,:) = cg%b(:,:,:,:) - 0.5 * dt * cej(:,:,:,:)
          cgl => cgl%nxt
       enddo
-
+      call update_boundaries(last_stage(integration_order)) ! last_stage because that is the one that does ghost exchange on u and b instead of the half stage array uh_n and magh_n
+      call compute_resist
+      cgl => leaves%first
+      do while (associated(cgl))
+         cg => cgl%cg
+         call update_j_and_curl_j(cg,first_stage(integration_order))
+         cgl => cgl%nxt
+      enddo
    end subroutine add_resistivity
 #endif /* RESISTIVE */
+
+
 
 end module unsplit_sweeps

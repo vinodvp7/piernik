@@ -49,7 +49,9 @@ module resistivity
    real(kind=8)                          :: d_eta_factor
    type(value)                           :: etamax, cu2max, deimin
    logical, save                         :: eta1_active = .true.           !< resistivity off-switcher while eta_1 == 0.0
-   character(len=dsetnamelen), parameter :: eta_n = "eta", wb_n = "wb", eh_n = "eh", dbx_n = "dbx", dby_n = "dby", dbz_n = "dbz", jn = "jn", eta_jn = "eta_jn"
+   character(len=dsetnamelen), parameter :: eta_n = "eta", wb_n = "wb", eh_n = "eh", dbx_n = "dbx", dby_n = "dby", &
+   &                                        dbz_n = "dbz", jn = "jn", eta_jn = "eta_jn", eta_jbn = "eta_jbn", &
+   &                                        eta_jbn_div = "eta_jbn_div"
 
 contains
 
@@ -165,6 +167,8 @@ contains
       call all_cg%reg_var(dbz_n)
       call all_cg%reg_var(name=eta_jn,dim4=ndims)
       call all_cg%reg_var(name=jn,dim4=ndims)
+      call all_cg%reg_var(name=eta_jbn_div)
+      call all_cg%reg_var(name=eta_jbn,dim4=ndims)
 
 #ifdef ISO
       if (eta_1 .equals. zero) then

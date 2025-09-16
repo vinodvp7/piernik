@@ -52,30 +52,37 @@ module resistance_helpers
 
 contains
 
-   subroutine update_j_and_curl_j(cg)
+   subroutine update_j_and_curl_j(cg, istep)
 
       use grid_cont,          only: grid_container
       use named_array_list,   only: wna, qna
       use constants,          only: xdim, ydim, zdim, first_stage, ndims
       use global,             only: integration_order
       use constants,          only: magh_n
-      use resistivity,        only: jn, eta_jn, eta_n, ord_curl_grad
+      use resistivity,        only: jn, eta_jn, eta_n, ord_curl_grad, eta_jbn,  eta_jbn_div
 
       implicit none
 
       type(grid_container), pointer, intent(in) :: cg
+      integer,                       intent(in) :: istep
 
       procedure(gradient_pc), pointer           :: grad_pc => null()
 
       real    :: dbx(ndims,cg%n_(xdim),cg%n_(ydim),cg%n_(zdim)),dby(ndims,cg%n_(xdim),cg%n_(ydim),cg%n_(zdim))
       real    :: dbz(ndims,cg%n_(xdim),cg%n_(ydim),cg%n_(zdim))
+      integer :: bhi 
+
+      bhi = wna%ind(magh_n)            
+      if (istep == first_stage(integration_order) .or. integration_order < 2) then
+         bhi = wna%bi       ! At first step or if integration order = 1 then we select half stage mag field initially
+      endif
 
       if (ord_curl_grad == 2)  grad_pc => gradient_2nd_order
       if (ord_curl_grad == 4)  grad_pc => gradient_4th_order 
 
-      dbx = grad_pc(cg, wna%bi, xdim)
-      dby = grad_pc(cg, wna%bi, ydim)
-      dbz = grad_pc(cg, wna%bi, zdim)
+      dbx = grad_pc(cg, bhi, xdim)
+      dby = grad_pc(cg, bhi, ydim)
+      dbz = grad_pc(cg, bhi, zdim)
 
       cg%w(wna%ind(jn))%arr(xdim,:,:,:) = dbz(ydim,:,:,:) - dby(zdim,:,:,:)
       cg%w(wna%ind(jn))%arr(ydim,:,:,:) = dbx(zdim,:,:,:) - dbz(xdim,:,:,:)
@@ -93,29 +100,27 @@ contains
       cg%w(wna%ind(eta_jn))%arr(ydim,:,:,:) = dbx(zdim,:,:,:) - dbz(xdim,:,:,:)
       cg%w(wna%ind(eta_jn))%arr(zdim,:,:,:) = dby(xdim,:,:,:) - dbx(ydim,:,:,:)
 
+      cg%w(wna%ind(eta_jbn))%arr(xdim,:,:,:) = cg%q(qna%ind(eta_n))%arr(:,:,:) * ( &
+         cg%w(wna%ind(jn))%arr(ydim,:,:,:) * cg%w(bhi)%arr(zdim,:,:,:) - &
+         cg%w(wna%ind(jn))%arr(zdim,:,:,:) * cg%w(bhi)%arr(ydim,:,:,:) )
+
+      cg%w(wna%ind(eta_jbn))%arr(ydim,:,:,:) = cg%q(qna%ind(eta_n))%arr(:,:,:) * ( &
+         cg%w(wna%ind(jn))%arr(zdim,:,:,:) * cg%w(bhi)%arr(xdim,:,:,:) - &
+         cg%w(wna%ind(jn))%arr(xdim,:,:,:) * cg%w(bhi)%arr(zdim,:,:,:) )
+
+      cg%w(wna%ind(eta_jbn))%arr(zdim,:,:,:) = cg%q(qna%ind(eta_n))%arr(:,:,:) * ( &
+         cg%w(wna%ind(jn))%arr(xdim,:,:,:) * cg%w(bhi)%arr(ydim,:,:,:) - &
+         cg%w(wna%ind(jn))%arr(ydim,:,:,:) * cg%w(bhi)%arr(xdim,:,:,:) )
+
+      dbx = grad_pc(cg, wna%ind(eta_jbn), xdim)
+      dby = grad_pc(cg, wna%ind(eta_jbn), ydim)
+      dbz = grad_pc(cg, wna%ind(eta_jbn), zdim)
+
+      cg%q(qna%ind(eta_jbn_div))%arr(:,:,:) = dbx(xdim,:,:,:) + dby(ydim,:,:,:) + dbz(zdim,:,:,:)
+
+
    end subroutine update_j_and_curl_j
 
-   subroutine first_eta_j_update
-
-      use resistivity,        only: compute_resist, eta_n, eta_jn, jn
-      use cg_list,            only: cg_list_element
-      use cg_leaves,          only: leaves
-      use grid_cont,          only: grid_container
-
-      implicit none
-
-      type(cg_list_element), pointer         :: cgl
-      type(grid_container),  pointer         :: cg
-
-      call compute_resist
-      cgl => leaves%first
-      do while (associated(cgl))
-         cg => cgl%cg
-         call update_j_and_curl_j(cg)
-         cgl => cgl%nxt
-      enddo
-
-   end subroutine first_eta_j_update
 
 function gradient_2nd_order(cg, ind, dir) result(dB)
 

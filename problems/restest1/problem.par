@@ -1,16 +1,16 @@
 $BASE_DOMAIN
-  n_d = 1024,512,1
+  n_d = 1024,1,1
   nb  = 4
   bnd_xl = 'per'
   bnd_xr = 'per'
-  bnd_yl = 'out'
-  bnd_yr = 'out'
+  bnd_yl = 'per'
+  bnd_yr = 'per'
   bnd_zl = 'per'
   bnd_zr = 'per'
-  xmin   = -10.0
-  xmax   =  10.0
-  ymin   = -6.0
-  ymax   =  6.0
+  xmin   = 0.0
+  xmax   = 1.0
+  ymin   = 0.0
+  ymax   = 1.0
   zmin   = 0.0
   zmax   = 1.0
 /
@@ -28,31 +28,29 @@ $RESTART_CONTROL
 /
 
 $END_CONTROL
-  tend = 100.0
-  nend = 100000000
+  tend = 0.5
+  nend = 1000000
 /
 
 $OUTPUT_CONTROL
-   problem_name = 'rec'
+   problem_name = 'res'
    run_id = 'tst'
-   dt_hdf = 5.0
+   dt_hdf = 0.1
    dt_res = 0.0
-   dt_log = 2.0
+   dt_log = 1e-20
    dt_tsl = 0.02
-   vars(1:) = 'dens', 'ener', 'velx', 'pres', 'current_x', 'current_y', 'current_z', 'magx', 'magy', 'current_mag'
+   vars(1:) = 'dens', 'ener', 'velx', 'pres', 'current_x', 'current_y', 'current_z', 'magx', 'magy'
 /
 
 $FLUID_IONIZED
   gamma = 1.6667
-  cs_iso  =  0.707106781            ! sound speed
-
 /
 
 $NUMERICAL_SETUP
   cfl     = 0.5
   smalld  = 1.e-5
   smallei = 1.e-5
-  limiter = 'vanleer'
+  limiter = 'moncen'
   disallow_negatives = .false.
   solver_type = 'unsplit'
   solver_str = 'riemann'
@@ -60,7 +58,7 @@ $NUMERICAL_SETUP
   cfl_glm = 0.3
 /
  $RESISTIVITY
-   eta_0      = 2e-3
+   eta_0      = 0.005
    cfl_resist = 0.2
    eta_1      = 0.0
    j_crit     = 1.0

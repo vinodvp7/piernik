@@ -82,7 +82,6 @@ contains
       use wrapper_stats,         only: init_wstats
 #ifdef RESISTIVE
       use resistivity,           only: init_resistivity
-      use resistance_helpers,    only: first_eta_j_update
 #endif /* RESISTIVE */
 #ifdef GRAV
       use gravity,               only: init_grav, init_terms_grav, source_terms_grav
@@ -296,9 +295,6 @@ contains
 
          call ppp_main%start(prob_label)
          call problem_initial_conditions ! may depend on anything
-#ifdef RESISTIVE
-         call first_eta_j_update
-#endif /* RESISTIVE */
          call ppp_main%stop(prob_label)
 
          call init_psi ! initialize the auxiliary field for divergence cleaning when needed
@@ -328,9 +324,6 @@ contains
 
             call ppp_main%start(prob_label)
             call problem_initial_conditions ! reset initial conditions after possible changes of refinement structure
-#ifdef RESISTIVE
-         call first_eta_j_update
-#endif /* RESISTIVE */
             call ppp_main%stop(prob_label)
 
             nit = nit + 1

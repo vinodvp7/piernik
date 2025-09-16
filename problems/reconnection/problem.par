@@ -1,6 +1,6 @@
 $BASE_DOMAIN
-  n_d = 256,256,1
-  nb  = 4
+  n_d   = 512,512,1
+  nb    = 4
   bnd_xl = 'per'
   bnd_xr = 'per'
   bnd_yl = 'per'
@@ -8,7 +8,7 @@ $BASE_DOMAIN
   bnd_zl = 'per'
   bnd_zr = 'per'
   xmin   = 0.0
-  xmax   = 1.0
+  xmax   = 2.0
   ymin   = 0.0
   ymax   = 1.0
   zmin   = 0.0
@@ -22,24 +22,24 @@ $UNITS
 /
 
 $RESTART_CONTROL
-   restart  = 'last'
-   res_id   = ''
-   nrestart = 0
+  restart  = 'last'
+  res_id   = ''
+  nrestart = 0
 /
 
 $END_CONTROL
-  tend = 0.5
+  tend = 2.0
   nend = 1000000
 /
 
 $OUTPUT_CONTROL
-   problem_name = 'res'
-   run_id = 'tst'
-   dt_hdf = 0.1
-   dt_res = 0.0
-   dt_log = 1e-20
-   dt_tsl = 0.02
-   vars(1:) = 'dens', 'ener', 'velx', 'pres', 'current_x', 'current_y', 'current_z', 'magx', 'magy'
+  problem_name = 'rec'
+  run_id       = 'tst'
+  dt_hdf = 0.02
+  dt_res = 0.0
+  dt_log = 1e-20
+  dt_tsl = 0.02
+  vars(1:) = 'dens','ener','pres','velx','vely','velz', 'magx','magy','magz', 'current_x','current_y','current_z'
 /
 
 $FLUID_IONIZED
@@ -47,25 +47,34 @@ $FLUID_IONIZED
 /
 
 $NUMERICAL_SETUP
-  cfl     = 0.5
-  smalld  = 1.e-5
-  smallei = 1.e-5
-  limiter = 'moncen'
+  cfl      = 0.4
+  smalld   = 1.e-5
+  smallei  = 1.e-5
+  limiter  = 'moncen'
   disallow_negatives = .false.
   solver_type = 'unsplit'
-  solver_str = 'riemann'
+  solver_str  = 'riemann'
   integration_order = 2
   cfl_glm = 0.3
 /
- $RESISTIVITY
-   eta_0      = 0.005
-   cfl_resist = 0.2
-   eta_1      = 0.0
-   j_crit     = 1.0
-   deint_max  = 0.01
- /
+
+$RESISTIVITY
+  eta_0       = 1.0e-4     ! S ~ 1/eta_0 ~ 1e4 with v_A~1, L~1
+  eta_1       = 0.0
+  j_crit     = 1.0
+  cfl_resist = 0.45
+  deint_max  = 0.02
+  ord_curl_grad = 4
+/
 
 $PROBLEM_CONTROL
+  B0        = 1.0
+  delta     = 0.02
+  beta_inf  = 0.2
+  eps       = 1.0e-3
+  bg        = 0.0
+  m_mode    = 4
+  n_mode    = 1
 /
 
 $AMR

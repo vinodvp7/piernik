@@ -121,11 +121,9 @@ contains
       integer                         :: p
 
       ! --- NEW: parameters for B field (m=n=1) ---
-      real :: twopi, kx, ky, A0
+      real :: twopi, kx
       twopi = 6.283185307
       kx    = twopi          ! m = 1 (domain length = 1)
-      ky    = twopi          ! n = 1
-      A0    = b0 / kx        ! so max(|Bx|)=max(|By|)=b0 when kx=ky
 
       do p = 1, flind%fluids
          fl => flind%all_fluids(p)%fl
@@ -147,9 +145,8 @@ contains
                         cg%u(fl%ien,i,j,k) = cg%u(fl%ien,i,j,k) + &
                            ekin(cg%u(fl%imx,i,j,k), cg%u(fl%imy,i,j,k), cg%u(fl%imz,i,j,k), cg%u(fl%idn,i,j,k))
                         if (fl%is_magnetized) then
-                           ! ---- 2D divergence-free field from A_z = A0 cos(kx x) cos(ky y) ----
-                           cg%b(xdim,i,j,k) = -A0 * ky * cos(kx*xi) * sin(ky*yj)
-                           cg%b(ydim,i,j,k) =  A0 * kx * sin(kx*xi) * cos(ky*yj)
+                           cg%b(xdim,i,j,k) = 0.0
+                           cg%b(ydim,i,j,k) =  b0 * sin(kx*xi) 
                            cg%b(zdim,i,j,k) =  0.0
                            cg%u(fl%ien,i,j,k) = cg%u(fl%ien,i,j,k) + &
                               emag(cg%b(xdim,i,j,k), cg%b(ydim,i,j,k), cg%b(zdim,i,j,k))

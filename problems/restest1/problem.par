@@ -1,5 +1,5 @@
 $BASE_DOMAIN
-  n_d = 256,256,1
+  n_d = 256,1,1
   nb  = 4
   bnd_xl = 'per'
   bnd_xr = 'per'
@@ -28,7 +28,7 @@ $RESTART_CONTROL
 /
 
 $END_CONTROL
-  tend = 5.0
+  tend = 0.5
   nend = 1000000
 /
 
@@ -38,7 +38,7 @@ $OUTPUT_CONTROL
    dt_hdf = 0.1
    dt_res = 0.0
    dt_log = 1e-20
-   dt_tsl = 1e-20
+   dt_tsl = 0.02
    vars(1:) = 'dens', 'ener', 'velx', 'pres', 'current_x', 'current_y', 'current_z', 'magx', 'magy'
 /
 
@@ -47,22 +47,21 @@ $FLUID_IONIZED
 /
 
 $NUMERICAL_SETUP
-  cfl     = 0.3
+  cfl     = 0.5
   smalld  = 1.e-5
   smallei = 1.e-5
   limiter = 'moncen'
   disallow_negatives = .false.
-  print_divb = 10
   solver_type = 'unsplit'
   solver_str = 'riemann'
   integration_order = 2
-  cfl_glm = 0.4
-  glm_alpha = 0.25
+  cfl_glm = 0.3
 /
  $RESISTIVITY
    eta_0      = 0.005
    cfl_resist = 0.2
    eta_1      = 0.0
+   ord_curl_grad = 4
    j_crit     = 1.0
    deint_max  = 0.01
  /

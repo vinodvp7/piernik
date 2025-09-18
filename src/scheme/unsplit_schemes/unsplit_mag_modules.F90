@@ -52,11 +52,11 @@ contains
       use streaming_cr_hlle, only: update_scr_fluid
       use scr_helpers,       only: update_rotation_matrix, update_interaction_term, update_vdiff
 #endif /* STREAM_CR */
-#ifdef RESIST
-      use resistance,         only: eta_n, jn
-      use resistance_helpers, only: update_current
+#ifdef RESISTIVE
+      use resistivity,        only: eta_jbn
+      use resistance_helpers, only: update_j_and_curl_j
       use constants,          only: ndims
-#endif /* RESIST */
+#endif /* RESISTIVE */
 
       implicit none
 
@@ -79,11 +79,11 @@ contains
       real, dimension(:,:),allocatable           :: tbflux                ! to temporarily store transpose of bflux
       type(ext_fluxes)                           :: eflx
       integer                                    :: i_cs_iso2
-#ifdef RESIST
-      real, dimension(:,:), pointer              :: pj
-      real ,dimension(:), pointer                :: peta
-      real ,dimension(:,:), allocatable          :: jc
-#endif /* RESIST */
+#ifdef RESISTIVE
+      real, dimension(:,:), pointer              :: resterm
+      real ,dimension(:), pointer                :: resterm_e
+      call update_j_and_curl_j(cg,istep)
+#endif /* RESISTIVE */
       uhi = wna%ind(uh_n)
       bhi = wna%ind(magh_n)
 
@@ -107,9 +107,6 @@ contains
          call my_allocate(tflux,[size(u, 2, kind=4),size(u, 1, kind=4)])
          call my_allocate(bflux,[size(b, 1, kind=4)-I_ONE,size(b_psi, 2, kind=4)])
          call my_allocate(tbflux,[size(b_psi, 2, kind=4),size(b, 1, kind=4)])
-#ifdef RESIST
-         call my_allocate(jc,[cg%n_(ddim), ndims])
-#endif /* RESIST */
          do i2 = cg%ijkse(pdims(ddim, ORTHO2), LO), cg%ijkse(pdims(ddim, ORTHO2), HI)
             do i1 = cg%ijkse(pdims(ddim, ORTHO1), LO), cg%ijkse(pdims(ddim, ORTHO1), HI)
 
@@ -148,14 +145,14 @@ contains
 
 
                call cg%set_fluxpointers(ddim, i1, i2, eflx)
-#ifdef RESIST
-               pj => cg%w(wna%ind(jn))%get_sweep(ddim,i1,i2)
-               jc(:, iarr_mag_swp(ddim,:)) = transpose(pj(:,:))
-               peta => cg%q(qna%ind(eta_n))%get_sweep(ddim,i1,i2)
-               call solve(u, b_psi ,cs2, eflx, flux, bflux, jc, peta)
-#else /* !RESIST */
+
+#ifdef RESISTIVE
+               resterm => cg%w(wna%ind(eta_jbn))%get_sweep(ddim,i1,i2)
+               resterm_e => resterm(ddim,:)
+               call solve(u, b_psi ,cs2, eflx, flux, bflux, resterm_e)
+#else /* !RESISTIVE */
                call solve(u, b_psi ,cs2, eflx, flux, bflux)
-#endif /* !RESIST */
+#endif /* !RESISTIVE */
                call cg%save_outfluxes(ddim, i1, i2, eflx)
 
                tflux(:,2:) = transpose(flux(:, iarr_all_swp(ddim,:)))
@@ -172,9 +169,6 @@ contains
          call my_deallocate(u); call my_deallocate(flux); call my_deallocate(tflux)
          call my_deallocate(b); call my_deallocate(b_psi); call my_deallocate(tbflux)
          call my_deallocate(bflux)
-#ifdef RESIST
-         call my_deallocate(jc)
-#endif /* RESIST */
       enddo
       call apply_flux(cg,istep,.true.)
       call apply_flux(cg,istep,.false.)
@@ -186,14 +180,11 @@ contains
       call update_scr_fluid(cg,istep)
 #endif /* STREAM_CR */
       call apply_source(cg,istep)
-#ifdef RESIST
-      call update_current(cg,istep)
-#endif /* RESIST */
       nullify(cs2)
 
    end subroutine solve_cg_ub
 
-   subroutine solve(ui, bi, cs2, eflx, flx, bflx, jc, eta)
+   subroutine solve(ui, bi, cs2, eflx, flx, bflx, resterm_e)
 
       use constants,      only: DIVB_HDC
       use fluxtypes,      only: ext_fluxes
@@ -201,17 +192,18 @@ contains
       use hlld,           only: riemann_wrap
       use interpolations, only: interpol
       use dataio_pub,     only: die
-
+#ifdef RESISTIVE
+      use fluidindex,     only: flind
+#endif /* RESISTIVE */
       implicit none
-
-      real, dimension(:,:),        intent(in)    :: ui      !< cell-centered initial fluid states
-      real, dimension(:,:),        intent(in)    :: bi      !< cell-centered initial magnetic field states (including psi field when necessary)
-      real, dimension(:,:),        intent(inout) :: flx     !< cell-centered intermediate fluid states
-      real, dimension(:,:),        intent(inout) :: bflx    !< cell-centered intermediate magnetic field states (including psi field when necessary)
-      real, dimension(:), pointer, intent(in)    :: cs2     !< square of local isothermal sound speed
-      real, dimension(:,:),optional, intent(in)  :: jc      !< current density
-      real, dimension(:), optional, intent(in)   :: eta     !< magnetic diffusion 
-      type(ext_fluxes),            intent(inout) :: eflx    !< external fluxes
+ 
+      real, dimension(:,:),                    intent(in)     :: ui        !< cell-centered initial fluid states
+      real, dimension(:,:),                    intent(in)     :: bi        !< cell-centered initial magnetic field states (including psi field when necessary)
+      real, dimension(:,:),                    intent(inout)  :: flx       !< cell-centered intermediate fluid states
+      real, dimension(:,:),                    intent(inout)  :: bflx      !< cell-centered intermediate magnetic field states (including psi field when necessary)
+      real, dimension(:), pointer,             intent(in)     :: cs2       !< square of local isothermal sound speed
+      type(ext_fluxes),                        intent(inout)  :: eflx      !< external fluxes
+      real, dimension(:), pointer, optional,   intent(in)     :: resterm_e !< square of local isothermal sound speed
 
       ! left and right states at interfaces 1 .. n-1
       real, dimension(size(ui, 1)-1, size(ui, 2)), target :: ql, qr
@@ -224,9 +216,14 @@ contains
       call interpol(ui, ql, qr, bi, bl, br)
       call riemann_wrap(ql, qr, bl, br, cs2, flx, bflx) ! Now we advance the left and right states by a timestep.
       
-#ifdef RESIST
-      call add_resistive_flux(flx,bflx,bi,jc,eta)
-#endif /* RESIST */
+#ifdef RESISTIVE
+#ifndef ISO
+#ifdef IONIZED
+      flx(:,flind%ion%ien) = flx(:,flind%ion%ien) + 0.5 * (resterm_e(lbound(resterm_e,1) + 1:) + resterm_e(:ubound(resterm_e,1) - 1))
+#endif /* IONIZED */
+#endif /* !ISO */
+#endif /* RESISTIVE */
+
       if (associated(eflx%li)) flx(eflx%li%index, :) = eflx%li%uflx
       if (associated(eflx%ri)) flx(eflx%ri%index, :) = eflx%ri%uflx
       if (associated(eflx%lo)) eflx%lo%uflx = flx(eflx%lo%index, :)
@@ -388,49 +385,5 @@ contains
          endif
       enddo
    end subroutine bounds_for_flux
-#ifdef RESIST
-subroutine add_resistive_flux(flx, bflx, bi, j, eta)
-    use constants, only: xdim, ydim, zdim, ien
-    implicit none
-    real, intent(inout) :: flx(:,:)              ! (#faces, fluid comps)
-    real, intent(inout) :: bflx(:,:)             ! (#faces, mag comps incl. psi)
-    real, intent(in)    :: bi(:,:)               ! (ncell, mag comps incl. psi)  cell-centered B
-    real, intent(in)    :: j(:,:)                ! (ncell, 3)   cell-centered J in local frame
-    real, intent(in)    :: eta(:)                ! (ncell)      cell-centered η (scalar)
-    integer :: i, nface
-    real :: Jyf, Jzf, etaf, d_flux_By, d_flux_Bz, Byf, Bzf
-
-    nface = size(bflx,1)
-
-    do i = 1, nface
-        ! Face-averages (2nd-order) of quantities from cell-centers i and i+1
-        Jyf = 0.5 * ( j(i, ydim) + j(i+1, ydim) )
-        Jzf = 0.5 * ( j(i, zdim) + j(i+1, zdim) )
-        etaf = 0.5 * ( eta(i)     + eta(i+1)     )
-
-        ! --- CORRECTED FLUXES ---
-        ! Resistive change to F^x(By) is -E_res_z = -eta * Jz
-        d_flux_By = -etaf * Jzf
-        
-        ! Resistive change to F^x(Bz) is +E_res_y = +eta * Jy
-        d_flux_Bz =  etaf * Jyf
-        
-        ! Add resistive terms to the ideal MHD fluxes from HLLD
-        bflx(i, ydim) = bflx(i, ydim) + d_flux_By
-        bflx(i, zdim) = bflx(i, zdim) + d_flux_Bz
-        ! (Do NOT touch bflx(:,xdim) or psi.)
-
-        ! Add resistive Poynting flux to the total energy flux
-        ! S_res_x = E_res_y*B_z - E_res_z*B_y
-        ! The update can be written as: By*d_flux_Bz + Bz*(-d_flux_By) which is equivalent
-        ! to your original formulation if you use the corrected flux terms.
-        if (size(flx,2) >= ien) then
-            Byf = 0.5 * ( bi(i, ydim) + bi(i+1, ydim) )
-            Bzf = 0.5 * ( bi(i, zdim) + bi(i+1, zdim) )
-            flx(i, ien) = flx(i, ien) + Byf * d_flux_Bz + Bzf * d_flux_By
-        end if
-    end do
-end subroutine add_resistive_flux
-#endif /* RESIST */
 
 end module unsplit_mag_modules

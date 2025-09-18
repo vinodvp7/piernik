@@ -2,7 +2,7 @@
 #  define LOCAL_FR_SPEED
 #endif
 
-#undef ISO
+#define ISO
 
 #define IONIZED
 

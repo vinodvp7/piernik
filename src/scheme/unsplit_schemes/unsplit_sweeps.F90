@@ -141,7 +141,9 @@ contains
       call ppp_main%stop(init_src_label)
 
       halfstep = .true.
-
+#ifdef RESISTIVE
+   call add_resistivity ! dt/2
+#endif /* RESISTIVE */
       ! This is the loop over Runge-Kutta stages
       do istep = first_stage(integration_order), last_stage(integration_order)
 
@@ -206,8 +208,60 @@ contains
       call sl%delete
       deallocate(sl)
 
+#ifdef RESISTIVE
+   call add_resistivity ! dt/2
+#endif /* RESISTIVE */
+
       call ppp_main%stop("unsplit_sweep")
 
    end subroutine unsplit_sweep
+   
+#ifdef RESISTIVE
+   subroutine add_resistivity
+      use resistivity, only: compute_resist, eta_n, eta_jn, jn
+      use cg_list, only: cg_list_element
+      use cg_leaves, only: leaves
+      use grid_cont, only: grid_container
+      use fluidindex, only: flind
+      use named_array_list, only: wna, qna
+      use global, only: dt, integration_order
+      use constants, only: first_stage, rk_coef, last_stage, xdim, ydim, zdim, magh_n
+      use resistance_helpers, only: update_j_and_curl_j
+
+      implicit none
+
+      type(cg_list_element), pointer    :: cgl
+      type(grid_container), pointer     :: cg
+      real, dimension(:,:,:,:), pointer :: cej
+      real, dimension(:,:,:,:), pointer :: pb, pbf
+      integer                           :: istep
+
+      do istep = first_stage(integration_order), last_stage(integration_order)
+         call compute_resist
+         cgl => leaves%first
+         do while (associated(cgl))
+            cg => cgl%cg
+            pb   => cg%w(wna%bi)%arr
+            pbf  => cg%w(wna%bi)%arr
+            if (istep == first_stage(integration_order) .or. integration_order < 2 ) then
+               pb   => cg%w(wna%bi)%arr
+               pbf  => cg%w(wna%ind(magh_n))%arr
+            endif
+            call update_j_and_curl_j(cg,istep)
+            cej => cg%w(wna%ind(eta_jn))%arr
+            pbf(:,:,:,:) = pb(:,:,:,:) - rk_coef(istep) * 0.5 * dt * cej(:,:,:,:)
+            cgl => cgl%nxt
+         enddo
+         call update_boundaries(istep) ! last_stage because that is the one that does ghost exchange on u and b instead of the half stage array uh_n and magh_n
+         call compute_resist
+         cgl => leaves%first
+         do while (associated(cgl))
+            cg => cgl%cg
+            call update_j_and_curl_j(cg,istep)
+            cgl => cgl%nxt
+         enddo
+      end do
+   end subroutine add_resistivity
+#endif /* RESISTIVE */
 
 end module unsplit_sweeps

@@ -127,7 +127,7 @@ contains
 !! This is called once  per RK stage to update the values
 !>
 
-   subroutine update_interaction_term(cg, istep, at_source)
+   subroutine update_interaction_term(cg, istep, at_source) ! this is identitcal and correct along with grad_pc
 
       use grid_cont,          only: grid_container
       use named_array_list,   only: wna

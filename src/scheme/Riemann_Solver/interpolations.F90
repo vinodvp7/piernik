@@ -40,6 +40,9 @@ module interpolations
 
    private
    public :: set_interpolations, interpol
+#ifdef STREAM_CR
+   public :: interpol_scr
+#endif /* STREAM_CR */
 
    interface
 
@@ -130,6 +133,34 @@ contains
       if (present(bcc)) call interp(bcc, bccl, bccr, blimiter)
 
    end subroutine interpol
+#ifdef STREAM_CR
+   subroutine interpol_scr(u, ql, qr)
+
+      use fluxlimiters,       only: flimiter, blimiter
+      use fluidindex,         only: flind
+
+      implicit none
+
+      real, dimension(:,:), intent(in)     :: u
+      real, dimension(:,:), intent(out)    :: ql
+      real, dimension(:,:), intent(out)    :: qr
+      integer                              :: p
+
+
+      real, dimension(size(u, 1), size(u, 2)) :: q
+       
+      do p = 1, flind%nscr
+         q(:,1 + 4 * (p-1)) = u(:,1 + 4 * (p-1))
+         q(:,2 + 4 * (p-1)) = u(:,2 + 4 * (p-1))       
+         q(:,3 + 4 * (p-1)) = u(:,3 + 4 * (p-1))
+         q(:,4 + 4 * (p-1)) = u(:,4 + 4 * (p-1))
+      enddo
+         q(:,size(u,2))   = u(:,size(u,2))             ! last component is fluid velocity
+
+      call interp(q,   ql,   qr,   flimiter)       ! We interpolate Ec , Fc/vmax 
+
+   end subroutine interpol_scr
+#endif /* STREAM_CR */
 
 !>
 !! \brief Interpret and set desired interpolation scheme.

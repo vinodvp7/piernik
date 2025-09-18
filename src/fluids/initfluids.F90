@@ -107,7 +107,7 @@ contains
 
       use constants,      only: PIERNIK_INIT_GLOBAL
       use dataio_pub,     only: die, code_progress, warn
-      use fluidindex,     only: fluid_index, flind, iarr_all_swp
+      use fluidindex,     only: fluid_index, flind
       use fluids_pub,     only: has_dst, has_ion, has_neu, cs2_max
       use fluxes,         only: set_limiter
       use func,           only: operator(.notequals.)

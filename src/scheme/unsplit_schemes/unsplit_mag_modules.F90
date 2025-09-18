@@ -192,8 +192,10 @@ contains
       use interpolations, only: interpol
       use dataio_pub,     only: die
 #ifdef STREAM_CR
-      use streaming_cr_hlle,  only: riemann_hlle_scr
+      !use streaming_cr_hlle,  only: riemann_hlle_scr
       use fluidindex,         only: flind, iarr_all_dn, iarr_all_mx
+      use initstreamingcr,    only: nscr
+      use interpolations,     only: interpol_scr
 #endif /* STREAM_CR */
       implicit none
 
@@ -206,11 +208,13 @@ contains
       real, dimension(:,:), optional,  intent(in)    :: vdiff   !< diffussive speed for transport corrected with effective optical depth
 
       ! left and right states at interfaces 1 .. n-1
-      real, dimension(size(ui, 1)-1, size(ui, 2)), target :: ql, qr
+      real, dimension(size(ui, 1)-1, size(ui, 2) - 4*nscr), target :: qlf, qrf
       real, dimension(size(bi, 1)-1, size(bi, 2)), target :: bl, br
       real, dimension(:,:), allocatable                   :: uflux, scrflux
 #ifdef STREAM_CR
       integer :: scr_beg_1, scr_beg 
+      real, dimension(size(ui, 1)-1, 4*nscr + 1), target :: qls, qrs
+      real, dimension(size(ui,1),4*nscr +1 ) :: uu
       real, dimension(size(ui, 1)-1) :: vl, vr
       scr_beg_1 = flind%scr(1)%beg - 1 
       scr_beg   = flind%scr(1)%beg 
@@ -220,14 +224,15 @@ contains
       allocate(uflux(lbound(flx,1):ubound(flx,1),size(flx(:,:scr_beg_1),2)))
       bflx = huge(1.)
 
-      call interpol(ui, ql, qr, bi, bl, br)
+      call interpol(ui(:,:scr_beg_1), qlf, qrf, bi, bl, br)
 #ifdef STREAM_CR
-      vl(:) = ql(:,iarr_all_mx(1)) / ql(:,iarr_all_dn(1))
-      vr(:) = qr(:,iarr_all_mx(1)) / qr(:,iarr_all_dn(1))
-      call riemann_wrap(ql(:,:scr_beg_1), qr(:,:scr_beg_1), bl, br, cs2, uflux, bflx) ! Now we advance the left and right states by a timestep.
-      call riemann_hlle_scr(ql(:,scr_beg:), qr(:,scr_beg:), vdiff, vl, vr, scrflux) ! Now we advance the left and right states by a timestep.
+      uu(:,1:size(qls, 2)-1) = ui(:,scr_beg:flind%scr(nscr)%end)
+      uu(:,size(qls, 2)) = ui(:,iarr_all_mx(1))/ui(:,iarr_all_dn(1))
+      call interpol_scr(uu, qls, qrs)
+      call riemann_wrap(qlf, qrf, bl, br, cs2, uflux, bflx) ! Now we advance the left and right states by a timestep.
+      call riemann_hlle(qls, qrs, vdiff, scrflux) ! Now we advance the left and right states by a timestep.
 #else /* !STREAM_CR */
-      call riemann_wrap(ql, qr, bl, br, cs2, flx, bflx) ! Now we advance the left and right states by a timestep.
+      call riemann_wrap(qlf, qrf, bl, br, cs2, flx, bflx) ! Now we advance the left and right states by a timestep.
 #endif /* !STREAM_CR */
       flx(:,:scr_beg_1) = uflux(:,:)
 #ifdef STREAM_CR
@@ -246,7 +251,7 @@ contains
       else
         call die("[unsplit_mag_modules:solve] Unplit method is only implemented with Hyperbolic Divergence Cleaning")
       endif
-      deallocate(uflx,scrflx)
+      deallocate(uflux,scrflux)
    end subroutine solve
 
    subroutine apply_flux(cg, istep, mag)
@@ -394,5 +399,56 @@ contains
          endif
       enddo
    end subroutine bounds_for_flux
+#ifdef STREAM_CR
+subroutine riemann_hlle(ql, qr, vdiff, flx)
 
+      use initstreamingcr, only: vmax
+      use fluidindex,      only: flind
+
+      implicit none
+
+      real, intent(in)    :: ql(:,:), qr(:,:)
+      real, intent(in)    :: vdiff(:,:)        ! cell-centered, length = ncells
+      real, intent(inout) :: flx(:,:)          ! nint x nvars
+
+      real, dimension(4)              :: fl, fr
+      real, dimension(size(ql,1))     :: vl, vr
+      real, dimension(size(flx,1))    :: vdiff_l, vdiff_r
+      real                            :: mean_adv, mean_diff, al, ar, bp, bm, tmp
+      integer                         :: nvar, nx, i, j
+
+      nx = size(ql,1)
+      nvar = size(ql,2)
+      vl(:) = ql(:,nvar)                   ! last term is vxl
+      vr(:) = qr(:,nvar)                   ! last term is vrl
+
+      do j = 1,flind%nscr
+         vdiff_l(1:size(flx,1)) = vdiff(1:size(flx,1),   j)
+         vdiff_r(1:size(flx,1)) = vdiff(2:size(flx,1)+1, j)
+         do i = 1,size(flx,1)
+
+            mean_adv  = 0.5 * ( vl(i) + vr(i))
+            mean_diff = 0.5 * (vdiff_l(i) + vdiff_r(i)) 
+
+            al = min((mean_adv  - mean_diff ),(vl(i)  - vdiff_l(i) ))
+            ar = max((mean_adv  + mean_diff ),(vr(i)  + vdiff_r(i) ))
+
+            ar = min(ar,  vmax/sqrt(3.0))
+            al = max(al, - vmax/sqrt(3.0))
+
+            bp = max(ar, 0.0)   
+            bm = min(al, 0.0)
+            fl(1) = ql(i,2 + 4 * (j-1)) * vmax - bm * ql(i,1+ 4 * (j-1))
+            fr(1) = qr(i,2 + 4 * (j-1)) * vmax - bp * qr(i,1+ 4 * (j-1))
+            fl(2) = vmax / 3.0  * ql(i,1 + 4 * (j-1)) - bm * ql(i,2+ 4 * (j-1))
+            fr(2) = vmax / 3.0  * qr(i,1 + 4 * (j-1)) - bp * qr(i,2+ 4 * (j-1))
+            fl(3) = - bm * ql(i,3+ 4 * (j-1)) ; fr(3) = - bp * qr(i,3+ 4 * (j-1)) 
+            fl(4) = - bm * ql(i,4+ 4 * (j-1)) ; fr(4) = - bp * qr(i,4+ 4 * (j-1)) 
+            tmp = 0.0
+            if (abs(bp - bm) > 1e-20) tmp = 0.5*(bp + bm)/(bp - bm)
+            flx(i,1+4*(j-1):4+4*(j-1)) = 0.5 * (fl + fr) + (fl - fr) * tmp
+         end do
+      end do
+   end subroutine riemann_hlle
+#endif /* STREAM_CR */
 end module unsplit_mag_modules

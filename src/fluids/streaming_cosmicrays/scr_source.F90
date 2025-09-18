@@ -79,7 +79,7 @@ contains
          uhi   = wna%ind(uh_n)
 #ifdef MAGNETIC
          magi   = wna%ind(magh_n)
-         call update_rotation_matrix(cg,istep,.true.)
+         !call update_rotation_matrix(cg,istep,.true.)
 #endif /* MAGNETIC */
       endif
       call update_gradpc_here(cg)

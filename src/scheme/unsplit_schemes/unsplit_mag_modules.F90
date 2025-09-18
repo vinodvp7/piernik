@@ -50,6 +50,7 @@ contains
       use diagnostics,      only: my_allocate, my_deallocate
 #ifdef STREAM_CR
       use constants,        only: v_diff
+      use scr_helpers,       only: update_rotation_matrix, update_interaction_term, update_vdiff
 #endif /* STREAM_CR */
       implicit none
 
@@ -75,6 +76,9 @@ contains
 #ifdef STREAM_CR
       real, dimension(:,:), allocatable          :: vdiff1d
       real, dimension(:,:), pointer              :: vdiff
+      ! call update_interaction_term(cg, istep, .false.)
+      ! call update_rotation_matrix(cg, istep)
+      ! call update_vdiff(cg,istep)
 #endif /* STREAM_CR */
       uhi = wna%ind(uh_n)
       bhi = wna%ind(magh_n)
@@ -204,24 +208,30 @@ contains
       ! left and right states at interfaces 1 .. n-1
       real, dimension(size(ui, 1)-1, size(ui, 2)), target :: ql, qr
       real, dimension(size(bi, 1)-1, size(bi, 2)), target :: bl, br
+      real, dimension(:,:), allocatable                   :: uflux, scrflux
 #ifdef STREAM_CR
       integer :: scr_beg_1, scr_beg 
       real, dimension(size(ui, 1)-1) :: vl, vr
       scr_beg_1 = flind%scr(1)%beg - 1 
       scr_beg   = flind%scr(1)%beg 
+      allocate(scrflux(lbound(flx,1):ubound(flx,1),size(flx(:,scr_beg:),2)))
 #endif /* STREAM_CR*/
       ! updates required for higher order of integration will likely have shorter length
-
+      allocate(uflux(lbound(flx,1):ubound(flx,1),size(flx(:,:scr_beg_1),2)))
       bflx = huge(1.)
 
       call interpol(ui, ql, qr, bi, bl, br)
 #ifdef STREAM_CR
       vl(:) = ql(:,iarr_all_mx(1)) / ql(:,iarr_all_dn(1))
       vr(:) = qr(:,iarr_all_mx(1)) / qr(:,iarr_all_dn(1))
-      call riemann_wrap(ql(:,:scr_beg_1), qr(:,:scr_beg_1), bl, br, cs2, flx(:,:scr_beg_1), bflx) ! Now we advance the left and right states by a timestep.
-      call riemann_hlle_scr(ql(:,scr_beg:), qr(:,scr_beg:), vdiff, vl, vr, flx(:,scr_beg:)) ! Now we advance the left and right states by a timestep.
+      call riemann_wrap(ql(:,:scr_beg_1), qr(:,:scr_beg_1), bl, br, cs2, uflux, bflx) ! Now we advance the left and right states by a timestep.
+      call riemann_hlle_scr(ql(:,scr_beg:), qr(:,scr_beg:), vdiff, vl, vr, scrflux) ! Now we advance the left and right states by a timestep.
 #else /* !STREAM_CR */
       call riemann_wrap(ql, qr, bl, br, cs2, flx, bflx) ! Now we advance the left and right states by a timestep.
+#endif /* !STREAM_CR */
+      flx(:,:scr_beg_1) = uflux(:,:)
+#ifdef STREAM_CR
+      flx(:,scr_beg:) = scrflux(:,:)
 #endif /* !STREAM_CR */
       if (associated(eflx%li)) flx(eflx%li%index, :) = eflx%li%uflx
       if (associated(eflx%ri)) flx(eflx%ri%index, :) = eflx%ri%uflx
@@ -236,7 +246,7 @@ contains
       else
         call die("[unsplit_mag_modules:solve] Unplit method is only implemented with Hyperbolic Divergence Cleaning")
       endif
-
+      deallocate(uflx,scrflx)
    end subroutine solve
 
    subroutine apply_flux(cg, istep, mag)

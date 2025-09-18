@@ -69,7 +69,7 @@ contains
 !! This subroutine is called once every RK stage at the beginning.
 !>
 #ifdef MAGNETIC
-   subroutine update_rotation_matrix(cg,istep, at_source)
+   subroutine update_rotation_matrix(cg,istep)
 
       use grid_cont,        only: grid_container
       use named_array_list, only: wna
@@ -80,7 +80,6 @@ contains
 
       type(grid_container), pointer, intent(in) :: cg
       integer,                       intent(in) :: istep
-      logical,                       intent(in) :: at_source
 
       integer :: bhi
       real, parameter :: eps = 1.0e-12   
@@ -89,17 +88,12 @@ contains
       real, pointer :: cp(:,:,:), sp(:,:,:), st(:,:,:), ct(:,:,:)
       real :: Bxy(cg%n_(xdim),cg%n_(ydim),cg%n_(zdim))
       real :: Bxyz(cg%n_(xdim),cg%n_(ydim),cg%n_(zdim))
-      if (at_source) then
-         bhi = wna%ind(mag_n)          
-         if (istep == first_stage(integration_order) .and. integration_order > 1) then
-            bhi = wna%ind(magh_n)       ! At first step or if integration order = 1 then we select half stage mag field initially
-         endif
-      else
-         bhi = wna%ind(magh_n)          
-         if (istep == first_stage(integration_order) .or. integration_order < 2) then
-            bhi = wna%ind(mag_n)       ! At first step or if integration order = 1 then we select half stage mag field initially
-         endif
+
+      bhi = wna%ind(magh_n)          
+      if (istep == first_stage(integration_order) .or. integration_order < 2) then
+         bhi = wna%ind(mag_n)       ! At first step or if integration order = 1 then we select half stage mag field initially
       endif
+
       bx => cg%w(bhi)%arr(xdim,:,:,:)
       by => cg%w(bhi)%arr(ydim,:,:,:)
       bz => cg%w(bhi)%arr(zdim,:,:,:)
@@ -239,7 +233,7 @@ contains
 #ifdef MAGNETIC         
          cg%w(wna%ind(magh_n))%arr(:,:,:,:) = cg%b(:,:,:,:)     ! as it is used to calculate relevant quantities elsewhere here
 
-         call update_rotation_matrix(cg,istep = first_stage(integration_order), at_source = .false.) ! istep is irrelevant here  
+         call update_rotation_matrix(cg,istep = first_stage(integration_order)) ! istep is irrelevant here  
 #endif /* MAGNETIC */
 
          call update_interaction_term(cg,istep = first_stage(integration_order), at_source = .false.)

@@ -61,7 +61,7 @@ contains
       
 #ifdef STREAM_CR
          call update_interaction_term(cg, istep, .false.)
-         if (wna%exists(mag_n))  call update_rotation_matrix(cg, istep,.false.)
+         if (wna%exists(mag_n))  call update_rotation_matrix(cg, istep)
          call update_vdiff(cg,istep)
 #endif /* STREAM_CR */
 

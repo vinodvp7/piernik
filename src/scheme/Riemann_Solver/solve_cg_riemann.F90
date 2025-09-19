@@ -126,6 +126,11 @@ contains
       use grid_cont,        only: grid_container
       use named_array_list, only: wna, qna
       use sources,          only: internal_sources, care_for_positives
+#ifdef RESISTIVE
+      use resistivity,           only: eta_jbn
+      use resistivity_helpers,   only: update_resistive_terms
+      use constants,             only: first_stage
+#endif /* RESISTIVE */
 
       implicit none
 
@@ -146,6 +151,12 @@ contains
       real, dimension(size(u,1), flind%fluids), target :: vx
       type(ext_fluxes)                           :: eflx
       integer                                    :: i_cs_iso2
+#ifdef RESISTIVE
+      real, dimension(:,:), pointer              :: resterm
+      real, dimension(:),   pointer              :: resterm_e
+
+      if (integration_order > 1 .and. istep /= first_stage(integration_order)) call update_resistive_terms(cg,istep)   ! Refreshes J after first RK stage.
+#endif /* RESISTIVE */
 
       uhi = wna%ind(uh_n)
       bhi = wna%ind(magh_n)
@@ -209,9 +220,13 @@ contains
 
                b0(:, psidim) = ppsi0(:)
                b1(:, psidim) = ppsi(:)
-
+#ifdef RESISTIVE
+               resterm   => cg%w(wna%ind(eta_jbn))%get_sweep(ddim,i1,i2)
+               resterm_e => resterm(ddim,:)
+               call solve(u0, b0, u1, b1, cs2, rk_coef(istep) * dt/cg%dl(ddim), eflx, resterm_e)
+#else /* !RESISTIVE */
                call solve(u0, b0, u1, b1, cs2, rk_coef(istep) * dt/cg%dl(ddim), eflx)
-
+#endif /* !RESISTIVE */
             else
                call solve(u0, b0(:, xdim:zdim), u1, b1(:, xdim:zdim), cs2, rk_coef(istep) * dt/cg%dl(ddim), eflx)
             endif
@@ -315,23 +330,27 @@ contains
 !! We don't calculate n-th interface because it is as incomplete as 0-th interface
 !<
 
-   subroutine solve(u0, b0, u1, b1, cs2, dtodx, eflx)
+   subroutine solve(u0, b0, u1, b1, cs2, dtodx, eflx, resterm_e)
 
       use constants,      only: DIVB_HDC, xdim, ydim, zdim
       use fluxtypes,      only: ext_fluxes
       use global,         only: divB_0_method
       use hlld,           only: riemann_wrap
       use interpolations, only: interpol
+#ifdef RESISTIVE
+      use fluidindex,     only: flind
+#endif /* RESISTIVE */
 
       implicit none
 
-      real, dimension(:,:),        intent(in)    :: u0     !< cell-centered initial fluid states
-      real, dimension(:,:),        intent(in)    :: b0     !< cell-centered initial magnetic field states (including psi field when necessary)
-      real, dimension(:,:),        intent(inout) :: u1     !< cell-centered intermediate fluid states
-      real, dimension(:,:),        intent(inout) :: b1     !< cell-centered intermediate magnetic field states (including psi field when necessary)
-      real, dimension(:), pointer, intent(in)    :: cs2    !< square of local isothermal sound speed
-      real,                        intent(in)    :: dtodx  !< timestep advance: RK-factor * timestep / cell length
-      type(ext_fluxes),            intent(inout) :: eflx   !< external fluxes
+      real, dimension(:,:),        intent(in)              :: u0        !< cell-centered initial fluid states
+      real, dimension(:,:),        intent(in)              :: b0        !< cell-centered initial magnetic field states (including psi field when necessary)
+      real, dimension(:,:),        intent(inout)           :: u1        !< cell-centered intermediate fluid states
+      real, dimension(:,:),        intent(inout)           :: b1        !< cell-centered intermediate magnetic field states (including psi field when necessary)
+      real, dimension(:), pointer, intent(in)              :: cs2       !< square of local isothermal sound speed
+      real,                        intent(in)              :: dtodx     !< timestep advance: RK-factor * timestep / cell length
+      type(ext_fluxes),            intent(inout)           :: eflx      !< external fluxes
+      real, dimension(:), pointer, optional, intent(in)    :: resterm_e !< optional resitive flux correction to fluid energy
 
       ! left and right states at interfaces 1 .. n-1
       real, dimension(size(u0, 1)-1, size(u0, 2)), target :: ql, qr
@@ -349,6 +368,15 @@ contains
 
       call interpol(u1, ql, qr, b1, bl, br)
       call riemann_wrap(ql, qr, bl, br, cs2, flx, mag_flx) ! Now we advance the left and right states by a timestep.
+
+#ifdef RESISTIVE
+#ifndef ISO
+#ifdef IONIZED
+      flx(:,flind%ion%ien) = flx(:,flind%ion%ien) + 0.5 * &
+      &                      (resterm_e(lbound(resterm_e,1) + 1:) + resterm_e(:ubound(resterm_e,1) - 1))
+#endif /* IONIZED */
+#endif /* !ISO */
+#endif /* RESISTIVE */
 
       if (associated(eflx%li)) flx(eflx%li%index, :) = eflx%li%uflx
       if (associated(eflx%ri)) flx(eflx%ri%index, :) = eflx%ri%uflx

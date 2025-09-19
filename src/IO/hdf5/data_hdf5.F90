@@ -120,7 +120,7 @@ contains
             f%fu = "\rm{Gs}"
             f%f2cgs = 1.0 / (fpi * sqrt(cm / (miu0 * gram)) * sek)
             f%stag = 1
-         case ("divbc", "divbf", "divbc4", "divbf4", "divbc6", "divbf6", "divbc8", "divbf8")
+         case ("divbc", "divbf", "divbc4", "divbf4", "divbc6", "divbf6", "divbc8", "divbf8", "curx", "cury", "curz")
             f%fu= "\rm{Gs}/\rm{cm}" ! I'm not sure if it is a best description
             f%f2cgs = 1.0 / (fpi * sqrt(cm / (miu0 * gram)) * sek * cm)
          case ("divb_norm")
@@ -369,6 +369,10 @@ contains
 #ifndef ISO
       use units,            only: kboltz, mH
 #endif /* !ISO */
+#ifdef RESISTIVE
+      use resistivity,        only: jn
+      use named_array_list,   only: wna
+#endif /* RESISTIVE */
 
       implicit none
 
@@ -493,6 +497,14 @@ contains
             read(var,'(A4,I2.2)') aux, i !> \deprecated BEWARE 0 <= i <= 99, no other indices can be dumped to hdf file
             tab(:,:,:) = cg%w(wna%ind(dfpq%q_nam))%arr(i,RNG)  !flind%cre%fbeg+i-1, RNG)
 #endif /* CRESP */
+#ifdef RESISTIVE
+         case('curx')
+            tab(:,:,:) = cg%w(wna%ind(jn))%arr(xdim, RNG)
+         case('cury')
+            tab(:,:,:) = cg%w(wna%ind(jn))%arr(ydim, RNG)
+         case('curz')
+            tab(:,:,:) = cg%w(wna%ind(jn))%arr(zdim, RNG)
+#endif /* RESISTIVE */
 #ifdef TRACER
          case ("trcr")
             tab(:,:,:) = cg%u(flind%trc%beg, RNG)

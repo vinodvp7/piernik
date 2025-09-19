@@ -80,7 +80,7 @@ contains
       real, dimension(:,:), pointer              :: resterm
       real, dimension(:),   pointer              :: resterm_e
 
-      call update_resistive_terms(cg,istep)   ! Refreshes J after first RK stage.
+      if (integration_order > 1 .and. istep /= first_stage(integration_order)) call update_resistive_terms(cg,istep)   ! Refreshes J after first RK stage.
 #endif /* RESISTIVE */
 
       uhi = wna%ind(uh_n)

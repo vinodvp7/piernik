@@ -74,6 +74,9 @@ contains
 #ifdef SHEAR
       use shear,               only: shear_3sweeps
 #endif /* SHEAR */
+#ifdef RESISTIVE
+      use resistivity_helpers, only: add_resistivity_source 
+#endif /* RESISTIVE */
 
       implicit none
 
@@ -98,7 +101,9 @@ contains
 
       ! At this point everything should be initialized after domain expansion and we no longer need this list.
       call expanded_domain%delete
-
+#ifdef RESISTIVE
+   call add_resistivity_source ! dt/2
+#endif /* RESISTIVE */
       call eglm
       call glmdamping(.true.)
       t = t + dt
@@ -113,6 +118,9 @@ contains
 #endif /* GRAV */
       call external_sources(.true.)
       if (associated(problem_customize_solution)) call problem_customize_solution(.true.)
+#ifdef RESISTIVE
+   call add_resistivity_source ! dt/2
+#endif /* RESISTIVE */
       call eglm
       call glmdamping(.true.)
 

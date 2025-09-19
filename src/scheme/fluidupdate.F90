@@ -166,6 +166,9 @@ contains
 #ifdef SHEAR
       use shear,               only: shear_3sweeps
 #endif /* SHEAR */
+#ifdef RESISTIVE
+      use resistivity_helpers, only: add_resistivity_source 
+#endif /* RESISTIVE */
 
       implicit none
 
@@ -183,7 +186,9 @@ contains
 #ifdef SHEAR
       call shear_3sweeps
 #endif /* SHEAR */
-
+#ifdef RESISTIVE
+   call add_resistivity_source ! dt/2
+#endif /* RESISTIVE */
 #ifdef GRAV
       call compute_h_gpot
 #endif /* GRAV */
@@ -225,7 +230,9 @@ contains
 
       call external_sources(forward)
       if (associated(problem_customize_solution)) call problem_customize_solution(forward)
-
+#ifdef RESISTIVE
+   call add_resistivity_source ! dt/2
+#endif /* RESISTIVE */
       call eglm
       call glmdamping
 

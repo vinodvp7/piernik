@@ -64,7 +64,7 @@ contains
 
       implicit none
 
-      B0  = 1.0
+      B0  = 0.01
       kx  = 6.283185307    ! 2pi
       ky  = 6.283185307    ! 2pi
 

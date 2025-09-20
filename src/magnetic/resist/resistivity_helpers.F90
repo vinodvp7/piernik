@@ -58,7 +58,7 @@ contains
 
       use grid_cont,          only: grid_container
       use named_array_list,   only: wna, qna
-      use constants,          only: xdim, ydim, zdim, first_stage, ndims
+      use constants,          only: xdim, ydim, zdim, first_stage, ndims, HI, LO
       use global,             only: integration_order
       use constants,          only: magh_n
       use resistivity,        only: jn, eta_jn, eta_n, ord_curl_grad, eta_jbn
@@ -73,9 +73,13 @@ contains
       real    :: dvecx(ndims,cg%n_(xdim),cg%n_(ydim),cg%n_(zdim)) 
       real    :: dvecy(ndims,cg%n_(xdim),cg%n_(ydim),cg%n_(zdim))
       real    :: dvecz(ndims,cg%n_(xdim),cg%n_(ydim),cg%n_(zdim))
-      integer :: bhi 
+      integer :: bhi, jni, etai, etaji, etajbi, i, j, k
 
-      bhi = wna%ind(magh_n)            
+      etai   = qna%ind(eta_n)
+      jni    = wna%ind(jn)
+      etaji  = wna%ind(eta_jn)
+      bhi    = wna%ind(magh_n)
+      etajbi = wna%ind(eta_jbn)            
       if (istep == first_stage(integration_order) .or. integration_order < 2) then
          bhi = wna%bi       
       endif
@@ -87,36 +91,41 @@ contains
       dvecy = grad_func(cg, bhi, ydim)
       dvecz = grad_func(cg, bhi, zdim)
 
-      cg%w(wna%ind(jn))%arr(xdim,:,:,:) = dvecz(ydim,:,:,:) - dvecy(zdim,:,:,:)     ! Jx = dyBz - dzBy
-      cg%w(wna%ind(jn))%arr(ydim,:,:,:) = dvecx(zdim,:,:,:) - dvecz(xdim,:,:,:)     ! Jy = dzBx - dxBz
-      cg%w(wna%ind(jn))%arr(zdim,:,:,:) = dvecy(xdim,:,:,:) - dvecx(ydim,:,:,:)     ! Jz = dxBy - dyBx
+      cg%w(jni)%arr(xdim,:,:,:) = dvecz(ydim,:,:,:) - dvecy(zdim,:,:,:)     ! Jx = dyBz - dzBy
+      cg%w(jni)%arr(ydim,:,:,:) = dvecx(zdim,:,:,:) - dvecz(xdim,:,:,:)     ! Jy = dzBx - dxBz
+      cg%w(jni)%arr(zdim,:,:,:) = dvecy(xdim,:,:,:) - dvecx(ydim,:,:,:)     ! Jz = dxBy - dyBx
 
-      cg%w(wna%ind(eta_jn))%arr(xdim,:,:,:) = cg%w(wna%ind(jn))%arr(xdim,:,:,:) * cg%q(qna%ind(eta_n))%arr(:,:,:)
-      cg%w(wna%ind(eta_jn))%arr(ydim,:,:,:) = cg%w(wna%ind(jn))%arr(ydim,:,:,:) * cg%q(qna%ind(eta_n))%arr(:,:,:)
-      cg%w(wna%ind(eta_jn))%arr(zdim,:,:,:) = cg%w(wna%ind(jn))%arr(zdim,:,:,:) * cg%q(qna%ind(eta_n))%arr(:,:,:)
+      do concurrent (k = cg%lhn(zdim,LO):cg%lhn(zdim,HI), j = cg%lhn(ydim,LO):cg%lhn(ydim,HI), &
+      & i = cg%lhn(xdim,LO):cg%lhn(xdim,HI))
+         cg%w(etaji)%arr(xdim,i,j,k) = cg%w(jni)%arr(xdim,i,j,k) * cg%q(etai)%arr(i,j,k)
+         cg%w(etaji)%arr(ydim,i,j,k) = cg%w(jni)%arr(ydim,i,j,k) * cg%q(etai)%arr(i,j,k)
+         cg%w(etaji)%arr(zdim,i,j,k) = cg%w(jni)%arr(zdim,i,j,k) * cg%q(etai)%arr(i,j,k)
+      end do
 
-      dvecx = grad_func(cg, wna%ind(eta_jn), xdim)
-      dvecy = grad_func(cg, wna%ind(eta_jn), ydim)
-      dvecz = grad_func(cg, wna%ind(eta_jn), zdim)
+      dvecx = grad_func(cg, etaji, xdim)
+      dvecy = grad_func(cg, etaji, ydim)
+      dvecz = grad_func(cg, etaji, zdim)
       
       ! Storing curl of etaJ
-      cg%w(wna%ind(eta_jn))%arr(xdim,:,:,:) = dvecz(ydim,:,:,:) - dvecy(zdim,:,:,:)     ! dy(etaJz) - dz(etaJy)   
-      cg%w(wna%ind(eta_jn))%arr(ydim,:,:,:) = dvecx(zdim,:,:,:) - dvecz(xdim,:,:,:)     ! dz(etaJx) - dx(etaJz)
-      cg%w(wna%ind(eta_jn))%arr(zdim,:,:,:) = dvecy(xdim,:,:,:) - dvecx(ydim,:,:,:)     ! dx(etaJy) - dy(etaJx)
+      cg%w(etaji)%arr(xdim,:,:,:) = dvecz(ydim,:,:,:) - dvecy(zdim,:,:,:)     ! dy(etaJz) - dz(etaJy)   
+      cg%w(etaji)%arr(ydim,:,:,:) = dvecx(zdim,:,:,:) - dvecz(xdim,:,:,:)     ! dz(etaJx) - dx(etaJz)
+      cg%w(etaji)%arr(zdim,:,:,:) = dvecy(xdim,:,:,:) - dvecx(ydim,:,:,:)     ! dx(etaJy) - dy(etaJx)
 
       ! Storing cross product of etaJ and B  
-      cg%w(wna%ind(eta_jbn))%arr(xdim,:,:,:) = cg%q(qna%ind(eta_n))%arr(:,:,:) * &      ! eta * (JyBz - JzBy)
-      &                                        (cg%w(wna%ind(jn))%arr(ydim,:,:,:) * cg%w(bhi)%arr(zdim,:,:,:) - &
-      &                                        cg%w(wna%ind(jn))%arr(zdim,:,:,:) * cg%w(bhi)%arr(ydim,:,:,:))
+      do concurrent (k = cg%lhn(zdim,LO):cg%lhn(zdim,HI), j = cg%lhn(ydim,LO):cg%lhn(ydim,HI), &
+      & i = cg%lhn(xdim,LO):cg%lhn(xdim,HI))
+         cg%w(etajbi)%arr(xdim,i,j,k) = cg%q(etai)%arr(i,j,k) * &      ! eta * (JyBz - JzBy)
+         &                             (cg%w(jni)%arr(ydim,i,j,k) * cg%w(bhi)%arr(zdim,i,j,k) - &
+         &                              cg%w(jni)%arr(zdim,i,j,k) * cg%w(bhi)%arr(ydim,i,j,k))
 
-      cg%w(wna%ind(eta_jbn))%arr(ydim,:,:,:) = cg%q(qna%ind(eta_n))%arr(:,:,:) * &     ! eta * (JzBx - JxBz)
-      &                                        (cg%w(wna%ind(jn))%arr(zdim,:,:,:) * cg%w(bhi)%arr(xdim,:,:,:) - &
-      &                                        cg%w(wna%ind(jn))%arr(xdim,:,:,:) * cg%w(bhi)%arr(zdim,:,:,:))
+         cg%w(etajbi)%arr(ydim,i,j,k) = cg%q(etai)%arr(i,j,k) * &     ! eta * (JzBx - JxBz)
+         &                             (cg%w(jni)%arr(zdim,i,j,k) * cg%w(bhi)%arr(xdim,i,j,k) - &
+         &                              cg%w(jni)%arr(xdim,i,j,k) * cg%w(bhi)%arr(zdim,i,j,k))
 
-      cg%w(wna%ind(eta_jbn))%arr(zdim,:,:,:) = cg%q(qna%ind(eta_n))%arr(:,:,:) * &     ! eta * (JxBy - JyBx)
-      &                                        (cg%w(wna%ind(jn))%arr(xdim,:,:,:) * cg%w(bhi)%arr(ydim,:,:,:) - &
-      &                                        cg%w(wna%ind(jn))%arr(ydim,:,:,:) * cg%w(bhi)%arr(xdim,:,:,:))
-
+         cg%w(etajbi)%arr(zdim,i,j,k) = cg%q(etai)%arr(i,j,k) * &     ! eta * (JxBy - JyBx)
+         &                             (cg%w(jni)%arr(xdim,i,j,k) * cg%w(bhi)%arr(ydim,i,j,k) - &
+         &                              cg%w(jni)%arr(ydim,i,j,k) * cg%w(bhi)%arr(xdim,i,j,k))
+      end do
    end subroutine update_resistive_terms
 
 !! This subroutine adds the resistive correction to the induction equation as a source term. We call this twice in a 

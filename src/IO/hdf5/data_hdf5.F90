@@ -504,6 +504,8 @@ contains
             tab(:,:,:) = cg%w(wna%ind(jn))%arr(ydim, RNG)
          case('curz')
             tab(:,:,:) = cg%w(wna%ind(jn))%arr(zdim, RNG)
+         case('curmag')
+            tab(:,:,:) = sqrt(sum(cg%w(wna%ind(jn))%arr(xdim:zdim, RNG)**2,dim=1))
 #endif /* RESISTIVE */
 #ifdef TRACER
          case ("trcr")

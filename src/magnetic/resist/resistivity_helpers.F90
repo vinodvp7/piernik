@@ -294,40 +294,40 @@ function gradient_2nd_order(cg, ind, dir) result(dB)
 
       allocate(dB(ndims,cg%lhn(xdim,LO):cg%lhn(xdim,HI),cg%lhn(ydim,LO):cg%lhn(ydim,HI),cg%lhn(zdim,LO):cg%lhn(zdim,HI)))
 
-
+      dB(:,:,:,:) = 0.0
    ! --- X-Direction Gradient ---
-            if (dom%has_dir(xdim)) then
+      if (dom%has_dir(xdim)) then
                ! interior: 4th-order centered, need ±2 neighbors
-               do concurrent ( k = cg%lhn(zdim,LO):cg%lhn(zdim,HI), &
-                              j = cg%lhn(ydim,LO):cg%lhn(ydim,HI), &
-                              i = cg%lhn(xdim,LO)+2:cg%lhn(xdim,HI)-2 )
-                  dB(xdim, i, j, k) =  &
-      &            ( - cg%w(ind)%arr(dir, i+2, j, k)   &
-      &              + 8.0*cg%w(ind)%arr(dir, i+1, j, k)  &
-      &              - 8.0*cg%w(ind)%arr(dir, i-1, j, k)  &
-      &              +      cg%w(ind)%arr(dir, i-2, j, k) ) / (12.0*cg%dl(xdim))
+         do concurrent (k = cg%lhn(zdim,LO):cg%lhn(zdim,HI), &
+                        j = cg%lhn(ydim,LO):cg%lhn(ydim,HI), &
+                        i = cg%lhn(xdim,LO)+2:cg%lhn(xdim,HI)-2 )
+                           dB(xdim, i, j, k) =  &
+      &                    ( - cg%w(ind)%arr(dir, i+2, j, k)   &
+      &                      + 8.0*cg%w(ind)%arr(dir, i+1, j, k)  &
+      &                      - 8.0*cg%w(ind)%arr(dir, i-1, j, k)  &
+      &                      +     cg%w(ind)%arr(dir, i-2, j, k) ) / (12.0*cg%dl(xdim))
                end do
 
                ! first interior (forward one-sided, 4th order)
-               i = cg%lhn(xdim,LO)
+               do i = cg%lhn(xdim,LO),cg%lhn(xdim,LO) + 1
                dB(xdim, i, :, :) =  &
       &         ( -25.0*cg%w(ind)%arr(dir, i  ,:,:)  &
       &           +48.0*cg%w(ind)%arr(dir, i+1,:,:)  &
       &           -36.0*cg%w(ind)%arr(dir, i+2,:,:)  &
       &           +16.0*cg%w(ind)%arr(dir, i+3,:,:)  &
       &           - 3.0*cg%w(ind)%arr(dir, i+4,:,:) ) / (12.0*cg%dl(xdim))
+               end do
 
                ! last interior (backward one-sided, 4th order)
-               i = cg%lhn(xdim,HI)
+               do i = cg%lhn(xdim,HI) - 1 , cg%lhn(xdim,HI)  
                dB(xdim, i, :, :) =  &
       &         (  25.0*cg%w(ind)%arr(dir, i  ,:,:)  &
       &           -48.0*cg%w(ind)%arr(dir, i-1,:,:)  &
       &           +36.0*cg%w(ind)%arr(dir, i-2,:,:)  &
       &           -16.0*cg%w(ind)%arr(dir, i-3,:,:)  &
       &           + 3.0*cg%w(ind)%arr(dir, i-4,:,:) ) / (12.0*cg%dl(xdim))
-            else
-               dB(xdim,:,:,:) = 0.0
-            end if
+               end do
+      end if
 
    ! --- Y-Direction Gradient ---
             if (dom%has_dir(ydim)) then
@@ -343,24 +343,24 @@ function gradient_2nd_order(cg, ind, dir) result(dB)
                end do
 
                ! first interior (j0): forward one-sided, 4th order
-               j = cg%lhn(ydim,LO)
+               do j = cg%lhn(ydim,LO), cg%lhn(ydim,LO) + 1 
                dB(ydim, :, j, :) =  &
       &         ( -25.0*cg%w(ind)%arr(dir, :, j  ,:)  &
       &           +48.0*cg%w(ind)%arr(dir, :, j+1,:)  &
       &           -36.0*cg%w(ind)%arr(dir, :, j+2,:)  &
       &           +16.0*cg%w(ind)%arr(dir, :, j+3,:)  &
       &           - 3.0*cg%w(ind)%arr(dir, :, j+4,:) ) / (12.0*cg%dl(ydim))
+               end do
 
                ! last interior (j1): backward one-sided, 4th order
-               j = cg%lhn(ydim,HI)
+               do j = cg%lhn(ydim,HI) - 1, cg%lhn(ydim,HI)
                dB(ydim, :, j, :) =  &
       &         (  25.0*cg%w(ind)%arr(dir, :, j  ,:)  &
       &           -48.0*cg%w(ind)%arr(dir, :, j-1,:)  &
       &           +36.0*cg%w(ind)%arr(dir, :, j-2,:)  &
       &           -16.0*cg%w(ind)%arr(dir, :, j-3,:)  &
       &           + 3.0*cg%w(ind)%arr(dir, :, j-4,:) ) / (12.0*cg%dl(ydim))
-            else
-               dB(ydim,:,:,:) = 0.0
+               end do
             end if
 
    ! --- Z-Direction Gradient ---
@@ -377,24 +377,24 @@ function gradient_2nd_order(cg, ind, dir) result(dB)
                end do
 
                ! first interior (k0): forward one-sided, 4th order
-               k = cg%lhn(zdim,LO)
+               do k = cg%lhn(zdim,LO), cg%lhn(zdim,LO) + 1
                dB(zdim, :, :, k) =  &
       &         ( -25.0*cg%w(ind)%arr(dir, :, :, k  )  &
       &           +48.0*cg%w(ind)%arr(dir, :, :, k+1)  &
       &           -36.0*cg%w(ind)%arr(dir, :, :, k+2)  &
       &           +16.0*cg%w(ind)%arr(dir, :, :, k+3)  &
       &           - 3.0*cg%w(ind)%arr(dir, :, :, k+4) ) / (12.0*cg%dl(zdim))
+               end do
 
                ! last interior (k1): backward one-sided, 4th order
-               k = cg%lhn(zdim,HI)
+               do k = cg%lhn(zdim,HI) - 1, cg%lhn(zdim,HI)
                dB(zdim, :, :, k) =  &
       &         (  25.0*cg%w(ind)%arr(dir, :, :, k  )  &
       &           -48.0*cg%w(ind)%arr(dir, :, :, k-1)  &
       &           +36.0*cg%w(ind)%arr(dir, :, :, k-2)  &
       &           -16.0*cg%w(ind)%arr(dir, :, :, k-3)  &
       &           + 3.0*cg%w(ind)%arr(dir, :, :, k-4) ) / (12.0*cg%dl(zdim))
-            else
-               dB(zdim,:,:,:) = 0.0
+               end do
             end if
 
 

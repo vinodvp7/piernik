@@ -3,8 +3,8 @@ $BASE_DOMAIN
   nb  = 4
   bnd_xl = 'per'
   bnd_xr = 'per'
-  bnd_yl = 'out'
-  bnd_yr = 'out'
+  bnd_yl = 'per'
+  bnd_yr = 'per'
   bnd_zl = 'per'
   bnd_zr = 'per'
   xmin   = -10.0
@@ -37,7 +37,7 @@ $OUTPUT_CONTROL
    run_id = 'tst'
    dt_hdf = 2.0
    dt_res = 0.0
-   dt_log = 2.0
+   dt_log = 1e-20
    dt_tsl = 0.02
    vars(1:) = 'dens', 'ener', 'velx', 'pres', 'curx', 'cury', 'curz', 'magx', 'magy', 'magz', 'curmag'
 /
@@ -55,12 +55,14 @@ $NUMERICAL_SETUP
   solver_str = 'riemann_unsplit'
   integration_order = 2
   cfl_glm = 0.3
+  print_divb = 100
 /
  $RESISTIVITY
    eta_0      = 2e-3
    cfl_resist = 0.2
    eta_1      = 0.0
    j_crit     = 1.0
+   ord_curl_grad = 4
    deint_max  = 0.01
  /
 

@@ -36,6 +36,8 @@ module grid_container_op
 
    private
    public :: grid_container_op_t
+   
+   logical, save :: warn_ord_flg = .true.
 
   type, extends(grid_container_bseg_t), abstract :: grid_container_op_t
 
@@ -174,8 +176,9 @@ contains
    function cg_get_divergence(this, ord, iw, vec) result(cg_div)
 
       use constants,    only: xdim, ydim, zdim, LO, HI
-      use dataio_pub,   only: die
+      use dataio_pub,   only: die, warn
       use domain,       only: dom
+      use mpisetup,     only: master
 
       implicit none
 
@@ -189,7 +192,13 @@ contains
 
       real                       :: cfc(ord/2), cfo(0:ord)
       
-      if (dom%nb < ord/2 ) call die("[grid_container_op:cg_get_divergence] Insufficient guard cells for chosen order")
+      if (master) then
+         if (dom%nb < ord/2 ) call die("[grid_container_op:cg_get_gradient] Insufficient guard cells for chosen order")
+         if (dom%nb < ord .and. warn_ord_flg) then
+            call warn("[grid_container_op:cg_get_divergence] Insufficient guard cells for chosen order. Expect artifacts")
+            warn_ord_flg = .false.
+         endif
+      endif
 
       ilo = this%lhn(xdim,LO); ihi = this%lhn(xdim,HI)
       jlo = this%lhn(ydim,LO); jhi = this%lhn(ydim,HI)
@@ -280,8 +289,9 @@ contains
    function cg_get_curl(this, ord, iw, vec) result(cg_curl)
 
       use constants,    only: xdim, ydim, zdim, LO, HI
-      use dataio_pub,   only: die
+      use dataio_pub,   only: die, warn
       use domain,       only: dom
+      use mpisetup,     only: master
 
       implicit none
 
@@ -294,7 +304,13 @@ contains
       integer              :: ilo, ihi, jlo, jhi, klo, khi, v1(3)
 
 
-      if (dom%nb < ord/2 ) call die("[grid_container_op:cg_get_curl] Insufficient guard cells for chosen order")
+      if (master) then
+         if (dom%nb < ord/2 ) call die("[grid_container_op:cg_get_gradient] Insufficient guard cells for chosen order")
+         if (dom%nb < ord .and. warn_ord_flg) then
+            call warn("[grid_container_op:cg_get_divergence] Insufficient guard cells for chosen order. Expect artifacts")
+            warn_ord_flg = .false.
+         endif
+      endif
 
       ilo = this%lhn(xdim,LO); ihi = this%lhn(xdim,HI)
       jlo = this%lhn(ydim,LO); jhi = this%lhn(ydim,HI)
@@ -315,14 +331,16 @@ contains
       cg_curl(ydim,:,:,:) = cg_jac(7,:,:,:) - cg_jac(3,:,:,:)
       cg_curl(zdim,:,:,:) = cg_jac(2,:,:,:) - cg_jac(4,:,:,:)
 
+      deallocate(cg_jac)
 
    end function cg_get_curl
 
    function cg_get_gradient(this, ord, iw, iq, vec) result(cg_grad)
 
       use constants,    only: xdim, ydim, zdim, LO, HI
-      use dataio_pub,   only: die
+      use dataio_pub,   only: die, warn
       use domain,       only: dom
+      use mpisetup,     only: master
 
       implicit none
 
@@ -336,7 +354,13 @@ contains
       integer           :: i, j, k, ilo, ihi, jlo, jhi, klo, khi, ddim, v1(3), s
       real              :: cfc(ord/2), cfo(0:ord)
 
-      if (dom%nb < ord/2 ) call die("[grid_container_op:cg_get_gradient] Insufficient guard cells for chosen order")
+      if (master) then
+         if (dom%nb < ord/2 ) call die("[grid_container_op:cg_get_gradient] Insufficient guard cells for chosen order")
+         if (dom%nb < ord .and. warn_ord_flg) then
+            call warn("[grid_container_op:cg_get_divergence] Insufficient guard cells for chosen order. Expect artifacts")
+            warn_ord_flg = .false.
+         endif
+      endif
 
       ilo = this%lhn(xdim,LO); ihi = this%lhn(xdim,HI)
       jlo = this%lhn(ydim,LO); jhi = this%lhn(ydim,HI)

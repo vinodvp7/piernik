@@ -38,20 +38,6 @@ module resistivity_helpers
    private
    public  :: update_resistive_terms, add_resistivity_source
 
-   abstract interface
-      function gradient_func(cg, ind, dir)  result(dB)
-
-         use grid_cont, only: grid_container
-
-         type(grid_container), pointer, intent(in) :: cg
-         integer,                       intent(in) :: ind
-         integer,                       intent(in) :: dir
-
-         real, allocatable, dimension(:,:,:,:)     :: dB    ! (ndims, i, j, k)
-
-      end function gradient_func
-   end  interface
-
 contains
 
    subroutine update_resistive_terms(cg, istep)
@@ -68,64 +54,34 @@ contains
       type(grid_container), pointer, intent(in) :: cg
       integer,                       intent(in) :: istep
 
-      procedure(gradient_func), pointer         :: grad_func => null()
 
-      real    :: dvecx(ndims,cg%n_(xdim),cg%n_(ydim),cg%n_(zdim)) 
-      real    :: dvecy(ndims,cg%n_(xdim),cg%n_(ydim),cg%n_(zdim))
-      real    :: dvecz(ndims,cg%n_(xdim),cg%n_(ydim),cg%n_(zdim))
       integer :: bhi, jni, etai, etaji, etajbi, i, j, k
 
       etai   = qna%ind(eta_n)
       jni    = wna%ind(jn)
       etaji  = wna%ind(eta_jn)
       bhi    = wna%ind(magh_n)
-      etajbi = wna%ind(eta_jbn)            
+      etajbi = wna%ind(eta_jbn) 
+
       if (istep == first_stage(integration_order) .or. integration_order < 2) then
          bhi = wna%bi       
       endif
 
-      if (ord_curl_grad == 2)  grad_func => gradient_2nd_order
-      if (ord_curl_grad == 4)  grad_func => gradient_4th_order 
+      cg%w(jni)%arr(:,:,:,:) = cg%get_curl(ord_curl_grad, bhi)
 
-      dvecx = grad_func(cg, bhi, xdim)
-      dvecy = grad_func(cg, bhi, ydim)
-      dvecz = grad_func(cg, bhi, zdim)
-
-      cg%w(jni)%arr(xdim,:,:,:) = dvecz(ydim,:,:,:) - dvecy(zdim,:,:,:)     ! Jx = dyBz - dzBy
-      cg%w(jni)%arr(ydim,:,:,:) = dvecx(zdim,:,:,:) - dvecz(xdim,:,:,:)     ! Jy = dzBx - dxBz
-      cg%w(jni)%arr(zdim,:,:,:) = dvecy(xdim,:,:,:) - dvecx(ydim,:,:,:)     ! Jz = dxBy - dyBx
-
-      do concurrent (k = cg%lhn(zdim,LO):cg%lhn(zdim,HI), j = cg%lhn(ydim,LO):cg%lhn(ydim,HI), &
-      & i = cg%lhn(xdim,LO):cg%lhn(xdim,HI))
-         cg%w(etaji)%arr(xdim,i,j,k) = cg%w(jni)%arr(xdim,i,j,k) * cg%q(etai)%arr(i,j,k)
-         cg%w(etaji)%arr(ydim,i,j,k) = cg%w(jni)%arr(ydim,i,j,k) * cg%q(etai)%arr(i,j,k)
-         cg%w(etaji)%arr(zdim,i,j,k) = cg%w(jni)%arr(zdim,i,j,k) * cg%q(etai)%arr(i,j,k)
+      do concurrent (k = cg%lhn(zdim,LO) : cg%lhn(zdim,HI), j = cg%lhn(ydim, LO) : cg%lhn(ydim, HI), &
+      & i = cg%lhn(xdim,LO) : cg%lhn(xdim, HI))
+         cg%w(etaji)%arr(xdim, i, j, k) = cg%w(jni)%arr(xdim, i, j, k) * cg%q(etai)%arr(i, j, k)
+         cg%w(etaji)%arr(ydim, i, j, k) = cg%w(jni)%arr(ydim, i, j, k) * cg%q(etai)%arr(i, j, k)
+         cg%w(etaji)%arr(zdim, i, j, k) = cg%w(jni)%arr(zdim, i, j, k) * cg%q(etai)%arr(i, j, k)
       end do
-
-      dvecx = grad_func(cg, etaji, xdim)
-      dvecy = grad_func(cg, etaji, ydim)
-      dvecz = grad_func(cg, etaji, zdim)
-      
-      ! Storing curl of etaJ
-      cg%w(etaji)%arr(xdim,:,:,:) = dvecz(ydim,:,:,:) - dvecy(zdim,:,:,:)     ! dy(etaJz) - dz(etaJy)   
-      cg%w(etaji)%arr(ydim,:,:,:) = dvecx(zdim,:,:,:) - dvecz(xdim,:,:,:)     ! dz(etaJx) - dx(etaJz)
-      cg%w(etaji)%arr(zdim,:,:,:) = dvecy(xdim,:,:,:) - dvecx(ydim,:,:,:)     ! dx(etaJy) - dy(etaJx)
 
       ! Storing cross product of etaJ and B  
-      do concurrent (k = cg%lhn(zdim,LO):cg%lhn(zdim,HI), j = cg%lhn(ydim,LO):cg%lhn(ydim,HI), &
-      & i = cg%lhn(xdim,LO):cg%lhn(xdim,HI))
-         cg%w(etajbi)%arr(xdim,i,j,k) = cg%q(etai)%arr(i,j,k) * &      ! eta * (JyBz - JzBy)
-         &                             (cg%w(jni)%arr(ydim,i,j,k) * cg%w(bhi)%arr(zdim,i,j,k) - &
-         &                              cg%w(jni)%arr(zdim,i,j,k) * cg%w(bhi)%arr(ydim,i,j,k))
+      cg%w(etajbi)%arr(:,:,:,:) = cg%cross(etaji, bhi)
 
-         cg%w(etajbi)%arr(ydim,i,j,k) = cg%q(etai)%arr(i,j,k) * &     ! eta * (JzBx - JxBz)
-         &                             (cg%w(jni)%arr(zdim,i,j,k) * cg%w(bhi)%arr(xdim,i,j,k) - &
-         &                              cg%w(jni)%arr(xdim,i,j,k) * cg%w(bhi)%arr(zdim,i,j,k))
+      ! Storing curl of etaJ
+      cg%w(etaji)%arr(:,:,:,:) = cg%get_curl(ord_curl_grad, etaji)
 
-         cg%w(etajbi)%arr(zdim,i,j,k) = cg%q(etai)%arr(i,j,k) * &     ! eta * (JxBy - JyBx)
-         &                             (cg%w(jni)%arr(xdim,i,j,k) * cg%w(bhi)%arr(ydim,i,j,k) - &
-         &                              cg%w(jni)%arr(ydim,i,j,k) * cg%w(bhi)%arr(xdim,i,j,k))
-      end do
    end subroutine update_resistive_terms
 
 !! This subroutine adds the resistive correction to the induction equation as a source term. We call this twice in a 
@@ -178,226 +134,5 @@ contains
          enddo
       end do
    end subroutine add_resistivity_source
-
-function gradient_2nd_order(cg, ind, dir) result(dB)
-
-
-      use grid_cont,          only: grid_container
-      use constants,          only: xdim, ydim, zdim, ndims, HI, LO
-      use global,             only: integration_order
-      use domain,             only: dom
-
-      implicit none
-
-      type(grid_container), pointer, intent(in) :: cg
-      integer,                       intent(in) :: ind
-      integer,                       intent(in) :: dir
-
-      integer :: nx, ny, nz, i, j, k
-
-      real, dimension(:,:,:,:), allocatable :: dB
-
-      nx   = cg%n_(xdim)
-      ny   = cg%n_(ydim)
-      nz   = cg%n_(zdim)
-
-      allocate(dB(ndims,cg%lhn(xdim,LO):cg%lhn(xdim,HI),cg%lhn(ydim,LO):cg%lhn(ydim,HI),cg%lhn(zdim,LO):cg%lhn(zdim,HI)))
-
-! --- X-Direction Gradient ---
-      if (dom%has_dir(xdim)) then
-         ! Loop over the entire domain (including ghosts), except the very first and last cells
-         ! where a central difference stencil would go out of bounds.
-         do concurrent(k = cg%lhn(zdim,LO) :cg%lhn(zdim,HI) , j = cg%lhn(ydim,LO):cg%lhn(ydim,HI), &
-         & i = cg%lhn(xdim,LO)+1:cg%lhn(xdim,HI)-1 )
-         dB(xdim,i,j,k) = (cg%w(ind)%arr(dir,i+1,j,k) - cg%w(ind)%arr(dir,i-1,j,k)) * (0.5  * cg%idl(xdim))
-         end do
-
-         i = cg%lhn(xdim,LO)                    ! first interior
-         dB( xdim , i, :,: ) = ( -3.0*cg%w(ind)%arr(dir, i  ,:,:)  &
-                                 + 4.0*cg%w(ind)%arr(dir, i+1,:,:)  &
-                                 - 1.0*cg%w(ind)%arr(dir, i+2,:,:) ) * ( 0.5 * cg%idl(xdim) )
-
-         i = cg%lhn(xdim,HI)                    ! last interior
-         dB( xdim, i, :,: ) = (  3.0*cg%w(ind)%arr(dir, i  ,:,:)  &
-                                 - 4.0*cg%w(ind)%arr(dir, i-1,:,:)  &
-                                 + 1.0*cg%w(ind)%arr(dir, i-2,:,:) ) * ( 0.5 * cg%idl(xdim) )
-      else
-         dB(xdim,:,:,:) = 0.0
-      endif
-      ! --- Y-Direction Gradient ---
-      if (dom%has_dir(ydim)) then
-         do concurrent (k = cg%lhn(zdim,LO):cg%lhn(zdim,HI), j = cg%lhn(ydim,LO)+1:cg%lhn(ydim,HI)-1, &
-         & i = cg%lhn(xdim,LO):cg%lhn(xdim,HI))
-            dB(ydim,i,j,k) = (cg%w(ind)%arr(dir,i,j+1,k) - cg%w(ind)%arr(dir,i,j-1,k)) * (0.5 * cg%idl(ydim))
-         end do
-
-         ! first interior (j0)
-         j = cg%lhn(ydim,LO)
-         dB( ydim, :, j, : ) = ( -3.0*cg%w(ind)%arr(dir, :, j  ,:)  &
-                                 + 4.0*cg%w(ind)%arr(dir, :, j+1,:)  &
-                                 - 1.0*cg%w(ind)%arr(dir, :, j+2,:) ) * ( 0.5 * cg%idl(ydim) )
-
-         ! last interior (j1)
-         j = cg%lhn(ydim,HI)
-         dB( ydim, :, j, : ) = (  3.0*cg%w(ind)%arr(dir, :, j  ,:)  &
-                                 - 4.0*cg%w(ind)%arr(dir, :, j-1,:)  &
-                                 + 1.0*cg%w(ind)%arr(dir, :, j-2,:) ) * ( 0.5 * cg%idl(ydim) )
-      else
-         dB(ydim,:,:,:) = 0.0
-      endif
-
-      ! --- Z-Direction Gradient ---
-      if (dom%has_dir(zdim)) then
-         do concurrent(k = cg%lhn(zdim,LO)+1:cg%lhn(zdim,HI)-1, j = cg%lhn(ydim,LO):cg%lhn(ydim,HI), &
-         &  i = cg%lhn(xdim,LO):cg%lhn(xdim,HI)) 
-            dB(zdim,i,j,k) = (cg%w(ind)%arr(dir,i,j,k+1) - cg%w(ind)%arr(dir,i,j,k-1)) * (0.5 * cg%idl(zdim))
-         end do
-
-         k = cg%lhn(zdim,LO)
-         dB( zdim, :, :, k ) = (-3.0*cg%w(ind)%arr(dir, :, :, k  )  &
-                                 + 4.0*cg%w(ind)%arr(dir, :, :, k+1)  &
-                                 - 1.0*cg%w(ind)%arr(dir, :, :, k+2) ) * ( 0.5 * cg%idl(zdim) )
-
-         ! last interior (k1)
-         k = cg%lhn(zdim,HI)
-         dB( zdim, :, :, k ) = (3.0*cg%w(ind)%arr(dir, :, :, k  )  &
-                                 - 4.0*cg%w(ind)%arr(dir, :, :, k-1)  &
-                                 + 1.0*cg%w(ind)%arr(dir, :, :, k-2) ) * ( 0.5 * cg%idl(zdim) )
-      else
-         dB(zdim,:,:,:) = 0.0
-      endif
-
-   end function gradient_2nd_order
-
-
-   function gradient_4th_order(cg, ind, dir) result(dB)
-
-
-         use grid_cont,          only: grid_container
-         use constants,          only: xdim, ydim, zdim, ndims, HI, LO
-         use global,             only: integration_order
-         use domain,             only: dom
-
-         implicit none
-
-         type(grid_container), pointer, intent(in) :: cg
-         integer,                       intent(in) :: ind
-         integer,                       intent(in) :: dir
-
-         integer :: nx, ny, nz, i, j, k
-
-         real, dimension(:,:,:,:), allocatable :: dB
-
-         nx   = cg%n_(xdim)
-         ny   = cg%n_(ydim)
-         nz   = cg%n_(zdim)
-
-      allocate(dB(ndims,cg%lhn(xdim,LO):cg%lhn(xdim,HI),cg%lhn(ydim,LO):cg%lhn(ydim,HI),cg%lhn(zdim,LO):cg%lhn(zdim,HI)))
-
-      dB(:,:,:,:) = 0.0
-   ! --- X-Direction Gradient ---
-      if (dom%has_dir(xdim)) then
-               ! interior: 4th-order centered, need ±2 neighbors
-         do concurrent (k = cg%lhn(zdim,LO):cg%lhn(zdim,HI), &
-                        j = cg%lhn(ydim,LO):cg%lhn(ydim,HI), &
-                        i = cg%lhn(xdim,LO)+2:cg%lhn(xdim,HI)-2 )
-                           dB(xdim, i, j, k) =  &
-      &                    ( - cg%w(ind)%arr(dir, i+2, j, k)   &
-      &                      + 8.0*cg%w(ind)%arr(dir, i+1, j, k)  &
-      &                      - 8.0*cg%w(ind)%arr(dir, i-1, j, k)  &
-      &                      +     cg%w(ind)%arr(dir, i-2, j, k) ) / (12.0*cg%dl(xdim))
-               end do
-
-               ! first interior (forward one-sided, 4th order)
-               do i = cg%lhn(xdim,LO),cg%lhn(xdim,LO) + 1
-               dB(xdim, i, :, :) =  &
-      &         ( -25.0*cg%w(ind)%arr(dir, i  ,:,:)  &
-      &           +48.0*cg%w(ind)%arr(dir, i+1,:,:)  &
-      &           -36.0*cg%w(ind)%arr(dir, i+2,:,:)  &
-      &           +16.0*cg%w(ind)%arr(dir, i+3,:,:)  &
-      &           - 3.0*cg%w(ind)%arr(dir, i+4,:,:) ) / (12.0*cg%dl(xdim))
-               end do
-
-               ! last interior (backward one-sided, 4th order)
-               do i = cg%lhn(xdim,HI) - 1 , cg%lhn(xdim,HI)  
-               dB(xdim, i, :, :) =  &
-      &         (  25.0*cg%w(ind)%arr(dir, i  ,:,:)  &
-      &           -48.0*cg%w(ind)%arr(dir, i-1,:,:)  &
-      &           +36.0*cg%w(ind)%arr(dir, i-2,:,:)  &
-      &           -16.0*cg%w(ind)%arr(dir, i-3,:,:)  &
-      &           + 3.0*cg%w(ind)%arr(dir, i-4,:,:) ) / (12.0*cg%dl(xdim))
-               end do
-      end if
-
-   ! --- Y-Direction Gradient ---
-            if (dom%has_dir(ydim)) then
-               ! interior: 4th-order centered
-               do concurrent ( k = cg%lhn(zdim,LO):cg%lhn(zdim,HI), &
-                              j = cg%lhn(ydim,LO)+2:cg%lhn(ydim,HI)-2, &
-                              i = cg%lhn(xdim,LO):cg%lhn(xdim,HI) )
-                  dB(ydim, i, j, k) =  &
-      &            ( - cg%w(ind)%arr(dir, i, j+2, k)   &
-      &              + 8.0*cg%w(ind)%arr(dir, i, j+1, k)  &
-      &              - 8.0*cg%w(ind)%arr(dir, i, j-1, k)  &
-      &              +      cg%w(ind)%arr(dir, i, j-2, k) ) / (12.0*cg%dl(ydim))
-               end do
-
-               ! first interior (j0): forward one-sided, 4th order
-               do j = cg%lhn(ydim,LO), cg%lhn(ydim,LO) + 1 
-               dB(ydim, :, j, :) =  &
-      &         ( -25.0*cg%w(ind)%arr(dir, :, j  ,:)  &
-      &           +48.0*cg%w(ind)%arr(dir, :, j+1,:)  &
-      &           -36.0*cg%w(ind)%arr(dir, :, j+2,:)  &
-      &           +16.0*cg%w(ind)%arr(dir, :, j+3,:)  &
-      &           - 3.0*cg%w(ind)%arr(dir, :, j+4,:) ) / (12.0*cg%dl(ydim))
-               end do
-
-               ! last interior (j1): backward one-sided, 4th order
-               do j = cg%lhn(ydim,HI) - 1, cg%lhn(ydim,HI)
-               dB(ydim, :, j, :) =  &
-      &         (  25.0*cg%w(ind)%arr(dir, :, j  ,:)  &
-      &           -48.0*cg%w(ind)%arr(dir, :, j-1,:)  &
-      &           +36.0*cg%w(ind)%arr(dir, :, j-2,:)  &
-      &           -16.0*cg%w(ind)%arr(dir, :, j-3,:)  &
-      &           + 3.0*cg%w(ind)%arr(dir, :, j-4,:) ) / (12.0*cg%dl(ydim))
-               end do
-            end if
-
-   ! --- Z-Direction Gradient ---
-            if (dom%has_dir(zdim)) then
-               ! interior: 4th-order centered
-               do concurrent ( k = cg%lhn(zdim,LO)+2:cg%lhn(zdim,HI)-2, &
-                              j = cg%lhn(ydim,LO):cg%lhn(ydim,HI),   &
-                              i = cg%lhn(xdim,LO):cg%lhn(xdim,HI) )
-                  dB(zdim, i, j, k) =  &
-      &            ( - cg%w(ind)%arr(dir, i, j, k+2)   &
-      &              + 8.0*cg%w(ind)%arr(dir, i, j, k+1)  &
-      &              - 8.0*cg%w(ind)%arr(dir, i, j, k-1)  &
-      &              +      cg%w(ind)%arr(dir, i, j, k-2) ) / (12.0*cg%dl(zdim))
-               end do
-
-               ! first interior (k0): forward one-sided, 4th order
-               do k = cg%lhn(zdim,LO), cg%lhn(zdim,LO) + 1
-               dB(zdim, :, :, k) =  &
-      &         ( -25.0*cg%w(ind)%arr(dir, :, :, k  )  &
-      &           +48.0*cg%w(ind)%arr(dir, :, :, k+1)  &
-      &           -36.0*cg%w(ind)%arr(dir, :, :, k+2)  &
-      &           +16.0*cg%w(ind)%arr(dir, :, :, k+3)  &
-      &           - 3.0*cg%w(ind)%arr(dir, :, :, k+4) ) / (12.0*cg%dl(zdim))
-               end do
-
-               ! last interior (k1): backward one-sided, 4th order
-               do k = cg%lhn(zdim,HI) - 1, cg%lhn(zdim,HI)
-               dB(zdim, :, :, k) =  &
-      &         (  25.0*cg%w(ind)%arr(dir, :, :, k  )  &
-      &           -48.0*cg%w(ind)%arr(dir, :, :, k-1)  &
-      &           +36.0*cg%w(ind)%arr(dir, :, :, k-2)  &
-      &           -16.0*cg%w(ind)%arr(dir, :, :, k-3)  &
-      &           + 3.0*cg%w(ind)%arr(dir, :, :, k-4) ) / (12.0*cg%dl(zdim))
-               end do
-            end if
-
-
-   end function gradient_4th_order
 
 end module resistivity_helpers

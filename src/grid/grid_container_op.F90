@@ -134,10 +134,10 @@ contains
       implicit none
 
       class(grid_container_op_t),      intent(in)  :: this  !< object invoking type-bound procedure
-      integer,                         intent(in)  :: iv1   ! cg list index of first vector
-      integer,                         intent(in)  :: iv2   ! cg list index of second vector
-      integer, dimension(3), optional, intent(in)  :: vec1  ! array pointing to the index of u1_x, u2_x, u3_x 
-      integer, dimension(3), optional, intent(in)  :: vec2  ! array pointing to the index of v1_x, v2_x, v3_x 
+      integer,                         intent(in)  :: iv1   !< cg list index of first vector
+      integer,                         intent(in)  :: iv2   !< cg list index of second vector
+      integer, dimension(3), optional, intent(in)  :: vec1  !< array pointing to the index of u1_x, u2_x, u3_x 
+      integer, dimension(3), optional, intent(in)  :: vec2  !< array pointing to the index of v1_x, v2_x, v3_x 
 
       real, allocatable :: cross_prod(:,:,:,:)
       integer           :: i, j, k, ilo, ihi, jlo, jhi, klo, khi, v1(3), v2(3)
@@ -297,7 +297,7 @@ contains
 
       class(grid_container_op_t),      intent(in)  :: this  !< object invoking type-bound procedure
       integer,                         intent(in)  :: iw    !< cg list index of type wna
-      integer, dimension(3), optional, intent(in)  :: vec  !< array pointing to the index of u1_x, u2_x, u3_x if wna
+      integer, dimension(3), optional, intent(in)  :: vec   !< array pointing to the index of u1_x, u2_x, u3_x if wna
       integer,                         intent(in)  :: ord   !< Stencil order
 
       real, allocatable    :: cg_curl(:,:,:,:), cg_jac(:,:,:,:)
@@ -347,7 +347,7 @@ contains
       class(grid_container_op_t),      intent(in)  :: this  !< object invoking type-bound procedure
       integer,               optional, intent(in)  :: iw    !< cg list index of type wna
       integer,               optional, intent(in)  :: iq    !< cg list index of type qna
-      integer, dimension(:), optional, intent(in)  :: vec  !< array pointing to the index of u1_x, u2_x, u3_x if wna
+      integer, dimension(:), optional, intent(in)  :: vec   !< array pointing to the index of u1_x, u2_x, u3_x if wna
       integer,                         intent(in)  :: ord   !< Stencil order
 
       real, allocatable       :: cg_grad(:,:,:,:)

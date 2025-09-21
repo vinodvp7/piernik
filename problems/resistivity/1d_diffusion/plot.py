@@ -131,9 +131,9 @@ y=data[data_to_plot][0,0,:]
 plt.plot(x,y,label='t=0.3',linewidth=2.0,color='r')
 plt.plot(x,y_analytical(0.3,x),label='t=0.3 (Analytical)',linewidth=2.0,color='b', linestyle='dashed')
 
-L1 = np.mean(abs(y-y_analytical(0.2,x)))
-L2 =np.sqrt( np.mean((y-y_analytical(0.2,x))**2))
-ts.append(0.2); L1s.append(L1); L2s.append(L2)
+L1 = np.mean(abs(y-y_analytical(0.3,x)))
+L2 =np.sqrt( np.mean((y-y_analytical(0.3,x))**2))
+ts.append(0.3); L1s.append(L1); L2s.append(L2)
 
 
 file = '/home/vinodvp/simdir/piernik/runs/1d_diffusion/res_tst_0005.h5'
@@ -141,9 +141,9 @@ data, cell_dims, origin, spacing = load_and_stitch_data(file)
 y=data[data_to_plot][0,0,:]
 plt.plot(x,y,label='t=0.5',linewidth=2.0,color='g')
 plt.plot(x,y_analytical(0.5,x),label='t=0.5 (Analytical)',linewidth=2.0,color='cyan', linestyle='dashed')
-L1 = np.mean(abs(y-y_analytical(0.4,x)))
-L2 =np.sqrt( np.mean((y-y_analytical(0.4,x))**2))
-ts.append(0.4); L1s.append(L1); L2s.append(L2)
+L1 = np.mean(abs(y-y_analytical(0.5,x)))
+L2 =np.sqrt( np.mean((y-y_analytical(0.5,x))**2))
+ts.append(0.5); L1s.append(L1); L2s.append(L2)
 
 plt.xlabel(r'$\mathbf{x}$', fontweight='bold', labelpad=6)
 plt.ylabel(r'$\mathbf{E_c}$', fontweight='bold', labelpad=6)

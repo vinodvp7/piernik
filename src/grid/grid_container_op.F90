@@ -193,7 +193,7 @@ contains
       real                       :: cfc(ord/2), cfo(0:ord)
       
       if (master) then
-         if (dom%nb < ord/2 ) call die("[grid_container_op:cg_get_gradient] Insufficient guard cells for chosen order")
+         if (dom%nb < ord/2 ) call die("[grid_container_op:cg_get_divergence] Insufficient guard cells for chosen order")
          if (dom%nb < ord .and. warn_ord_flg) then
             call warn("[grid_container_op:cg_get_divergence] Insufficient guard cells for chosen order. Expect artifacts")
             warn_ord_flg = .false.
@@ -305,9 +305,9 @@ contains
 
 
       if (master) then
-         if (dom%nb < ord/2 ) call die("[grid_container_op:cg_get_gradient] Insufficient guard cells for chosen order")
+         if (dom%nb < ord/2 ) call die("[grid_container_op:cg_get_curl] Insufficient guard cells for chosen order")
          if (dom%nb < ord .and. warn_ord_flg) then
-            call warn("[grid_container_op:cg_get_divergence] Insufficient guard cells for chosen order. Expect artifacts")
+            call warn("[grid_container_op:cg_get_curl] Insufficient guard cells for chosen order. Expect artifacts")
             warn_ord_flg = .false.
          endif
       endif
@@ -327,9 +327,9 @@ contains
 
       cg_jac = this%get_gradient(ord = ord, iw = iw, vec = v1)
       
-      cg_curl(xdim,:,:,:) = cg_jac(6,:,:,:) - cg_jac(8,:,:,:)
-      cg_curl(ydim,:,:,:) = cg_jac(7,:,:,:) - cg_jac(3,:,:,:)
-      cg_curl(zdim,:,:,:) = cg_jac(2,:,:,:) - cg_jac(4,:,:,:)
+      cg_curl(xdim,:,:,:) = cg_jac(8,:,:,:) - cg_jac(6,:,:,:)
+      cg_curl(ydim,:,:,:) = cg_jac(3,:,:,:) - cg_jac(7,:,:,:)
+      cg_curl(zdim,:,:,:) = cg_jac(4,:,:,:) - cg_jac(2,:,:,:)
 
       deallocate(cg_jac)
 
@@ -347,17 +347,18 @@ contains
       class(grid_container_op_t),      intent(in)  :: this  !< object invoking type-bound procedure
       integer,               optional, intent(in)  :: iw    !< cg list index of type wna
       integer,               optional, intent(in)  :: iq    !< cg list index of type qna
-      integer, dimension(3), optional, intent(in)  :: vec  !< array pointing to the index of u1_x, u2_x, u3_x if wna
+      integer, dimension(:), optional, intent(in)  :: vec  !< array pointing to the index of u1_x, u2_x, u3_x if wna
       integer,                         intent(in)  :: ord   !< Stencil order
 
-      real, allocatable :: cg_grad(:,:,:,:)
-      integer           :: i, j, k, ilo, ihi, jlo, jhi, klo, khi, ddim, v1(3), s
-      real              :: cfc(ord/2), cfo(0:ord)
+      real, allocatable       :: cg_grad(:,:,:,:)
+      integer                 :: i, j, k, ilo, ihi, jlo, jhi, klo, khi, ddim, s
+      real                    :: cfc(ord/2), cfo(0:ord)
+      integer, allocatable    :: v1(:)
 
       if (master) then
          if (dom%nb < ord/2 ) call die("[grid_container_op:cg_get_gradient] Insufficient guard cells for chosen order")
          if (dom%nb < ord .and. warn_ord_flg) then
-            call warn("[grid_container_op:cg_get_divergence] Insufficient guard cells for chosen order. Expect artifacts")
+            call warn("[grid_container_op:cg_get_gradient] Insufficient guard cells for chosen order. Expect artifacts")
             warn_ord_flg = .false.
          endif
       endif
@@ -370,93 +371,87 @@ contains
 
       if (present(iw) .and. .not. present(iq)) then
          if (present(vec)) then
+            allocate(v1(size(vec)))
             v1 = vec
          else
+            allocate(v1(3))
             v1 = [xdim, ydim, zdim]
          end if
-         allocate(cg_grad(xdim : zdim * zdim, ilo : ihi, jlo : jhi, klo : khi))
+         allocate(cg_grad(xdim : size(v1) * zdim, ilo : ihi, jlo : jhi, klo : khi))
          cg_grad = 0.0 
 
          ! This is for wna
-
-         if (dom%has_dir(xdim)) then
-            do ddim = xdim, zdim
-               do concurrent (k = klo : khi, j = jlo : jhi, i = ilo + ord/2 : ihi - ord/2 )
-                  do s = 1, ord/2
-                     cg_grad(ddim, i, j, k) = cg_grad(ddim, i, j, k) + &
-                     &                        cfc(s) * (this%w(iw)%arr(v1(ddim), i + s , j, k) - this%w(iw)%arr(v1(ddim), i - s , j, k))
+         do ddim = xdim, size(v1) 
+            if (dom%has_dir(xdim)) then
+                  do concurrent (k = klo : khi, j = jlo : jhi, i = ilo + ord/2 : ihi - ord/2 )
+                     do s = 1, ord/2
+                        cg_grad(xdim + 3 * (ddim - 1), i, j, k) = cg_grad(xdim + 3 * (ddim - 1), i, j, k) + &
+                        &                        cfc(s) * (this%w(iw)%arr(v1(ddim), i + s , j, k) - this%w(iw)%arr(v1(ddim), i - s , j, k))
+                     end do
+                     cg_grad(xdim + 3 * (ddim - 1), i, j, k) =  cg_grad(xdim + 3 * (ddim - 1), i, j, k) * this%idl(xdim)
                   end do
-                  cg_grad(ddim, i, j, k) =  cg_grad(ddim, i, j, k) * this%idl(xdim)
-               end do
 
-               do concurrent (k = klo : khi, j = jlo : jhi, i = ilo : ilo + ord/2 - 1)
-                  do s = 0, ord
-                     cg_grad(ddim, i, j, k) = cg_grad(ddim, i, j, k) + cfo(s) * this%w(iw)%arr(v1(ddim), i + s , j, k)
+                  do concurrent (k = klo : khi, j = jlo : jhi, i = ilo : ilo + ord/2 - 1)
+                     do s = 0, ord
+                        cg_grad(xdim + 3 * (ddim - 1), i, j, k) = cg_grad(xdim + 3 * (ddim - 1), i, j, k) + cfo(s) * this%w(iw)%arr(v1(ddim), i + s , j, k)
+                     end do
+                     cg_grad(xdim + 3 * (ddim - 1), i, j, k) =  cg_grad(xdim + 3 * (ddim - 1), i, j, k) * this%idl(xdim)
                   end do
-                  cg_grad(ddim, i, j, k) =  cg_grad(ddim, i, j, k) * this%idl(xdim)
-               end do
 
-               do concurrent (k = klo : khi, j = jlo : jhi, i = ihi - ord/2 + 1 : ihi)
-                  do s = 0, ord
-                     cg_grad(ddim, i, j, k) = cg_grad(ddim, i, j, k) - cfo(ord - s) * this%w(iw)%arr(v1(ddim), i - s , j, k)
+                  do concurrent (k = klo : khi, j = jlo : jhi, i = ihi - ord/2 + 1 : ihi)
+                     do s = 0, ord
+                        cg_grad(xdim + 3 * (ddim - 1), i, j, k) = cg_grad(xdim + 3 * (ddim - 1), i, j, k) - cfo(ord - s) * this%w(iw)%arr(v1(ddim), i - s , j, k)
+                     end do
+                     cg_grad(xdim + 3 * (ddim - 1), i, j, k) =  cg_grad(xdim + 3 * (ddim - 1), i, j, k) * this%idl(xdim)
                   end do
-                  cg_grad(ddim, i, j, k) =  cg_grad(ddim, i, j, k) * this%idl(xdim)
-               end do
-            end do
-         end if
-
-         if (dom%has_dir(ydim)) then
-            do ddim = xdim, zdim
-               do concurrent (k = klo : khi, j = jlo + ord/2 : jhi - ord/2, i = ilo : ihi)
-                  do s = 1, ord/2
-                     cg_grad(zdim + ddim, i, j, k) = cg_grad(zdim + ddim, i, j, k) + &
-                     &                        cfc(s) * (this%w(iw)%arr(v1(ddim), i, j + s, k) - this%w(iw)%arr(v1(ddim), i, j - s, k))
+            end if
+            if (dom%has_dir(ydim)) then
+                  do concurrent (k = klo : khi, j = jlo + ord/2 : jhi - ord/2, i = ilo : ihi)
+                     do s = 1, ord/2
+                        cg_grad(ydim + 3 * (ddim - 1), i, j, k) = cg_grad(ydim + 3 * (ddim - 1), i, j, k) + &
+                        &                        cfc(s) * (this%w(iw)%arr(v1(ddim), i, j + s, k) - this%w(iw)%arr(v1(ddim), i, j - s, k))
+                     end do
+                     cg_grad(ydim + 3 * (ddim - 1), i, j, k) =  cg_grad(ydim + 3 * (ddim - 1), i, j, k) * this%idl(ydim)
                   end do
-                  cg_grad(zdim + ddim, i, j, k) =  cg_grad(zdim + ddim, i, j, k) * this%idl(ydim)
-               end do
 
-               do concurrent (k = klo : khi, j = jlo : jlo + ord/2 - 1, i = ilo : ihi)
-                  do s = 0, ord
-                     cg_grad(zdim + ddim, i, j, k) = cg_grad(zdim + ddim, i, j, k) + cfo(s) * this%w(iw)%arr(v1(ddim), i, j + s, k)
+                  do concurrent (k = klo : khi, j = jlo : jlo + ord/2 - 1, i = ilo : ihi)
+                     do s = 0, ord
+                        cg_grad(ydim + 3 * (ddim - 1), i, j, k) = cg_grad(ydim + 3 * (ddim - 1), i, j, k) + cfo(s) * this%w(iw)%arr(v1(ddim), i, j + s, k)
+                     end do
+                     cg_grad(ydim + 3 * (ddim - 1), i, j, k) =  cg_grad(ydim + 3 * (ddim - 1), i, j, k) * this%idl(ydim)
                   end do
-                  cg_grad(zdim + ddim, i, j, k) =  cg_grad(zdim + ddim, i, j, k) * this%idl(ydim)
-               end do
 
-               do concurrent (k = klo : khi, j = jhi - ord/2 + 1 : jhi, i = ilo : ihi)
-                  do s = 0, ord
-                     cg_grad(zdim + ddim, i, j, k) = cg_grad(zdim + ddim, i, j, k) - cfo(ord - s) * this%w(iw)%arr(v1(ddim), i, j - s, k)
+                  do concurrent (k = klo : khi, j = jhi - ord/2 + 1 : jhi, i = ilo : ihi)
+                     do s = 0, ord
+                        cg_grad(ydim + 3 * (ddim - 1), i, j, k) = cg_grad(ydim + 3 * (ddim - 1), i, j, k) - cfo(ord - s) * this%w(iw)%arr(v1(ddim), i, j - s, k)
+                     end do
+                     cg_grad(ydim + 3 * (ddim - 1), i, j, k) =  cg_grad(ydim + 3 * (ddim - 1), i, j, k) * this%idl(ydim)
                   end do
-                  cg_grad(zdim + ddim, i, j, k) =  cg_grad(zdim + ddim, i, j, k) * this%idl(ydim)
-               end do
-            end do
-         end if
-
-         if (dom%has_dir(zdim)) then
-            do ddim = xdim, zdim
-               do concurrent (k = klo + ord/2 : khi - ord/2, j = jlo : jhi, i = ilo : ihi)
-                  do s = 1, ord/2
-                     cg_grad(2 * zdim + ddim, i, j, k) = cg_grad(2 * zdim + ddim, i, j, k) + &
-                     &                        cfc(s) * (this%w(iw)%arr(v1(ddim), i, j, k + s) - this%w(iw)%arr(v1(ddim), i, j, k - s))
+            end if
+            if (dom%has_dir(zdim)) then
+                  do concurrent (k = klo + ord/2 : khi - ord/2, j = jlo : jhi, i = ilo : ihi)
+                     do s = 1, ord/2
+                        cg_grad(3*ddim, i, j, k) = cg_grad(3*ddim, i, j, k) + &
+                        &                        cfc(s) * (this%w(iw)%arr(v1(ddim), i, j, k + s) - this%w(iw)%arr(v1(ddim), i, j, k - s))
+                     end do
+                     cg_grad(3*ddim, i, j, k) =  cg_grad(3*ddim, i, j, k) * this%idl(zdim)
                   end do
-                  cg_grad(2 * zdim + ddim, i, j, k) =  cg_grad(2 * zdim + ddim, i, j, k) * this%idl(zdim)
-               end do
 
-               do concurrent (k = klo : klo + ord/2 - 1, j = jlo : jhi, i = ilo : ihi)
-                  do s = 0, ord
-                     cg_grad(2 * zdim + ddim, i, j, k) = cg_grad(2 * zdim + ddim, i, j, k) + cfo(s) * this%w(iw)%arr(v1(ddim), i, j, k + s)
+                  do concurrent (k = klo : klo + ord/2 - 1, j = jlo : jhi, i = ilo : ihi)
+                     do s = 0, ord
+                        cg_grad(3*ddim, i, j, k) = cg_grad(3*ddim, i, j, k) + cfo(s) * this%w(iw)%arr(v1(ddim), i, j, k + s)
+                     end do
+                     cg_grad(3*ddim, i, j, k) =  cg_grad(3*ddim, i, j, k) * this%idl(zdim)
                   end do
-                  cg_grad(2 * zdim + ddim, i, j, k) =  cg_grad(2 * zdim + ddim, i, j, k) * this%idl(zdim)
-               end do
 
-               do concurrent (k = khi - ord/2 + 1 : khi, j = jlo  : jhi, i = ilo  : ihi)
-                  do s = 0, ord
-                     cg_grad(2 * zdim + ddim, i, j, k) = cg_grad(2 * zdim + ddim, i, j, k) - cfo(ord - s) * this%w(iw)%arr(v1(ddim), i, j, k - s)
+                  do concurrent (k = khi - ord/2 + 1 : khi, j = jlo  : jhi, i = ilo  : ihi)
+                     do s = 0, ord
+                        cg_grad(3*ddim, i, j, k) = cg_grad(3*ddim, i, j, k) - cfo(ord - s) * this%w(iw)%arr(v1(ddim), i, j, k - s)
+                     end do
+                     cg_grad(3*ddim, i, j, k) =  cg_grad(3*ddim, i, j, k) * this%idl(zdim)
                   end do
-                  cg_grad(2 * zdim + ddim, i, j, k) =  cg_grad(2 * zdim + ddim, i, j, k) * this%idl(zdim)
-               end do
-            end do
-         end if
-
+            end if
+         end do
       else if (present(iq) .and. .not. present(iw)) then
          allocate(cg_grad(xdim : zdim, ilo : ihi, jlo : jhi, klo : khi))
          cg_grad = 0.0 
@@ -539,6 +534,8 @@ contains
          call die("grid_container_op:cg_get_gradient] Both vector and scalar array not allowed at the same time")
       endif
 
+      if (allocated(v1)) deallocate(v1)
+      
    end function cg_get_gradient
 
 end module grid_container_op

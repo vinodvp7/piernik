@@ -39,7 +39,8 @@ module resistivity
    implicit none
 
    private
-   public  :: init_resistivity, timestep_resist, cleanup_resistivity, etamax, diffuseb, cu2max, deimin, eta1_active
+   public  :: init_resistivity, timestep_resist, cleanup_resistivity, etamax, diffuseb, cu2max, deimin, eta1_active, &
+   &          jn, eta_jn, eta_jbn, eta_n, ord_curl_grad, compute_resist
 
    real                                  :: cfl_resist                     !< CFL factor for resistivity effect
    real                                  :: eta_0                          !< uniform resistivity

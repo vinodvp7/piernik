@@ -31,25 +31,27 @@ def load_piernik_data(fname, field_name="density"):
             block_group = f["data"][block_name]
             block_data = block_group[field_name][:]
 
-            slc_zyx = tuple(slice(starts_zyx[i, d], starts_zyx[i, d] + dims_zyx[i, d]) for d in range(3))
+            slc_zyx = tuple(
+                slice(starts_zyx[i, d], starts_zyx[i, d] + dims_zyx[i, d]) for d in range(3)
+            )
 
             data[slc_zyx] = block_data
 
-            if 'left_edge' in block_group.attrs and 'dl' in block_group.attrs:
-                left_edge_xyz = block_group.attrs['left_edge']
-                dcell_xyz = block_group.attrs['dl']
+            if "left_edge" in block_group.attrs and "dl" in block_group.attrs:
+                left_edge_xyz = block_group.attrs["left_edge"]
+                dcell_xyz = block_group.attrs["dl"]
 
                 n_z, i0_z = dims_zyx[i, 0], starts_zyx[i, 0]
                 loc_edges_z = left_edge_xyz[2] + dcell_xyz[2] * np.arange(n_z + 1)
-                edges_zyx[0][i0_z:i0_z + n_z + 1] = loc_edges_z
+                edges_zyx[0][i0_z: i0_z + n_z + 1] = loc_edges_z
 
                 n_y, i0_y = dims_zyx[i, 1], starts_zyx[i, 1]
                 loc_edges_y = left_edge_xyz[1] + dcell_xyz[1] * np.arange(n_y + 1)
-                edges_zyx[1][i0_y:i0_y + n_y + 1] = loc_edges_y
+                edges_zyx[1][i0_y: i0_y + n_y + 1] = loc_edges_y
 
                 n_x, i0_x = dims_zyx[i, 2], starts_zyx[i, 2]
                 loc_edges_x = left_edge_xyz[0] + dcell_xyz[0] * np.arange(n_x + 1)
-                edges_zyx[2][i0_x:i0_x + n_x + 1] = loc_edges_x
+                edges_zyx[2][i0_x: i0_x + n_x + 1] = loc_edges_x
 
         zc = 0.5 * (edges_zyx[0][:-1] + edges_zyx[0][1:])
         yc = 0.5 * (edges_zyx[1][:-1] + edges_zyx[1][1:])
@@ -64,9 +66,9 @@ def sine_wave_model(x, amplitude, wavenumber, phase, offset):
     return amplitude * np.sin(wavenumber * x + phase) + offset
 
 
-file_initial = 'cpaw_tst_0000.h5'
-file_final = 'cpaw_tst_0001.h5'                # Make sure you choose the correct file coresponding to t = T 
-variables_to_plot = ['mag_field_y', 'mag_field_z']
+file_initial = "cpaw_tst_0000.h5"
+file_final = "cpaw_tst_0001.h5"  # Make sure you choose the correct file corresponding to t = T
+variables_to_plot = ["mag_field_y", "mag_field_z"]
 
 # Theoretical wavenumbers from your parameter file (for initial guesses)
 kx_theory = 2 * np.pi
@@ -74,7 +76,7 @@ ky_theory = 4 * np.pi
 
 # --- Create the 2x2 figure BEFORE the loop ---
 fig, axes = plt.subplots(2, 2, figsize=(18, 12), constrained_layout=True)
-fig.suptitle(r'1D Slice of Magnetic Field Components Amp * $\sin(kx + \delta) + D$', fontsize=12)
+fig.suptitle(r"1D Slice of Magnetic Field Components Amp * $\sin(kx + \delta) + D$", fontsize=12)
 
 for i, var_name in enumerate(variables_to_plot):
     try:
@@ -105,8 +107,8 @@ for i, var_name in enumerate(variables_to_plot):
     perr_final_y = np.sqrt(np.diag(pcov_final_y))
 
     # Plot data and fits
-    ax1.plot(yc, slice_init_vs_y, label='Initial Data (t=0)')
-    ax1.plot(yc, slice_final_vs_y, label='Final (t= T)', linestyle='dashed')
+    ax1.plot(yc, slice_init_vs_y, label="Initial Data (t=0)")
+    ax1.plot(yc, slice_final_vs_y, label="Final (t= T)", linestyle="dashed")
 
     # Add text with fit results
     fit_text = (
@@ -117,13 +119,20 @@ for i, var_name in enumerate(variables_to_plot):
         f"  Amp = {popt_final_y[0]:.4f} ± {perr_final_y[0]:.4f}\n"
         f"  k = {popt_final_y[1]:.4f} ± {perr_final_y[1]:.4f}"
     )
-    ax1.text(0.05, 0.35, fit_text, transform=ax1.transAxes, fontsize=9,
-             verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+    ax1.text(
+        0.05,
+        0.35,
+        fit_text,
+        transform=ax1.transAxes,
+        fontsize=9,
+        verticalalignment="top",
+        bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5),
+    )
 
-    ax1.set_title(f'Slice of {var_name} at x = {xc[mid_x_index]:.3f}')
-    ax1.set_xlabel('Y Coordinate')
+    ax1.set_title(f"Slice of {var_name} at x = {xc[mid_x_index]:.3f}")
+    ax1.set_xlabel("Y Coordinate")
     ax1.set_ylabel(var_name)
-    ax1.legend(loc='lower left')
+    ax1.legend(loc="lower left")
     ax1.grid(True)
 
     # --- Plot 2: Slice at constant Y (plotted vs X) ---
@@ -142,8 +151,8 @@ for i, var_name in enumerate(variables_to_plot):
     perr_final_x = np.sqrt(np.diag(pcov_final_x))
 
     # Plot data and fits
-    ax2.plot(xc, slice_init_vs_x, label='Initial Data (t=0)')
-    ax2.plot(xc, slice_final_vs_x, label='Final (t= T)', linestyle='dashed')
+    ax2.plot(xc, slice_init_vs_x, label="Initial Data (t=0)")
+    ax2.plot(xc, slice_final_vs_x, label="Final (t= T)", linestyle="dashed")
 
     # Add text with fit results
     fit_text = (
@@ -154,12 +163,19 @@ for i, var_name in enumerate(variables_to_plot):
         f"  Amp = {popt_final_x[0]:.4f} ± {perr_final_x[0]:.4f}\n"
         f"  k = {popt_final_x[1]:.4f} ± {perr_final_x[1]:.4f}"
     )
-    ax2.text(0.75, 0.95, fit_text, transform=ax2.transAxes, fontsize=9,
-             verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+    ax2.text(
+        0.75,
+        0.95,
+        fit_text,
+        transform=ax2.transAxes,
+        fontsize=9,
+        verticalalignment="top",
+        bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5),
+    )
 
-    ax2.set_title(f'Slice of {var_name} at y = {yc[mid_y_index]:.3f}')
-    ax2.set_xlabel('X Coordinate')
-    ax2.legend(loc='lower left')
+    ax2.set_title(f"Slice of {var_name} at y = {yc[mid_y_index]:.3f}")
+    ax2.set_xlabel("X Coordinate")
+    ax2.legend(loc="lower left")
     ax2.grid(True)
 
 plt.show()

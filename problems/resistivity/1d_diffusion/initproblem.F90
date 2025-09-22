@@ -33,7 +33,7 @@ module initproblem
 ! in resistive environment                        !
 ! ----------------------------------------------- !
 ! Initial condition                               !
-! Author: Vinod V. Pisharody                      ! 
+! Author: Vinod V. Pisharody                      !
 ! ------------------------------------------------!
 
    implicit none
@@ -65,7 +65,7 @@ contains
       implicit none
 
       b0  = 0.1
-      a   = 40 
+      a   = 40
 
 
       if (master) then
@@ -107,7 +107,6 @@ contains
       use cg_leaves,   only: leaves
       use cg_list,     only: cg_list_element
       use constants,   only: xdim, ydim, zdim, LO, HI
-      use dataio_pub,  only: die
       use fluidindex,  only: flind
       use fluidtypes,  only: component_fluid
       use func,        only: ekin, emag

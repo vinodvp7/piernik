@@ -33,7 +33,7 @@ module initproblem
 ! in resistive environment                        !
 ! ----------------------------------------------- !
 ! Initial condition                               !
-! Author: Vinod V. Pisharody                      ! 
+! Author: Vinod V. Pisharody                      !
 ! ------------------------------------------------!
 
    implicit none
@@ -90,7 +90,7 @@ contains
          rbuff(1)  = B0
          rbuff(2)  = kx
          rbuff(3)  = ky
-         
+
       endif
 
       call piernik_MPI_Bcast(rbuff)
@@ -100,7 +100,7 @@ contains
          B0  = rbuff(1)
          kx  = rbuff(2)
          ky  = rbuff(3)
-         
+
       endif
 
    end subroutine read_problem_par
@@ -110,7 +110,6 @@ contains
       use cg_leaves,   only: leaves
       use cg_list,     only: cg_list_element
       use constants,   only: xdim, ydim, zdim, LO, HI
-      use dataio_pub,  only: die
       use fluidindex,  only: flind
       use fluidtypes,  only: component_fluid
       use func,        only: ekin, emag
@@ -144,8 +143,8 @@ contains
                         cg%u(fl%ien,i,j,k) = 1.0/fl%gam_1
                         cg%u(fl%ien,i,j,k) = cg%u(fl%ien,i,j,k) + ekin(cg%u(fl%imx,i,j,k), cg%u(fl%imy,i,j,k), cg%u(fl%imz,i,j,k), cg%u(fl%idn,i,j,k))
                         if (fl%is_magnetized) then
-                           cg%b(xdim,i,j,k) =  B0 * ky * sin(kx*xi) * cos(ky*yj)  
-                           cg%b(ydim,i,j,k) = -B0 * kx * cos(kx*xi) * sin(ky*yj) 
+                           cg%b(xdim,i,j,k) =  B0 * ky * sin(kx*xi) * cos(ky*yj)
+                           cg%b(ydim,i,j,k) = -B0 * kx * cos(kx*xi) * sin(ky*yj)
                            cg%b(zdim,i,j,k) =  0.0
                            cg%u(fl%ien,i,j,k) = cg%u(fl%ien,i,j,k) + emag(cg%b(xdim,i,j,k), cg%b(ydim,i,j,k), cg%b(zdim,i,j,k))
                         endif

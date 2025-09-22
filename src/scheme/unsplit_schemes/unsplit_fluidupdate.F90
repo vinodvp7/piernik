@@ -75,7 +75,7 @@ contains
       use shear,               only: shear_3sweeps
 #endif /* SHEAR */
 #ifdef RESISTIVE
-      use resistivity_helpers, only: add_resistivity_source 
+      use resistivity_helpers, only: add_resistivity_source
 #endif /* RESISTIVE */
 
       implicit none

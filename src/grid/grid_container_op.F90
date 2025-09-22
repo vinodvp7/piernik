@@ -26,17 +26,17 @@
 !
 #include "piernik.h"
 
-!> \brief This module contains 
+!> \brief This module contains
 
 module grid_container_op
-             
+
    use grid_cont_bseg,     only: grid_container_bseg_t
 
    implicit none
 
    private
    public :: grid_container_op_t
-   
+
    logical, save :: warn_ord_flg = .true.
 
   type, extends(grid_container_bseg_t), abstract :: grid_container_op_t
@@ -53,7 +53,7 @@ module grid_container_op
 
 contains
 
-!! Gradient stencil coefficient. Implemented order : 2/4/6/8. To extend simply add a new case. 
+!! Gradient stencil coefficient. Implemented order : 2/4/6/8. To extend simply add a new case.
 
    subroutine get_central_method_coeffs(ord, a, b)
 
@@ -67,17 +67,17 @@ contains
       a = 0.0                                ! Stores central different weights
       b = 0.0                                ! Stores forward/ - backward difference weights
 
-      select case(ord)
-         case(2)
+      select case (ord)
+         case (2)
             a = [1./2.]                                        ! 1/2 * fi+1 - 1/2 *fi-1
             b = [-3./2., 2., -1./2.]
-         case(4)
+         case (4)
             a = [2./3, -1./12.]                               ! 2/3 * fi+1 - 2/3 *fi-1 -1/12 * fi+2 + 1/12 * fi-2
             b = [-25./12., 4., -3., 4./3., -1./4.]
-         case(6)
+         case (6)
             a = [3./4., -3./20., 1./60.]
             b = [-49./20., 6., -15./2., 20./3., -15./4., 6./5., -1./6.]
-         case(8)
+         case (8)
             a = [4./5., -1./5., 4./105., -1./280.]
             b = [-761./280., 8., -14., 56./3., -35./2., 56./5., -14./3., 8./7., -1./8.]
          case default
@@ -95,8 +95,8 @@ contains
       class(grid_container_op_t),      intent(in)  :: this  !< object invoking type-bound procedure
       integer,                         intent(in)  :: iv1   ! cg list index of first vector
       integer,                         intent(in)  :: iv2   ! cg list index of second vector
-      integer, dimension(3), optional, intent(in)  :: vec1  ! array pointing to the index of u1_x, u2_x, u3_x 
-      integer, dimension(3), optional, intent(in)  :: vec2  ! array pointing to the index of v1_x, v2_x, v3_x 
+      integer, dimension(3), optional, intent(in)  :: vec1  ! array pointing to the index of u1_x, u2_x, u3_x
+      integer, dimension(3), optional, intent(in)  :: vec2  ! array pointing to the index of v1_x, v2_x, v3_x
 
       real, allocatable :: dot_prod(:,:,:)
       integer           :: i, j, k, ilo, ihi, jlo, jhi, klo, khi, v1(3), v2(3)
@@ -112,18 +112,18 @@ contains
          v1 = vec1
       else
          v1 = [xdim, ydim, zdim]
-      end if
+      endif
       if (present(vec2)) then
          v2 = vec2
       else
          v2 = [xdim, ydim, zdim]
-      end if
+      endif
 
       do concurrent (k = klo : khi, j = jlo : jhi, i = ilo : ihi)
          dot_prod(i, j, k) = this%w(iv1)%arr(v1(1), i, j, k) * this%w(iv2)%arr(v2(1), i, j, k)  &
          &                 + this%w(iv1)%arr(v1(2), i, j, k) * this%w(iv2)%arr(v2(2), i, j, k)  &
-         &                 + this%w(iv1)%arr(v1(3), i, j, k) * this%w(iv2)%arr(v2(3), i, j, k)       
-      end do
+         &                 + this%w(iv1)%arr(v1(3), i, j, k) * this%w(iv2)%arr(v2(3), i, j, k)
+      enddo
 
    end function cg_dot
 
@@ -136,8 +136,8 @@ contains
       class(grid_container_op_t),      intent(in)  :: this  !< object invoking type-bound procedure
       integer,                         intent(in)  :: iv1   !< cg list index of first vector
       integer,                         intent(in)  :: iv2   !< cg list index of second vector
-      integer, dimension(3), optional, intent(in)  :: vec1  !< array pointing to the index of u1_x, u2_x, u3_x 
-      integer, dimension(3), optional, intent(in)  :: vec2  !< array pointing to the index of v1_x, v2_x, v3_x 
+      integer, dimension(3), optional, intent(in)  :: vec1  !< array pointing to the index of u1_x, u2_x, u3_x
+      integer, dimension(3), optional, intent(in)  :: vec2  !< array pointing to the index of v1_x, v2_x, v3_x
 
       real, allocatable :: cross_prod(:,:,:,:)
       integer           :: i, j, k, ilo, ihi, jlo, jhi, klo, khi, v1(3), v2(3)
@@ -153,23 +153,23 @@ contains
          v1 = vec1
       else
          v1 = [xdim, ydim, zdim]
-      end if
+      endif
       if (present(vec2)) then
          v2 = vec2
       else
          v2 = [xdim, ydim, zdim]
-      end if
+      endif
 
       do concurrent (k = klo : khi, j = jlo : jhi, i = ilo : ihi)
          cross_prod(xdim, i, j, k) = this%w(iv1)%arr(v1(2), i, j, k) * this%w(iv2)%arr(v2(3), i, j, k)  &
-         &                         - this%w(iv1)%arr(v1(3), i, j, k) * this%w(iv2)%arr(v2(2), i, j, k)  
+         &                         - this%w(iv1)%arr(v1(3), i, j, k) * this%w(iv2)%arr(v2(2), i, j, k)
 
          cross_prod(ydim, i, j, k) = this%w(iv1)%arr(v1(3), i, j, k) * this%w(iv2)%arr(v2(1), i, j, k)  &
-         &                         - this%w(iv1)%arr(v1(1), i, j, k) * this%w(iv2)%arr(v2(3), i, j, k)  
+         &                         - this%w(iv1)%arr(v1(1), i, j, k) * this%w(iv2)%arr(v2(3), i, j, k)
 
          cross_prod(zdim, i, j, k) = this%w(iv1)%arr(v1(1), i, j, k) * this%w(iv2)%arr(v2(2), i, j, k)  &
-         &                         - this%w(iv1)%arr(v1(2), i, j, k) * this%w(iv2)%arr(v2(1), i, j, k)  
-      end do
+         &                         - this%w(iv1)%arr(v1(2), i, j, k) * this%w(iv2)%arr(v2(1), i, j, k)
+      enddo
 
    end function cg_cross
 
@@ -191,7 +191,7 @@ contains
       integer                    :: i, j, k, ilo, ihi, jlo, jhi, klo, khi, v1(3), s
 
       real                       :: cfc(ord/2), cfo(0:ord)
-      
+
       if (master) then
          if (dom%nb < ord/2 ) call die("[grid_container_op:cg_get_divergence] Insufficient guard cells for chosen order")
          if (dom%nb < ord .and. warn_ord_flg) then
@@ -209,80 +209,80 @@ contains
          v1 = vec
       else
          v1 = [xdim, ydim, zdim]
-      end if
+      endif
       allocate(cg_div(ilo : ihi, jlo : jhi, klo : khi))
-      cg_div = 0.0 
+      cg_div = 0.0
       if (dom%has_dir(xdim)) then
          do concurrent (k = klo : khi, j = jlo : jhi, i = ilo + ord/2 : ihi - ord/2 )
             do s = 1, ord/2
                cg_div(i, j, k) = cg_div(i, j, k) + &
                &                        cfc(s) * (this%w(iw)%arr(v1(xdim), i + s , j, k) - this%w(iw)%arr(v1(xdim), i - s , j, k))
-            end do
+            enddo
             cg_div(i, j, k) =  cg_div(i, j, k) * this%idl(xdim)
-         end do
+         enddo
 
          do concurrent (k = klo : khi, j = jlo : jhi, i = ilo : ilo + ord/2 - 1)
             do s = 0, ord
                cg_div(i, j, k) = cg_div(i, j, k) + cfo(s) * this%w(iw)%arr(v1(xdim), i + s , j, k)
-            end do
+            enddo
             cg_div(i, j, k) =  cg_div(i, j, k) * this%idl(xdim)
-         end do
+         enddo
 
          do concurrent (k = klo : khi, j = jlo : jhi, i = ihi - ord/2 + 1 : ihi)
             do s = 0, ord
                cg_div(i, j, k) = cg_div(i, j, k) - cfo(ord - s) * this%w(iw)%arr(v1(xdim), i - s , j, k)
-            end do
+            enddo
             cg_div(i, j, k) =  cg_div(i, j, k) * this%idl(xdim)
-         end do
-      end if
+         enddo
+      endif
 
       if (dom%has_dir(ydim)) then
          do concurrent (k = klo : khi, j = jlo + ord/2 : jhi - ord/2, i = ilo : ihi)
             do s = 1, ord/2
                cg_div(i, j, k) = cg_div(i, j, k) + &
                &                        cfc(s) * (this%w(iw)%arr(v1(ydim), i, j + s, k) - this%w(iw)%arr(v1(ydim), i, j - s, k))
-            end do
+            enddo
             cg_div(i, j, k) =  cg_div(i, j, k) * this%idl(ydim)
-         end do
+         enddo
 
          do concurrent (k = klo : khi, j = jlo : jlo + ord/2 - 1, i = ilo : ihi)
             do s = 0, ord
                cg_div(i, j, k) = cg_div(i, j, k) + cfo(s) * this%w(iw)%arr(v1(ydim), i, j + s, k)
-            end do
+            enddo
             cg_div(i, j, k) =  cg_div(i, j, k) * this%idl(ydim)
-         end do
+         enddo
 
          do concurrent (k = klo : khi, j = jhi - ord/2 + 1 : jhi, i = ilo : ihi)
             do s = 0, ord
                cg_div(i, j, k) = cg_div(i, j, k) - cfo(ord - s) * this%w(iw)%arr(v1(ydim), i, j - s, k)
-            end do
+            enddo
             cg_div(i, j, k) =  cg_div(i, j, k) * this%idl(ydim)
-         end do
-      end if
+         enddo
+      endif
 
       if (dom%has_dir(zdim)) then
          do concurrent (k = klo + ord/2 : khi - ord/2, j = jlo : jhi, i = ilo : ihi)
             do s = 1, ord/2
                cg_div(i, j, k) = cg_div(i, j, k) + &
                &                        cfc(s) * (this%w(iw)%arr(v1(zdim), i, j, k + s) - this%w(iw)%arr(v1(zdim), i, j, k - s))
-            end do
+            enddo
             cg_div(i, j, k) =  cg_div(i, j, k) * this%idl(zdim)
-         end do
+         enddo
 
          do concurrent (k = klo : klo + ord/2 - 1, j = jlo : jhi, i = ilo : ihi)
             do s = 0, ord
                cg_div(i, j, k) = cg_div(i, j, k) + cfo(s) * this%w(iw)%arr(v1(zdim), i, j, k + s)
-            end do
+            enddo
             cg_div(i, j, k) =  cg_div(i, j, k) * this%idl(zdim)
-         end do
+         enddo
 
          do concurrent (k = khi - ord/2 + 1 : khi, j = jlo  : jhi, i = ilo  : ihi)
             do s = 0, ord
                cg_div(i, j, k) = cg_div(i, j, k) - cfo(ord - s) * this%w(iw)%arr(v1(zdim), i, j, k - s)
-            end do
+            enddo
             cg_div(i, j, k) =  cg_div(i, j, k) * this%idl(zdim)
-         end do
-      end if
+         enddo
+      endif
 
    end function cg_get_divergence
 
@@ -321,12 +321,12 @@ contains
          v1 = vec
       else
          v1 = [xdim, ydim, zdim]
-      end if
+      endif
 
       allocate(cg_curl(xdim : zdim, ilo : ihi, jlo : jhi, klo : khi))
 
       cg_jac = this%get_gradient(ord = ord, iw = iw, vec = v1)
-      
+
       cg_curl(xdim,:,:,:) = cg_jac(8,:,:,:) - cg_jac(6,:,:,:)
       cg_curl(ydim,:,:,:) = cg_jac(3,:,:,:) - cg_jac(7,:,:,:)
       cg_curl(zdim,:,:,:) = cg_jac(4,:,:,:) - cg_jac(2,:,:,:)
@@ -376,110 +376,110 @@ contains
          else
             allocate(v1(3))
             v1 = [xdim, ydim, zdim]
-         end if
+         endif
          allocate(cg_grad(xdim : size(v1) * zdim, ilo : ihi, jlo : jhi, klo : khi))
-         cg_grad = 0.0 
+         cg_grad = 0.0
 
          ! This is for wna
-         do ddim = xdim, size(v1) 
+         do ddim = xdim, size(v1)
             if (dom%has_dir(xdim)) then
                   do concurrent (k = klo : khi, j = jlo : jhi, i = ilo + ord/2 : ihi - ord/2 )
                      do s = 1, ord/2
                         cg_grad(xdim + 3 * (ddim - 1), i, j, k) = cg_grad(xdim + 3 * (ddim - 1), i, j, k) + &
                         &                        cfc(s) * (this%w(iw)%arr(v1(ddim), i + s , j, k) - this%w(iw)%arr(v1(ddim), i - s , j, k))
-                     end do
+                     enddo
                      cg_grad(xdim + 3 * (ddim - 1), i, j, k) =  cg_grad(xdim + 3 * (ddim - 1), i, j, k) * this%idl(xdim)
-                  end do
+                  enddo
 
                   do concurrent (k = klo : khi, j = jlo : jhi, i = ilo : ilo + ord/2 - 1)
                      do s = 0, ord
                         cg_grad(xdim + 3 * (ddim - 1), i, j, k) = cg_grad(xdim + 3 * (ddim - 1), i, j, k) + cfo(s) * this%w(iw)%arr(v1(ddim), i + s , j, k)
-                     end do
+                     enddo
                      cg_grad(xdim + 3 * (ddim - 1), i, j, k) =  cg_grad(xdim + 3 * (ddim - 1), i, j, k) * this%idl(xdim)
-                  end do
+                  enddo
 
                   do concurrent (k = klo : khi, j = jlo : jhi, i = ihi - ord/2 + 1 : ihi)
                      do s = 0, ord
                         cg_grad(xdim + 3 * (ddim - 1), i, j, k) = cg_grad(xdim + 3 * (ddim - 1), i, j, k) - cfo(ord - s) * this%w(iw)%arr(v1(ddim), i - s , j, k)
-                     end do
+                     enddo
                      cg_grad(xdim + 3 * (ddim - 1), i, j, k) =  cg_grad(xdim + 3 * (ddim - 1), i, j, k) * this%idl(xdim)
-                  end do
-            end if
+                  enddo
+            endif
             if (dom%has_dir(ydim)) then
                   do concurrent (k = klo : khi, j = jlo + ord/2 : jhi - ord/2, i = ilo : ihi)
                      do s = 1, ord/2
                         cg_grad(ydim + 3 * (ddim - 1), i, j, k) = cg_grad(ydim + 3 * (ddim - 1), i, j, k) + &
                         &                        cfc(s) * (this%w(iw)%arr(v1(ddim), i, j + s, k) - this%w(iw)%arr(v1(ddim), i, j - s, k))
-                     end do
+                     enddo
                      cg_grad(ydim + 3 * (ddim - 1), i, j, k) =  cg_grad(ydim + 3 * (ddim - 1), i, j, k) * this%idl(ydim)
-                  end do
+                  enddo
 
                   do concurrent (k = klo : khi, j = jlo : jlo + ord/2 - 1, i = ilo : ihi)
                      do s = 0, ord
                         cg_grad(ydim + 3 * (ddim - 1), i, j, k) = cg_grad(ydim + 3 * (ddim - 1), i, j, k) + cfo(s) * this%w(iw)%arr(v1(ddim), i, j + s, k)
-                     end do
+                     enddo
                      cg_grad(ydim + 3 * (ddim - 1), i, j, k) =  cg_grad(ydim + 3 * (ddim - 1), i, j, k) * this%idl(ydim)
-                  end do
+                  enddo
 
                   do concurrent (k = klo : khi, j = jhi - ord/2 + 1 : jhi, i = ilo : ihi)
                      do s = 0, ord
                         cg_grad(ydim + 3 * (ddim - 1), i, j, k) = cg_grad(ydim + 3 * (ddim - 1), i, j, k) - cfo(ord - s) * this%w(iw)%arr(v1(ddim), i, j - s, k)
-                     end do
+                     enddo
                      cg_grad(ydim + 3 * (ddim - 1), i, j, k) =  cg_grad(ydim + 3 * (ddim - 1), i, j, k) * this%idl(ydim)
-                  end do
-            end if
+                  enddo
+            endif
             if (dom%has_dir(zdim)) then
                   do concurrent (k = klo + ord/2 : khi - ord/2, j = jlo : jhi, i = ilo : ihi)
                      do s = 1, ord/2
                         cg_grad(3*ddim, i, j, k) = cg_grad(3*ddim, i, j, k) + &
                         &                        cfc(s) * (this%w(iw)%arr(v1(ddim), i, j, k + s) - this%w(iw)%arr(v1(ddim), i, j, k - s))
-                     end do
+                     enddo
                      cg_grad(3*ddim, i, j, k) =  cg_grad(3*ddim, i, j, k) * this%idl(zdim)
-                  end do
+                  enddo
 
                   do concurrent (k = klo : klo + ord/2 - 1, j = jlo : jhi, i = ilo : ihi)
                      do s = 0, ord
                         cg_grad(3*ddim, i, j, k) = cg_grad(3*ddim, i, j, k) + cfo(s) * this%w(iw)%arr(v1(ddim), i, j, k + s)
-                     end do
+                     enddo
                      cg_grad(3*ddim, i, j, k) =  cg_grad(3*ddim, i, j, k) * this%idl(zdim)
-                  end do
+                  enddo
 
                   do concurrent (k = khi - ord/2 + 1 : khi, j = jlo  : jhi, i = ilo  : ihi)
                      do s = 0, ord
                         cg_grad(3*ddim, i, j, k) = cg_grad(3*ddim, i, j, k) - cfo(ord - s) * this%w(iw)%arr(v1(ddim), i, j, k - s)
-                     end do
+                     enddo
                      cg_grad(3*ddim, i, j, k) =  cg_grad(3*ddim, i, j, k) * this%idl(zdim)
-                  end do
-            end if
-         end do
+                  enddo
+            endif
+         enddo
       else if (present(iq) .and. .not. present(iw)) then
          allocate(cg_grad(xdim : zdim, ilo : ihi, jlo : jhi, klo : khi))
-         cg_grad = 0.0 
-         ! This is for qna 
+         cg_grad = 0.0
+         ! This is for qna
          if (dom%has_dir(xdim)) then
 
             do concurrent (k = klo : khi, j = jlo : jhi, i = ilo + ord/2 : ihi - ord/2 )
                do s = 1, ord/2
                   cg_grad(xdim, i, j, k) = cg_grad(xdim, i, j, k) + &
                   &                        cfc(s) * (this%q(iq)%arr(i + s , j, k) - this%q(iq)%arr(i - s , j, k))
-               end do
+               enddo
                cg_grad(xdim, i, j, k) =  cg_grad(xdim, i, j, k) * this%idl(xdim)
-            end do
+            enddo
 
             do concurrent (k = klo : khi, j = jlo : jhi, i = ilo : ilo + ord/2 - 1)
                do s = 0, ord
                   cg_grad(xdim, i, j, k) = cg_grad(xdim, i, j, k) + cfo(s) * this%q(iq)%arr(i + s , j, k)
-               end do
+               enddo
                cg_grad(xdim, i, j, k) =  cg_grad(xdim, i, j, k) * this%idl(xdim)
-            end do
+            enddo
 
             do concurrent (k = klo : khi, j = jlo : jhi, i = ihi - ord/2 + 1 : ihi)
                do s = 0, ord
                   cg_grad(xdim, i, j, k) = cg_grad(xdim, i, j, k) - cfo(ord - s) * this%q(iq)%arr(i - s , j, k)
-               end do
+               enddo
                cg_grad(xdim, i, j, k) =  cg_grad(xdim, i, j, k) * this%idl(xdim)
-            end do
-         end if
+            enddo
+         endif
 
          if (dom%has_dir(ydim)) then
 
@@ -487,24 +487,24 @@ contains
                do s = 1, ord/2
                   cg_grad(ydim, i, j, k) = cg_grad(ydim, i, j, k) + &
                   &                        cfc(s) * (this%q(iq)%arr(i, j + s, k) - this%q(iq)%arr(i, j - s, k))
-               end do
+               enddo
                cg_grad(ydim, i, j, k) =  cg_grad(ydim, i, j, k) * this%idl(ydim)
-            end do
+            enddo
 
             do concurrent (k = klo : khi, j = jlo : jlo + ord/2 - 1, i = ilo : ihi)
                do s = 0, ord
                   cg_grad(ydim, i, j, k) = cg_grad(ydim, i, j, k) + cfo(s) * this%q(iq)%arr(i, j + s, k)
-               end do
+               enddo
                cg_grad(ydim, i, j, k) =  cg_grad(ydim, i, j, k) * this%idl(ydim)
-            end do
+            enddo
 
             do concurrent (k = klo : khi, j = jhi - ord/2 + 1 : jhi, i = ilo : ihi)
                do s = 0, ord
                   cg_grad(ydim, i, j, k) = cg_grad(ydim, i, j, k) - cfo(ord - s) * this%q(iq)%arr(i, j - s, k)
-               end do
+               enddo
                cg_grad(ydim, i, j, k) =  cg_grad(ydim, i, j, k) * this%idl(ydim)
-            end do
-         end if
+            enddo
+         endif
 
          if (dom%has_dir(zdim)) then
 
@@ -512,30 +512,30 @@ contains
                do s = 1, ord/2
                   cg_grad(zdim, i, j, k) = cg_grad(zdim, i, j, k) + &
                   &                        cfc(s) * (this%q(iq)%arr(i, j, k + s) - this%q(iq)%arr(i, j, k - s))
-               end do
+               enddo
                cg_grad(zdim, i, j, k) =  cg_grad(zdim, i, j, k) * this%idl(zdim)
-            end do
+            enddo
 
             do concurrent (k = klo : klo + ord/2 - 1, j = jlo : jhi, i = ilo : ihi)
                do s = 0, ord
                   cg_grad(zdim, i, j, k) = cg_grad(zdim, i, j, k) + cfo(s) * this%q(iq)%arr(i, j, k + s)
-               end do
+               enddo
                cg_grad(zdim, i, j, k) =  cg_grad(zdim, i, j, k) * this%idl(zdim)
-            end do
+            enddo
 
             do concurrent (k = khi - ord/2 + 1 : khi, j = jlo  : jhi, i = ilo  : ihi)
                do s = 0, ord
                   cg_grad(zdim, i, j, k) = cg_grad(zdim, i, j, k) - cfo(ord - s) * this%q(iq)%arr(i, j, k - s)
-               end do
+               enddo
                cg_grad(zdim, i, j, k) =  cg_grad(zdim, i, j, k) * this%idl(zdim)
-            end do
-         end if
+            enddo
+         endif
       else
          call die("grid_container_op:cg_get_gradient] Both vector and scalar array not allowed at the same time")
       endif
 
       if (allocated(v1)) deallocate(v1)
-      
+
    end function cg_get_gradient
 
 end module grid_container_op

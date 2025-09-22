@@ -44,7 +44,7 @@ contains
 
       use grid_cont,          only: grid_container
       use named_array_list,   only: wna, qna
-      use constants,          only: xdim, ydim, zdim, first_stage, ndims, HI, LO
+      use constants,          only: xdim, ydim, zdim, first_stage, HI, LO
       use global,             only: integration_order
       use constants,          only: magh_n
       use resistivity,        only: jn, eta_jn, eta_n, ord_curl_grad, eta_jbn
@@ -61,10 +61,10 @@ contains
       jni    = wna%ind(jn)
       etaji  = wna%ind(eta_jn)
       bhi    = wna%ind(magh_n)
-      etajbi = wna%ind(eta_jbn) 
+      etajbi = wna%ind(eta_jbn)
 
       if (istep == first_stage(integration_order) .or. integration_order < 2) then
-         bhi = wna%bi       
+         bhi = wna%bi
       endif
 
       cg%w(jni)%arr(:,:,:,:) = cg%get_curl(ord_curl_grad, bhi)
@@ -74,9 +74,9 @@ contains
          cg%w(etaji)%arr(xdim, i, j, k) = cg%w(jni)%arr(xdim, i, j, k) * cg%q(etai)%arr(i, j, k)
          cg%w(etaji)%arr(ydim, i, j, k) = cg%w(jni)%arr(ydim, i, j, k) * cg%q(etai)%arr(i, j, k)
          cg%w(etaji)%arr(zdim, i, j, k) = cg%w(jni)%arr(zdim, i, j, k) * cg%q(etai)%arr(i, j, k)
-      end do
+      enddo
 
-      ! Storing cross product of etaJ and B  
+      ! Storing cross product of etaJ and B
       cg%w(etajbi)%arr(:,:,:,:) = cg%cross(etaji, bhi)
 
       ! Storing curl of etaJ
@@ -84,8 +84,8 @@ contains
 
    end subroutine update_resistive_terms
 
-!! This subroutine adds the resistive correction to the induction equation as a source term. We call this twice in a 
-!! strang split manner once before the transport  and after as follows RES(dt/2) * Transport(dt) * RES(dt/2) 
+!! This subroutine adds the resistive correction to the induction equation as a source term. We call this twice in a
+!! strang split manner once before the transport  and after as follows RES(dt/2) * Transport(dt) * RES(dt/2)
 !! for each time step.
 
    subroutine add_resistivity_source
@@ -107,7 +107,7 @@ contains
       real, dimension(:,:,:,:), pointer     :: pb, pbf
       integer                               :: istep
 
-      ! We add resistive source term [curl of eta J] to B in a RK2 manner as well. Is this an overkill ? 
+      ! We add resistive source term [curl of eta J] to B in a RK2 manner as well. Is this an overkill ?
       do istep = first_stage(integration_order), last_stage(integration_order)
          call compute_resist                               ! Update resistivity eta. Needed if eta varies in space
          cgl => leaves%first
@@ -119,12 +119,12 @@ contains
                pb   => cg%w(wna%bi)%arr
                pbf  => cg%w(wna%ind(magh_n))%arr
             endif
-            call update_resistive_terms(cg,istep)         ! Refreshes curl of eta J 
+            call update_resistive_terms(cg,istep)         ! Refreshes curl of eta J
             cej => cg%w(wna%ind(eta_jn))%arr
-            pbf(:,:,:,:) = pb(:,:,:,:) - rk_coef(istep) * 0.5 * dt * cej(:,:,:,:)      
+            pbf(:,:,:,:) = pb(:,:,:,:) - rk_coef(istep) * 0.5 * dt * cej(:,:,:,:)
             cgl => cgl%nxt
          enddo
-         call all_mag_boundaries(istep)                  ! Need to refresh magnetic boundaries as B has changed 
+         call all_mag_boundaries(istep)                  ! Need to refresh magnetic boundaries as B has changed
          call compute_resist                             ! Potential overkill to calculate eta/J again but useful if J marked for output I/O
          cgl => leaves%first
          do while (associated(cgl))
@@ -132,7 +132,7 @@ contains
             call update_resistive_terms(cg,istep)
             cgl => cgl%nxt
          enddo
-      end do
+      enddo
    end subroutine add_resistivity_source
 
 end module resistivity_helpers

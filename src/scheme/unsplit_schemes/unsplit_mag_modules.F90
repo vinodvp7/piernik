@@ -213,7 +213,7 @@ contains
 
       call interpol(ui, ql, qr, bi, bl, br)
       call riemann_wrap(ql, qr, bl, br, cs2, flx, bflx) ! Now we advance the left and right states by a timestep.
-      
+
       ! We add the resisitve flux correction to energy in a simple manner using average face values
 #ifdef RESISTIVE
 #ifndef ISO

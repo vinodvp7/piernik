@@ -498,13 +498,13 @@ contains
             tab(:,:,:) = cg%w(wna%ind(dfpq%q_nam))%arr(i,RNG)  !flind%cre%fbeg+i-1, RNG)
 #endif /* CRESP */
 #ifdef RESISTIVE
-         case('curx')
+         case ('curx')
             tab(:,:,:) = cg%w(wna%ind(jn))%arr(xdim, RNG)
-         case('cury')
+         case ('cury')
             tab(:,:,:) = cg%w(wna%ind(jn))%arr(ydim, RNG)
-         case('curz')
+         case ('curz')
             tab(:,:,:) = cg%w(wna%ind(jn))%arr(zdim, RNG)
-         case('curmag')
+         case ('curmag')
             tab(:,:,:) = sqrt(sum(cg%w(wna%ind(jn))%arr(xdim:zdim, RNG)**2,dim=1))
 #endif /* RESISTIVE */
 #ifdef TRACER

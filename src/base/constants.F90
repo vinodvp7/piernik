@@ -245,7 +245,7 @@ module constants
       enumerator :: ctheta        ! cos theta : Bz/sqrt(Bx^2 + By^2 + Bz^2)
       enumerator :: stheta        ! sin theta : sqrt(Bx^2 + By^2)/sqrt(Bx^2 + By^2 + Bz^2)
    end enum
-#endif /* STREAM_CR */  
+#endif /* STREAM_CR */
 
    ! 3D and 4D array names
    ! fluids
@@ -281,7 +281,7 @@ module constants
    character(len=dsetnamelen), parameter :: gpcn      = "gpcn"      !< array of gradient of Pc
    character(len=dsetnamelen), parameter :: rtmn      = "rtmn"      !< rotation matrix for frame transformation where B is along Bx
    character(len=dsetnamelen), parameter :: sgmn      = "sgmn"      !< interaction coefficient for streaming cosmic rays
-   character(len=dsetnamelen), parameter :: v_dfst    = "v_dfst"    !< Diffusion + streaming speed 
+   character(len=dsetnamelen), parameter :: v_dfst    = "v_dfst"    !< Diffusion + streaming speed
 #endif /* STREAM_CR */
    ! misc
    character(len=dsetnamelen), parameter :: wcu_n   = "wcu"     !< (resistivity) COMMENT ME

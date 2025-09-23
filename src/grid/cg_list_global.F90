@@ -283,7 +283,7 @@ contains
 #ifdef STREAM_CR
          call this%reg_var(rtmn,   vital = .false., restart_mode = AT_NO_B, dim4 = 4, ord_prolong = ord_fluid_prolong)              !! Stores the cosine and sine values to rotate frame
          call this%reg_var(gpcn,   vital = .false., restart_mode = AT_NO_B, dim4 = ndims * nscr, ord_prolong = ord_fluid_prolong)   !! Array to store gradient of Pc = Ec/3
-         call this%reg_var(sgmn,   vital = .false., restart_mode = AT_NO_B, dim4 = 2 * nscr, ord_prolong = ord_fluid_prolong)       !! Stores interaction coefficient parallel and perpendicular to B 
+         call this%reg_var(sgmn,   vital = .false., restart_mode = AT_NO_B, dim4 = 2 * nscr, ord_prolong = ord_fluid_prolong)       !! Stores interaction coefficient parallel and perpendicular to B
          call this%reg_var(v_dfst, vital = .false., restart_mode = AT_NO_B, dim4 = ndims * nscr, ord_prolong = ord_fluid_prolong)   !! Store the streaming + diffusion mixed transport speed of streaming cosmic rays
 
          call set_streamingcr_names
@@ -478,7 +478,7 @@ contains
                call lst(wna%fi)%set_compname(flind%scr(i)%iyfscr , var)
                write(var, '(a,i2.2)') "fzscr_", i
                call lst(wna%fi)%set_compname(flind%scr(i)%izfscr , var)
-            end do
+            enddo
             class default
                call die("[cg_list_global:set_streamingcr_names] Unknown list type")
          end select

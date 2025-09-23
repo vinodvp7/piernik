@@ -35,7 +35,7 @@ module initproblem
 ! DOI 10.3847/1538-4357/aaa6ce                    !
 ! ------------------------------------------------!
 ! Initial condition                               !
-! See section 4.2.3 CR-driven Blast Waves         !  
+! See section 4.2.3 CR-driven Blast Waves         !
 ! ------------------------------------------------!
 
 
@@ -103,11 +103,11 @@ contains
 
       if (slave) then
 
-         r0    = rbuff(1)        
-         ecin  = rbuff(2)        
-         ecout = rbuff(3)        
-         bx    = rbuff(4)        
-         by    = rbuff(5)  
+         r0    = rbuff(1)
+         ecin  = rbuff(2)
+         ecout = rbuff(3)
+         bx    = rbuff(4)
+         by    = rbuff(5)
 
       endif
 
@@ -150,7 +150,7 @@ contains
                   xi = cg%x(i)
                   do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
                      zk = cg%z(k)
-                  
+
                      cg%u(fl%idn,i,j,k) = 1.0
                      cg%u(fl%imx,i,j,k) = 0.0
                      cg%u(fl%imy,i,j,k) = 0.0
@@ -190,10 +190,10 @@ contains
                      zk = cg%z(k)
                      r = sqrt(xi * xi + yj * yj)
                      if (r<r0) then
-                        cg%u(scr_fluid%iescr, i,j,k) = ecin 
+                        cg%u(scr_fluid%iescr, i,j,k) = ecin
                      else
                         cg%u(scr_fluid%iescr, i,j,k) = ecout
-                     endif 
+                     endif
                      cg%u(scr_fluid%ixfscr,i,j,k) = 0.0
                      cg%u(scr_fluid%iyfscr,i,j,k) = 0.0
                      cg%u(scr_fluid%izfscr,i,j,k) = 0.0

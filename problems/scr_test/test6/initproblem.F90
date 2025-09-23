@@ -34,7 +34,7 @@ module initproblem
 ! DOI 10.3847/1538-4357/aaa6ce                    !
 ! ----------------------------------------------- !
 ! Initial condition                               !
-! See section 4.1.5 Anisotropic Diffusion         ! 
+! See section 4.1.5 Anisotropic Diffusion         !
 ! ------------------------------------------------!
 
 
@@ -67,7 +67,7 @@ contains
 
       implicit none
 
-       rin  = 0.5 
+       rin  = 0.5
        rout = 0.7
        phi  = 0.523598776            ! pi/6
 
@@ -192,7 +192,7 @@ contains
 
                      if (r > rin .and. r < rout .and. abs(ang) <= halfphi) then
                         cg%u(scr_fluid%iescr, i,j,k) = 12.0
-                     else 
+                     else
                         cg%u(scr_fluid%iescr, i,j,k) = 10.0
                      endif
                      cg%u(scr_fluid%ixfscr,i,j,k) = 0.0

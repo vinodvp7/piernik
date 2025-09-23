@@ -550,20 +550,20 @@ contains
             read(var, '(A8,I2)') aux, is
             tab(:,:,:) = cg%w(wna%ind(gpcn))%arr( (is-1)*ndims + zdim, RNG )
 #ifdef MAGNETIC
-         !< |B·∇Pc| 
-         case ('bdotgradpc_01':'bdotgradpc_50')                      
-            read(var, '(A11,I2)') aux, is    
+         !< |B·∇Pc|
+         case ('bdotgradpc_01':'bdotgradpc_50')
+            read(var, '(A11,I2)') aux, is
             tab(:,:,:) = cg%b(xdim, RNG) * cg%w(wna%ind(gpcn))%arr( (is-1)*ndims + xdim, RNG ) + &
             &            cg%b(ydim, RNG) * cg%w(wna%ind(gpcn))%arr( (is-1)*ndims + ydim, RNG ) + &
             &            cg%b(zdim, RNG) * cg%w(wna%ind(gpcn))%arr( (is-1)*ndims + zdim, RNG )
 #endif /* MAGNETIC */
-         !< σ 
+         !< σ
          case ('sigma_paral_01':'sigma_paral_50')                    !> parallel component of σ
-            read(var, '(A12,I2)') aux, is     
-            tab(:,:,:) = 1.0/vmax * cg%w(wna%ind(sgmn))%arr( 2 * (is-1) + 1, RNG ) 
+            read(var, '(A12,I2)') aux, is
+            tab(:,:,:) = 1.0/vmax * cg%w(wna%ind(sgmn))%arr( 2 * (is-1) + 1, RNG )
          case ('sigma_perp_01':'sigma_perp_50')                      !> perpendicular component of σ
             read(var, '(A12,I2)') aux, is
-            tab(:,:,:) = 1.0/vmax * cg%w(wna%ind(sgmn))%arr( 2 * (is-1) + 2, RNG ) 
+            tab(:,:,:) = 1.0/vmax * cg%w(wna%ind(sgmn))%arr( 2 * (is-1) + 2, RNG )
 #endif /* STREAM_CR */
 #ifdef TRACER
          case ("trcr")

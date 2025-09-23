@@ -35,7 +35,7 @@ module initproblem
 ! ----------------------------------------------- !
 ! Initial condition                               !
 ! See section 4.1.3 Bottleneck Effect: Balance    !
-!  between CR Streaming and Heating Terms         ! 
+!  between CR Streaming and Heating Terms         !
 ! ------------------------------------------------!
 
    implicit none
@@ -71,7 +71,7 @@ contains
 
       implicit none
 
-      dh = 0.1 
+      dh = 0.1
       dc = 1.0
       x0 = 200.0
       dx = 25.0
@@ -211,7 +211,7 @@ contains
 
       use constants,        only: xdim,ydim,zdim,LO,HI
       use domain,           only: dom
-      use named_array_list, only: wna        
+      use named_array_list, only: wna
       use fluidindex,       only: flind
       use grid_cont,        only: grid_container
 
@@ -234,9 +234,9 @@ contains
             r(dir,:) = cg%ijkse(dir,side) + ssign*(1-ib)
             A(:, l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = &
             A(:, r(xdim,LO):r(xdim,HI), r(ydim,LO):r(ydim,HI), r(zdim,LO):r(zdim,HI))
-         end do
+         enddo
          return
-      end if
+      endif
 
       ssign = 2*side - (LO+HI)
       l = cg%lhn ; r = l
@@ -251,6 +251,6 @@ contains
          -A(flind%scr(1)%ixfscr, r(xdim,LO):r(xdim,HI), r(ydim,LO):r(ydim,HI), r(zdim,LO):r(zdim,HI))
          A(flind%all_fluids(1)%fl%imx, l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = &
          -A(flind%all_fluids(1)%fl%imx, r(xdim,LO):r(xdim,HI), r(ydim,LO):r(ydim,HI), r(zdim,LO):r(zdim,HI))
-      end do
+      enddo
    end subroutine custom_boundary
 end module initproblem

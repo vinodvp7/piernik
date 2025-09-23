@@ -124,7 +124,7 @@ contains
 
       implicit none
 
-      class(component_scr), intent(inout) :: scr_fluid                
+      class(component_scr), intent(inout) :: scr_fluid
       integer(kind=4),  save :: ns = 0             ! Needed here because using scr_fluid%pos goes out of bound !
 
       ns = ns + 1
@@ -193,10 +193,10 @@ contains
 #endif /* TRACER */
 
 #ifdef STREAM_CR
-      allocate(flind%scr(nscr))           
+      allocate(flind%scr(nscr))
       do i = I_ONE, nscr
-            call flind%scr(i)%set_scr_index(flind)      
-      end do
+            call flind%scr(i)%set_scr_index(flind)
+      enddo
 #endif /* STREAM_CR */
 
 
@@ -272,10 +272,10 @@ contains
 #ifdef STREAM_CR
       do i=I_ONE, flind%nscr
             call set_scrindex_arrays(flind%scr(i))
-      end do
+      enddo
       iarr_all_gpcx = [(xdim + 3 * (i - 1), i = 1, flind%nscr)]
       iarr_all_gpcy = [(ydim + 3 * (i - 1), i = 1, flind%nscr)]
-      iarr_all_gpcz = [(zdim + 3 * (i - 1), i = 1, flind%nscr)]   
+      iarr_all_gpcz = [(zdim + 3 * (i - 1), i = 1, flind%nscr)]
 #endif /* STREAM_CR */
 
       allocate(flind%all_fluids(flind%fluids))

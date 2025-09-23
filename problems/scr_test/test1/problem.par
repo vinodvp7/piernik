@@ -46,7 +46,7 @@ $FLUID_IONIZED
   gamma = 1.6667
 /
 $STREAMING_CR
-   nscr                    = 1
+   nscr                    = 2
    vmax                    = 100.0
    sigma_paral             = 1e8
    ord_pc_grad             = 2

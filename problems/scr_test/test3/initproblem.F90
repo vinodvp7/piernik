@@ -34,7 +34,7 @@ module initproblem
 ! DOI 10.3847/1538-4357/aaa6ce                    !
 ! ----------------------------------------------- !
 ! Initial condition                               !
-! See section 4.1.2 CR Streaming in 2D            ! 
+! See section 4.1.2 CR Streaming in 2D            !
 ! ------------------------------------------------!
 
    implicit none

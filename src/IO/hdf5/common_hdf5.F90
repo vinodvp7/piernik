@@ -330,52 +330,52 @@ contains
             do s = 1, nscr
                write(aux, '(a,"_",i2.2)') 'escr', s
                call append_var(aux)
-            end do
+            enddo
          case ('xfscr')
             do s = 1, nscr
                write(aux, '(a,"_",i2.2)') 'xfscr', s
                call append_var(aux)
-            end do
+            enddo
          case ('yfscr')
             do s = 1, nscr
                write(aux, '(a,"_",i2.2)') 'yfscr', s
                call append_var(aux)
-            end do
+            enddo
          case ('zfscr')
             do s = 1, nscr
                write(aux, '(a,"_",i2.2)') 'zfscr', s
                call append_var(aux)
-            end do
+            enddo
          case ('bdotgradpc')
             do s = 1, nscr
                write(aux, '(a,"_",i2.2)') 'bdotgradpc', s
                call append_var(aux)
-            end do
+            enddo
          case ('gradpcx')
             do s = 1, nscr
                write(aux, '(a,"_",i2.2)') 'gradpcx', s
                call append_var(aux)
-            end do
+            enddo
          case ('gradpcy')
             do s = 1, nscr
                write(aux, '(a,"_",i2.2)') 'gradpcy', s
                call append_var(aux)
-            end do
+            enddo
          case ('gradpcz')
             do s = 1, nscr
                write(aux, '(a,"_",i2.2)') 'gradpcz', s
                call append_var(aux)
-            end do
+            enddo
          case ('sigma_paral')
             do s = 1, nscr
                write(aux, '(a,"_",i2.2)') 'sigma_paral', s
                call append_var(aux)
-            end do
+            enddo
          case ('sigma_perp')
             do s = 1, nscr
                write(aux, '(a,"_",i2.2)') 'sigma_perp', s
                call append_var(aux)
-            end do
+            enddo
 #endif /* STREAM_CR */
             case default
                if (.not. has_ion .and. (any(trim(vars(i)) == ["deni", "vlxi", "vlyi", "vlzi", "enei", "ethi", "prei"]) .or. any(trim(vars(i)) == ["momxi", "momyi", "momzi"]))) then

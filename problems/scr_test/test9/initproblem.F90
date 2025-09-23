@@ -34,7 +34,7 @@ module initproblem
 ! DOI 10.3847/1538-4357/aaa6ce                    !
 ! ------------------------------------------------!
 ! Initial condition                               !
-! See section 4.2.2 Shocks with CRs               !  
+! See section 4.2.2 Shocks with CRs               !
 ! ------------------------------------------------!
 
    implicit none
@@ -42,7 +42,7 @@ module initproblem
    private
    public :: read_problem_par, problem_initial_conditions, problem_pointers
 
-   real               :: x0, vl, vr, Ec0 
+   real               :: x0, vl, vr, Ec0
 
    namelist /PROBLEM_CONTROL/  x0, vl, vr, Ec0
 
@@ -148,7 +148,7 @@ contains
                      zk = cg%z(k)
 
                      vx = vr
-                     if(xi<x0) vx = vl
+                     if (xi<x0) vx = vl
 
                      cg%u(fl%idn,i,j,k) = 1.0
                      cg%u(fl%imx,i,j,k) = vx * cg%u(fl%idn,i,j,k)
@@ -189,7 +189,7 @@ contains
                   xi = cg%x(i)
                   do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
                      zk = cg%z(k)
-                     cg%scr(scr_fluid%iescr, i,j,k) = Ec0  
+                     cg%scr(scr_fluid%iescr, i,j,k) = Ec0
                      cg%scr(scr_fluid%ixfscr,i,j,k) = 4.0/3.0 * cg%u(fl%imx,i,j,k) /cg%u(fl%idn,i,j,k) *  Ec0
                      cg%scr(scr_fluid%iyfscr,i,j,k) = 0.0
                      cg%scr(scr_fluid%izfscr,i,j,k) = 0.0
@@ -205,7 +205,7 @@ contains
 
       use constants,        only: xdim,ydim,zdim,LO,HI
       use domain,           only: dom
-      use named_array_list, only: wna        
+      use named_array_list, only: wna
       use fluidindex,       only: scrind, iarr_all_mx,iarr_all_dn, iarr_all_en, flind
       use grid_cont,        only: grid_container
       use fluidtypes,       only: component_fluid
@@ -240,11 +240,11 @@ contains
             do p = 1, flind%fluids
                fl => flind%all_fluids(p)%fl
                A(iarr_all_en(p), l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = 1.0/fl%gam_1 ! Fixing density. vx will be overwritten
-            end do
+            enddo
             A(iarr_all_mx, l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) =  vx
-         end do
+         enddo
          return
-      end if
+      endif
 
       if (wn == wna%bi) then                  ! For magnetic field fix values at the boundary
          ssign = 2*side - (LO+HI)
@@ -253,9 +253,9 @@ contains
             l(dir,:) = cg%ijkse(dir,side) + ssign*ib
             r(dir,:) = cg%ijkse(dir,side) + ssign*(1-ib)
             A(:, l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = 1.0 ! Fixing Bx. vx will be overwritten
-         end do
+         enddo
          return
-      end if
+      endif
 
       ! map flux component indices for SCR(1)
       iflux(xdim) = scrind%scr(1)%ixfscr          ! xFc
@@ -282,7 +282,7 @@ contains
                            A(iflux(ydim), r(xdim,LO):r(xdim,HI), r(ydim,LO):r(ydim,HI), r(zdim,LO):r(zdim,HI))
          if (dir /= zdim) A(iflux(zdim), l(xdim,LO):l(xdim,HI), l(ydim,LO):l(ydim,HI), l(zdim,LO):l(zdim,HI)) = &
                            A(iflux(zdim), r(xdim,LO):r(xdim,HI), r(ydim,LO):r(ydim,HI), r(zdim,LO):r(zdim,HI))
-      end do
+      enddo
    end subroutine custom_boundary
 !-----------------------------------------------------------------------------
 end module initproblem

@@ -77,12 +77,12 @@ subroutine timestep_scr(dt)
          if (.not. dom%has_dir(dir)) cycle
          dt_patch = min(dt_patch, cg%dl(dir) / (vmax / sqrt(3.0)))          !> isotropic closure: sqrt(f_ii)=1/sqrt(3)
 
-      end do
+      enddo
 
       dt_local_min = min(dt_local_min, dt_patch)
 
       cgl => cgl%nxt
-   end do
+   enddo
 
    call piernik_MPI_Allreduce(dt_local_min, pMIN)
 

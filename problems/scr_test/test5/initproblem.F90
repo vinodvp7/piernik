@@ -34,7 +34,7 @@ module initproblem
 ! DOI 10.3847/1538-4357/aaa6ce                    !
 ! ------------------------------------------------!
 ! Initial condition                               !
-! See section 4.1.5 Anisotropic Diffusion         ! 
+! See section 4.1.5 Anisotropic Diffusion         !
 ! ------------------------------------------------!
 
    implicit none
@@ -115,7 +115,7 @@ contains
       use cg_list,     only: cg_list_element
       use constants,   only: xdim, ydim, zdim, LO, HI
       use dataio_pub,  only: die
-      use fluidindex,  only: flind, scrind
+      use fluidindex,  only: flind
       use fluidtypes,  only: component_fluid, component_scr
       use func,        only: ekin, emag
       use grid_cont,   only: grid_container
@@ -165,8 +165,8 @@ contains
          enddo
       enddo
 ! Initializing streaming cosmic ray fluid components Ec, Fcx, Fcy, Fcz
-      do p = 1, scrind%stcosm
-         scr_fluid = scrind%scr(p)
+      do p = 1, flind%nscr
+         scr_fluid = flind%scr(p)
          cgl => leaves%first
          do while (associated(cgl))
             cg => cgl%cg
@@ -176,10 +176,10 @@ contains
                   xi = cg%x(i)
                   do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
                      zk = cg%z(k)
-                     cg%scr(scr_fluid%iescr, i,j,k) = exp(- a * xi * xi - b * yj * yj)
-                     cg%scr(scr_fluid%ixfscr,i,j,k) = 0.0
-                     cg%scr(scr_fluid%iyfscr,i,j,k) = 0.0
-                     cg%scr(scr_fluid%izfscr,i,j,k) = 0.0
+                     cg%u(scr_fluid%iescr, i,j,k) = exp( - a * xi * xi - b * yj * yj )
+                     cg%u(scr_fluid%ixfscr,i,j,k) = 0.0
+                     cg%u(scr_fluid%iyfscr,i,j,k) = 0.0
+                     cg%u(scr_fluid%izfscr,i,j,k) = 0.0
                   enddo
                enddo
             enddo

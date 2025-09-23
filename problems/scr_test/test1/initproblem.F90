@@ -34,7 +34,7 @@ module initproblem
 ! DOI 10.3847/1538-4357/aaa6ce                    !
 ! ----------------------------------------------- !
 ! Initial condition                               !
-! See section 4.1.1. CR Streaming in 1D           ! 
+! See section 4.1.1. CR Streaming in 1D           !
 ! ------------------------------------------------!
 
    implicit none
@@ -156,7 +156,7 @@ contains
       enddo
 
 ! Initializing streaming cosmic ray fluid components Ec, Fcx, Fcy, Fcz
-      
+
       do p = 1, flind%nscr
          scr_fluid = flind%scr(p)
          cgl => leaves%first

@@ -34,7 +34,7 @@ module initproblem
 ! DOI 10.3847/1538-4357/aaa6ce                    !
 ! ----------------------------------------------- !
 ! Initial condition                               !
-! See section 4.1.4 CR Diffusion in 1D            ! 
+! See section 4.1.4 CR Diffusion in 1D            !
 ! ------------------------------------------------!
 
    implicit none
@@ -100,7 +100,7 @@ contains
 
          a   = rbuff(1)
          vx  = rbuff(2)
-         
+
       endif
 
    end subroutine read_problem_par
@@ -141,7 +141,7 @@ contains
                   do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
                      zk = cg%z(k)
                      cg%u(fl%idn,i,j,k) = 1.0
-                     cg%u(fl%imx,i,j,k) = vx * cg%u(fl%idn,i,j,k) 
+                     cg%u(fl%imx,i,j,k) = vx * cg%u(fl%idn,i,j,k)
                      cg%u(fl%imy,i,j,k) = 0.0
                      cg%u(fl%imz,i,j,k) = 0.0
                      if (fl%has_energy) then

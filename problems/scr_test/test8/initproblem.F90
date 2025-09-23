@@ -34,7 +34,7 @@ module initproblem
 ! DOI 10.3847/1538-4357/aaa6ce                    !
 ! ------------------------------------------------!
 ! Initial condition                               !
-! See section 4.2.1 CR-driven Waves with Mixed    !  
+! See section 4.2.1 CR-driven Waves with Mixed    !
 ! Diffusion and Streaming                         !
 ! ------------------------------------------------!
 
@@ -179,7 +179,7 @@ contains
                   xi = cg%x(i)
                   do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
                      zk = cg%z(k)
-                     cg%u(scr_fluid%iescr, i,j,k) = a0 +  a1* sin(kx * xi) 
+                     cg%u(scr_fluid%iescr, i,j,k) = a0 +  a1* sin(kx * xi)
                      cg%u(scr_fluid%ixfscr,i,j,k) = 0.0
                      cg%u(scr_fluid%iyfscr,i,j,k) = 0.0
                      cg%u(scr_fluid%izfscr,i,j,k) = 0.0

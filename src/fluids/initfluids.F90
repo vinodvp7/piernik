@@ -107,7 +107,7 @@ contains
 
       use constants,      only: PIERNIK_INIT_GLOBAL
       use dataio_pub,     only: die, code_progress, warn
-      use fluidindex,     only: fluid_index, flind
+      use fluidindex,     only: fluid_index, flind, iarr_all_swp
       use fluids_pub,     only: has_dst, has_ion, has_neu, cs2_max
       use fluxes,         only: set_limiter
       use func,           only: operator(.notequals.)
@@ -122,8 +122,8 @@ contains
 #ifdef CRESP
       use initcrspectrum, only: init_cresp
 #endif /* CRESP */
-#ifdef STREAM_CR                                   
-      use initstreamingcr, only: init_streamingcr         
+#ifdef STREAM_CR
+      use initstreamingcr, only: init_streamingcr
 #endif /* STREAM_CR */
 #ifdef TRACER
       use inittracer,     only: init_tracer

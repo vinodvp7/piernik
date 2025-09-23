@@ -116,13 +116,13 @@ module fluidtypes
 
 
    type, extends(component) :: component_scr
-      integer(kind=4) :: iescr     = -1         !< index denoting position of the streaming cr energy density in array arrays::u 
-      integer(kind=4) :: ixfscr    = -1        !< index denoting position of the x-streaming cr flux density in array arrays::u 
-      integer(kind=4) :: iyfscr    = -1        !< index denoting position of the y-streaming cr flux density in array arrays::u 
-      integer(kind=4) :: izfscr    = -1        !< index denoting position of the z-streaming cr flux density in array arrays::u 
+      integer(kind=4) :: iescr     = -1         !< index denoting position of the streaming cr energy density in array arrays::u
+      integer(kind=4) :: ixfscr    = -1        !< index denoting position of the x-streaming cr flux density in array arrays::u
+      integer(kind=4) :: iyfscr    = -1        !< index denoting position of the y-streaming cr flux density in array arrays::u
+      integer(kind=4) :: izfscr    = -1        !< index denoting position of the z-streaming cr flux density in array arrays::u
       real    :: gam   = -1.0                  !< streaming CR fluid's adiabatic index
       real    :: gam_1 = -1.0                  !< streaming CR fluid's adiabatic index minus one
-      integer(kind=4), allocatable, dimension(:)   :: iarr_scr        
+      integer(kind=4), allocatable, dimension(:)   :: iarr_scr
       integer(kind=4), allocatable, dimension(:,:) :: iarr_scr_swp
    contains
 
@@ -404,16 +404,16 @@ contains
 
       integer(kind=4), save                  :: iscr=0
       ! Consider 2 streaming non-spectral cosmic rays so they have 8 variables in total.
-      ! Suppose that ionized fluid is already initialized. So that flind%all = 5 
+      ! Suppose that ionized fluid is already initialized. So that flind%all = 5
       ! Also flind%nscr = 0 at this point. flind%components = 1 because of the 1 ionized component
-         
+
       ! this <- is more specific to a single component. In this case the streaming CR
-      this%all = I_FOUR                                 ! 4 components (ec,fcx,fcy,fcz) for each cr species  
+      this%all = I_FOUR                                 ! 4 components (ec,fcx,fcy,fcz) for each cr species
       this%beg = flind%all + I_ONE                      ! the begining index of the component is 5 + 1 = 6 . flind%all is still not updated so it is still pointing to the last updated value (ionized fluid in this case and then to first CR at 9 )
       this%end = this%beg + this%all - I_ONE            ! End index . This should be 9 . Defined here <- 6 + 4 - 1 = 9
 
-      this%iescr    = this%beg                          ! index of the energy density for the first CR is 6 and the next one is 10                      
-      this%ixfscr   = this%iescr   + I_ONE              ! Index of flux follows from above as  7 -> 8 -> 9 
+      this%iescr    = this%beg                          ! index of the energy density for the first CR is 6 and the next one is 10
+      this%ixfscr   = this%iescr   + I_ONE              ! Index of flux follows from above as  7 -> 8 -> 9
       this%iyfscr   = this%ixfscr  + I_ONE
       this%izfscr   = this%iyfscr  + I_ONE              ! (this%end should match this value)
 
@@ -421,8 +421,8 @@ contains
       this%pos = flind%components + iscr
       iscr = iscr + I_ONE
       flind%nscr       = flind%nscr + I_ONE     ! # of streaming cosmic rays. This should be 2 after both nscr is updated
-      flind%all        = flind%all+ I_FOUR      ! 4 components (ec,fcx,fcy,fcz) for each cr species so total 4 * 2 = 8 and this will make flind%all = 5 + 8 = 13 . This should match the value of this%ifcz 
-      
+      flind%all        = flind%all+ I_FOUR      ! 4 components (ec,fcx,fcy,fcz) for each cr species so total 4 * 2 = 8 and this will make flind%all = 5 + 8 = 13 . This should match the value of this%ifcz
+
       ma1d = [this%all]
       call my_allocate(this%iarr_scr,     ma1d)
       ma2d = [ndims, this%all]

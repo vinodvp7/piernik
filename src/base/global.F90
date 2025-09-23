@@ -435,6 +435,12 @@ contains
             call die("[global:init_global] unrecognized solver: '" // trim(solver_str) // "'")
       end select
 
+#ifdef STREAM_CR
+      if (which_solver /= RIEMANN_UNSPLIT) then
+         call die("[global:init_global] Streaming Cosmic Rays only compatible with MHD solver:Unsplit Riemann")
+      endif
+#endif /* STREAM_CR */
+
       select case (which_solver)
          case (RTVD_SPLIT)
             divB_0 = "CT"  ! no other option

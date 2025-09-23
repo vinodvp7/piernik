@@ -139,6 +139,9 @@ contains
       use mpisetup,         only: master
       use named_array_list, only: qna, wna
       use refinement,       only: inactive_name
+#ifdef STREAM_CR
+      use fluidindex,       only: iarr_all_escr 
+#endif /* STREAM_CR */
 
       implicit none
 
@@ -169,6 +172,9 @@ contains
          return
       else if (trim(vname) == "ener") then
          call alloc_ic(iarr_all_en)
+         return
+      else if (trim(vname) == "escr") then
+         call alloc_ic(iarr_all_escr)
          return
       endif
       !> \todo identify here all {den,vl[xyz],ene}{d,n,i}

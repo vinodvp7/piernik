@@ -1,6 +1,5 @@
  $BASE_DOMAIN
-    n_d = 256, 256, 5
-    nb = 4
+    n_d = 256, 256, 1
     bnd_xl = 'per'
     bnd_xr = 'per'
     bnd_yl = 'per'
@@ -19,56 +18,46 @@
  /
 
  $UNITS
+    units_set = 'cgs'
  /
 
  $RESTART_CONTROL
-    restart  = 'last'
-    res_id   = 'new'
-    nrestart = 0
  /
 
  $END_CONTROL
-    tend   = 10.0
-    nend   = 10
+    tend   = 2.5
  /
 
  $OUTPUT_CONTROL
-    gdf_strict = .false.
     problem_name = 'tearing'
-    run_id       = 'rtv'
-    dt_hdf  = 1e-20
-    dt_log  = 0.001
+    run_id       = 'tst'
+    dt_hdf  = 0.25
+    dt_log  = 0.1
     dt_tsl  = 0.1
     dt_res  = 0.0
     vars(1:) = 'ener', 'dens', 'magx', 'magy', 'magz', 'velx', 'vely', 'velz'
-    h5_64bit = .true.
  /
 
  $FLUID_IONIZED
-    gamma  = 1.666666666
+    gamma  = 1.6666666667
  /
 
  $NUMERICAL_SETUP
-    cfl    = 0.3
+    cfl    = 0.7
     smalld = 1.e-5
-    cfl_glm = 0.3 
-    integration_order = 2
-    print_divb = 1
-    solver_str = 'riemann_unsplit'
     smallei= 1.e-5
-    limiter= 'vanleer'
  /
 
  $GRAVITY
  /
 
  $RESISTIVITY
-    eta_scale   =  4
+    eta_scale   =  2
     cfl_resist  =  0.4
-    eta_0       =  1.e-6
+    eta_0       =  1.0e-5
     eta_1       =  1.0e-4
     j_crit      =  100.0
-    deint_max   =  0.001
+    deint_max   =  0.01
  /
 
  $PROBLEM_CONTROL

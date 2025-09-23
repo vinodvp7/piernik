@@ -191,6 +191,7 @@ contains
       use dataio_pub,     only: die
 #ifdef RESISTIVE
       use fluidindex,     only: flind
+      use interpolations, only: interpol_generic
 #endif /* RESISTIVE */
 
       implicit none
@@ -206,7 +207,17 @@ contains
       ! left and right states at interfaces 1 .. n-1
       real, dimension(size(ui, 1)-1, size(ui, 2)), target :: ql, qr
       real, dimension(size(bi, 1)-1, size(bi, 2)), target :: bl, br
-
+#ifdef RESISTIVE
+#ifndef ISO
+#ifdef IONIZED
+      real, dimension(size(ui, 1), 2)          :: restemp
+      real, dimension(size(ui, 1) - 1, 2)      :: rl, rr
+      restemp(:, 1) = resterm_e(:)
+      restemp(:, 2) = 0.0
+      call interpol_generic(restemp, rl, rr)
+#endif /* IONIZED */
+#endif /* !ISO */
+#endif /* RESISTIVE */
       ! updates required for higher order of integration will likely have shorter length
 
       bflx = huge(1.)
@@ -218,8 +229,7 @@ contains
 #ifdef RESISTIVE
 #ifndef ISO
 #ifdef IONIZED
-      flx(:,flind%ion%ien) = flx(:,flind%ion%ien) + 0.5 * &
-      &                      (resterm_e(lbound(resterm_e,1) + 1:) + resterm_e(:ubound(resterm_e,1) - 1))
+      flx(:,flind%ion%ien) = flx(:,flind%ion%ien) + 0.5 * (rl(:, 1) + rr(:, 1))
 #endif /* IONIZED */
 #endif /* !ISO */
 #endif /* RESISTIVE */

@@ -39,7 +39,7 @@ module interpolations
    implicit none
 
    private
-   public :: set_interpolations, interpol
+   public :: set_interpolations, interpol, interpol_generic
 
    interface
 
@@ -130,6 +130,20 @@ contains
       if (present(bcc)) call interp(bcc, bccl, bccr, blimiter)
 
    end subroutine interpol
+
+   subroutine interpol_generic(u, ql, qr)
+
+      use fluxlimiters, only: flimiter
+
+      implicit none
+
+      real, dimension(:,:), intent(in)     :: u
+      real, dimension(:,:), intent(out)    :: ql
+      real, dimension(:,:), intent(out)    :: qr
+
+      call interp(u,   ql,   qr,   flimiter)
+
+   end subroutine interpol_generic
 
 !>
 !! \brief Interpret and set desired interpolation scheme.

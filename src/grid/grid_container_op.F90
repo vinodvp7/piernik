@@ -58,26 +58,27 @@ contains
    subroutine get_central_method_coeffs(ord, a, b)
 
       use dataio_pub,      only: die
+      use constants,       only: I_TWO, I_FOUR, I_SIX, I_EIGHT
 
       implicit none
 
-      integer,  intent(in)  :: ord            ! Stencil order
-      real,     intent(out) :: a(:), b(:)
+      integer(kind = 4),  intent(in)  :: ord            ! Stencil order
+      real,               intent(out) :: a(:), b(:)
 
       a = 0.0                                ! Stores central different weights
       b = 0.0                                ! Stores forward/ - backward difference weights
 
       select case (ord)
-         case (2)
+         case (I_TWO)
             a = [1./2.]                                        ! 1/2 * fi+1 - 1/2 *fi-1
             b = [-3./2., 2., -1./2.]
-         case (4)
+         case (I_FOUR)
             a = [2./3, -1./12.]                               ! 2/3 * fi+1 - 2/3 *fi-1 -1/12 * fi+2 + 1/12 * fi-2
             b = [-25./12., 4., -3., 4./3., -1./4.]
-         case (6)
+         case (I_SIX)
             a = [3./4., -3./20., 1./60.]
             b = [-49./20., 6., -15./2., 20./3., -15./4., 6./5., -1./6.]
-         case (8)
+         case (I_EIGHT)
             a = [4./5., -1./5., 4./105., -1./280.]
             b = [-761./280., 8., -14., 56./3., -35./2., 56./5., -14./3., 8./7., -1./8.]
          case default
@@ -185,7 +186,7 @@ contains
       class(grid_container_op_t),      intent(in)  :: this  !< object invoking type-bound procedure
       integer,                         intent(in)  :: iw    !< cg list index of type wna
       integer, dimension(3), optional, intent(in)  :: vec   !< array pointing to the index of u1_x, u2_x, u3_x if wna
-      integer,                         intent(in)  :: ord   !< Stencil order
+      integer(kind = 4),               intent(in)  :: ord   !< Stencil order
 
       real, allocatable          :: cg_div(:,:,:)
       integer                    :: i, j, k, ilo, ihi, jlo, jhi, klo, khi, v1(3), s
@@ -298,7 +299,7 @@ contains
       class(grid_container_op_t),      intent(in)  :: this  !< object invoking type-bound procedure
       integer,                         intent(in)  :: iw    !< cg list index of type wna
       integer, dimension(3), optional, intent(in)  :: vec   !< array pointing to the index of u1_x, u2_x, u3_x if wna
-      integer,                         intent(in)  :: ord   !< Stencil order
+      integer(kind = 4),               intent(in)  :: ord   !< Stencil order
 
       real, allocatable    :: cg_curl(:,:,:,:), cg_jac(:,:,:,:)
       integer              :: ilo, ihi, jlo, jhi, klo, khi, v1(3)
@@ -348,7 +349,7 @@ contains
       integer,               optional, intent(in)  :: iw    !< cg list index of type wna
       integer,               optional, intent(in)  :: iq    !< cg list index of type qna
       integer, dimension(:), optional, intent(in)  :: vec   !< array pointing to the index of u1_x, u2_x, u3_x if wna
-      integer,                         intent(in)  :: ord   !< Stencil order
+      integer(kind = 4),               intent(in)  :: ord   !< Stencil order
 
       real, allocatable       :: cg_grad(:,:,:,:)
       integer                 :: i, j, k, ilo, ihi, jlo, jhi, klo, khi, ddim, s

@@ -49,7 +49,7 @@ module resistivity
    real                                  :: jc2                            !< squared critical value of current density
    real                                  :: deint_max                      !< COMMENT ME
    integer(kind=4)                       :: eta_scale                      !< COMMENT ME
-   integer                               :: ord_curl_grad
+   integer(kind=4)                       :: ord_curl_grad
    real(kind=8)                          :: d_eta_factor
    type(value)                           :: etamax, cu2max, deimin
    logical, save                         :: eta1_active = .true.           !< resistivity off-switcher while eta_1 == 0.0
@@ -106,12 +106,12 @@ contains
 
       if (code_progress < PIERNIK_INIT_GRID) call die("[resistivity:init_resistivity] grid not initialized.")
 
-      cfl_resist = 0.4
-      eta_0      = 0.0
-      eta_1      = 0.0
-      eta_scale  = 4
-      j_crit     = 1.0e6
-      deint_max  = 0.01
+      cfl_resist    = 0.4
+      eta_0         = 0.0
+      eta_1         = 0.0
+      eta_scale     = 4
+      j_crit        = 1.0e6
+      deint_max     = 0.01
       ord_curl_grad = 4
 
       if (master) then

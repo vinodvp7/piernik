@@ -245,7 +245,7 @@ contains
       call riemann_wrap_u(qlf, qrf, cs2, uflux) ! Compute the fluxes for all fluids except streaming CR
       call riemann_hlle_scr(qls, qrs, vdfst, scrflux) ! Compute the fluxes for streaming CR 
 #else /* !STREAM_CR */
-      call riemann_wrap_u(ql, qr, cs2, flx) ! Now we advance the left and right states by a timestep.
+      call riemann_wrap_u(qlf, qrf, cs2, uflux) ! Now we advance the left and right states by a timestep.
 #endif /* !STREAM_CR */
 
       flx(:,:scr_beg_1) = uflux(:,:)

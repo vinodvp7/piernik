@@ -49,17 +49,6 @@ module scr_helpers
    public :: update_rotation_matrix
 #endif /* MAGNETIC */
 
-   abstract interface
-      subroutine gradient_pc(cg, ind)
-
-         use grid_cont, only: grid_container
-
-         type(grid_container), pointer, intent(in) :: cg
-         integer, intent(in) :: ind
-
-      end subroutine gradient_pc
-   end  interface
-
 contains
 
 !>
@@ -132,10 +121,11 @@ contains
       use named_array_list,   only: wna
       use constants,          only: xdim, ydim, zdim, first_stage, magh_n, uh_n, sgmn, gpcn
       use global,             only: integration_order
-      use initstreamingcr,    only: sigma_paral, sigma_perp, disable_streaming, vmax, ord_pc_grad
+      use initstreamingcr,    only: sigma_paral, sigma_perp, vmax, ord_pc_grad
       use fluidindex,         only: flind, iarr_all_dn, iarr_all_escr
 #ifdef MAGNETIC
       use constants,          only: magh_n
+      use initstreamingcr,    only: disable_streaming
 #endif /* MAGNETIC */
 
       implicit none
@@ -143,7 +133,6 @@ contains
       type(grid_container), pointer, intent(in) :: cg
       integer,                       intent(in) :: istep
       logical,                       intent(in) :: at_source
-      procedure(gradient_pc), pointer           :: grad_pc => null()
 
       integer :: sgmd, uhi, ns, ddim, gpci
 #ifdef MAGNETIC
@@ -151,9 +140,6 @@ contains
       real    :: bdotpc(cg%n_(xdim), cg%n_(ydim), cg%n_(zdim))
       real    :: Bxyz(cg%n_(xdim), cg%n_(ydim), cg%n_(zdim))
 #endif /* MAGNETIC */
-
-      if (ord_pc_grad == 2)  grad_pc => gradient_2nd_order
-      if (ord_pc_grad == 4)  grad_pc => gradient_4th_order
 
       sgmd = wna%ind(sgmn)
       gpci = wna%ind(gpcn)
@@ -290,7 +276,7 @@ contains
       use constants,          only: xdim, ydim, zdim, first_stage, sgmn, v_dfst, uh_n, LO, HI
       use global,             only: integration_order
       use fluidindex,         only: flind, iarr_all_escr, iarr_all_dn
-      use initstreamingcr,    only: disable_streaming, tau_asym, vmax, cr_sound_speed
+      use initstreamingcr,    only: tau_asym, vmax, cr_sound_speed
       use domain,             only: dom
 #ifdef MAGNETIC
       use constants,          only: rtmn, cphi, sphi, ctheta, stheta
@@ -377,234 +363,4 @@ contains
       endif
    end subroutine update_vdfst
 
-   subroutine gradient_2nd_order(cg, ind)
-
-      use grid_cont,          only: grid_container
-      use named_array_list,   only: wna
-      use constants,          only: xdim, ydim, zdim, gpcn, HI, LO
-      use global,             only: integration_order
-      use fluidindex,         only: flind, iarr_all_escr
-      use domain,             only: dom
-
-      implicit none
-
-      type(grid_container), pointer, intent(in) :: cg
-      integer,                       intent(in) :: ind
-
-      integer :: gpci, nx, ny, nz, i, j, k, ns
-
-
-      gpci = wna%ind(gpcn)
-      nx   = cg%n_(xdim)
-      ny   = cg%n_(ydim)
-      nz   = cg%n_(zdim)
-
-      do ns = 1, flind%nscr
-! --- X-Direction Gradient ---
-         if (dom%has_dir(xdim)) then
-            ! Loop over the entire domain (including ghosts), except the very first and last cells
-            ! where a central difference stencil would go out of bounds.
-               do concurrent(k = cg%lhn(zdim,LO) :cg%lhn(zdim,HI) , j = cg%lhn(ydim,LO):cg%lhn(ydim,HI), &
-               & i = cg%lhn(xdim,LO)+1:cg%lhn(xdim,HI)-1 )
-                  cg%w(gpci)%arr(xdim + 3*(ns-1),i,j,k) = &
-                  & flind%scr(ns)%gam_1 * (cg%w(ind)%arr(iarr_all_escr(ns),i+1,j,k) - cg%w(ind)%arr(iarr_all_escr(ns),i-1,j,k)) &
-                  & / (2. * cg%dl(xdim))
-               enddo
-            i = cg%lhn(xdim,LO)                    ! first interior
-            cg%w(gpci)%arr( xdim + 3*(ns-1), i, :,: ) = &
-               (flind%scr(ns)%gam_1) * ( -3.0*cg%w(ind)%arr(iarr_all_escr(ns), i  ,:,:)  &
-                                    + 4.0*cg%w(ind)%arr(iarr_all_escr(ns), i+1,:,:)  &
-                                    - 1.0*cg%w(ind)%arr(iarr_all_escr(ns), i+2,:,:) ) / ( 2.0*cg%dl(xdim) )
-
-            i = cg%lhn(xdim,HI)                    ! last interior
-            cg%w(gpci)%arr( xdim + 3*(ns-1), i, :,: ) = &
-               (flind%scr(ns)%gam_1) * (  3.0*cg%w(ind)%arr(iarr_all_escr(ns), i  ,:,:)  &
-                                    - 4.0*cg%w(ind)%arr(iarr_all_escr(ns), i-1,:,:)  &
-                                    + 1.0*cg%w(ind)%arr(iarr_all_escr(ns), i-2,:,:) ) / ( 2.0*cg%dl(xdim) )
-         else
-            cg%w(gpci)%arr(xdim + 3*(ns-1) ,:,:,:) = 0.0
-         endif
-         ! --- Y-Direction Gradient ---
-         if (dom%has_dir(ydim)) then
-            do concurrent (k = cg%lhn(zdim,LO):cg%lhn(zdim,HI), j = cg%lhn(ydim,LO)+1:cg%lhn(ydim,HI)-1, &
-            & i = cg%lhn(xdim,LO):cg%lhn(xdim,HI))
-               cg%w(gpci)%arr(ydim + 3*(ns-1),i,j,k) = &
-               & flind%scr(ns)%gam_1 * (cg%w(ind)%arr(iarr_all_escr(ns),i,j+1,k) - cg%w(ind)%arr(iarr_all_escr(ns),i,j-1,k)) &
-               & / (2. * cg%dl(ydim))
-            enddo
-
-            ! first interior (j0)
-            j = cg%lhn(ydim,LO)
-            cg%w(gpci)%arr( ydim + 3*(ns-1), :, j, : ) = &
-               (flind%scr(ns)%gam_1) * ( -3.0*cg%w(ind)%arr(iarr_all_escr(ns), :, j  ,:)  &
-                                    + 4.0*cg%w(ind)%arr(iarr_all_escr(ns), :, j+1,:)  &
-                                    - 1.0*cg%w(ind)%arr(iarr_all_escr(ns), :, j+2,:) ) / ( 2.0*cg%dl(ydim) )
-
-            ! last interior (j1)
-            j = cg%lhn(ydim,HI)
-            cg%w(gpci)%arr( ydim + 3*(ns-1), :, j, : ) = &
-               (flind%scr(ns)%gam_1) * (  3.0*cg%w(ind)%arr(iarr_all_escr(ns), :, j  ,:)  &
-                                    - 4.0*cg%w(ind)%arr(iarr_all_escr(ns), :, j-1,:)  &
-                                    + 1.0*cg%w(ind)%arr(iarr_all_escr(ns), :, j-2,:) ) / ( 2.0*cg%dl(ydim) )
-         else
-            cg%w(gpci)%arr(ydim + 3*(ns-1),:,:,:) = 0.0
-         endif
-
-         ! --- Z-Direction Gradient ---
-         if (dom%has_dir(zdim)) then
-            do concurrent(k = cg%lhn(zdim,LO)+1:cg%lhn(zdim,HI)-1, j = cg%lhn(ydim,LO):cg%lhn(ydim,HI), &
-            &  i = cg%lhn(xdim,LO):cg%lhn(xdim,HI))
-               cg%w(gpci)%arr(zdim + 3*(ns-1),i,j,k) = &
-               & flind%scr(ns)%gam_1 * (cg%w(ind)%arr(iarr_all_escr(ns),i,j,k+1) - cg%w(ind)%arr(iarr_all_escr(ns),i,j,k-1)) &
-               & / (2. * cg%dl(zdim))
-            enddo
-
-            k = cg%lhn(zdim,LO)
-            cg%w(gpci)%arr( zdim + 3*(ns-1), :, :, k ) = &
-               (flind%scr(ns)%gam_1) * ( -3.0*cg%w(ind)%arr(iarr_all_escr(ns), :, :, k  )  &
-                                    + 4.0*cg%w(ind)%arr(iarr_all_escr(ns), :, :, k+1)  &
-                                    - 1.0*cg%w(ind)%arr(iarr_all_escr(ns), :, :, k+2) ) / ( 2.0*cg%dl(zdim) )
-
-            ! last interior (k1)
-            k = cg%lhn(zdim,HI)
-            cg%w(gpci)%arr( zdim + 3*(ns-1), :, :, k ) = &
-               (flind%scr(ns)%gam_1) * (  3.0*cg%w(ind)%arr(iarr_all_escr(ns), :, :, k  )  &
-                                    - 4.0*cg%w(ind)%arr(iarr_all_escr(ns), :, :, k-1)  &
-                                    + 1.0*cg%w(ind)%arr(iarr_all_escr(ns), :, :, k-2) ) / ( 2.0*cg%dl(zdim) )
-         else
-            cg%w(gpci)%arr(zdim + 3*(ns-1),:,:,:) = 0.0
-         endif
-      enddo
-
-end subroutine gradient_2nd_order
-
-
-subroutine gradient_4th_order(cg, ind)
-
-      use grid_cont,          only: grid_container
-      use named_array_list,   only: wna
-      use constants,          only: xdim, ydim, zdim, gpcn, HI, LO
-      use global,             only: integration_order
-      use fluidindex,         only: flind, iarr_all_escr
-      use domain,             only: dom
-
-      implicit none
-
-      type(grid_container), pointer, intent(in) :: cg
-      integer,                       intent(in) :: ind
-
-      integer :: gpci, nx, ny, nz, i, j, k, ns
-
-      gpci = wna%ind(gpcn)
-      nx   = cg%n_(xdim)
-      ny   = cg%n_(ydim)
-      nz   = cg%n_(zdim)
-
-      do ns = 1, flind%nscr
-
-! --- X-Direction Gradient ---
-         if (dom%has_dir(xdim)) then
-            ! interior: 4th-order centered, need ±2 neighbors
-            do concurrent ( k = cg%lhn(zdim,LO):cg%lhn(zdim,HI), &
-                            j = cg%lhn(ydim,LO):cg%lhn(ydim,HI), &
-                            i = cg%lhn(xdim,LO)+2:cg%lhn(xdim,HI)-2 )
-               cg%w(gpci)%arr(xdim + 3*(ns-1), i, j, k) = flind%scr(ns)%gam_1 * &
-     &            ( - cg%w(ind)%arr(iarr_all_escr(ns), i+2, j, k)   &
-     &              + 8.0*cg%w(ind)%arr(iarr_all_escr(ns), i+1, j, k)  &
-     &              - 8.0*cg%w(ind)%arr(iarr_all_escr(ns), i-1, j, k)  &
-     &              +      cg%w(ind)%arr(iarr_all_escr(ns), i-2, j, k) ) / (12.0*cg%dl(xdim))
-            enddo
-
-            ! first interior (forward one-sided, 4th order)
-            i = cg%lhn(xdim,LO)
-            cg%w(gpci)%arr(xdim + 3*(ns-1), i, :, :) = flind%scr(ns)%gam_1 * &
-     &         ( -25.0*cg%w(ind)%arr(iarr_all_escr(ns), i  ,:,:)  &
-     &           +48.0*cg%w(ind)%arr(iarr_all_escr(ns), i+1,:,:)  &
-     &           -36.0*cg%w(ind)%arr(iarr_all_escr(ns), i+2,:,:)  &
-     &           +16.0*cg%w(ind)%arr(iarr_all_escr(ns), i+3,:,:)  &
-     &           - 3.0*cg%w(ind)%arr(iarr_all_escr(ns), i+4,:,:) ) / (12.0*cg%dl(xdim))
-
-            ! last interior (backward one-sided, 4th order)
-            i = cg%lhn(xdim,HI)
-            cg%w(gpci)%arr(xdim + 3*(ns-1), i, :, :) = flind%scr(ns)%gam_1 * &
-     &         (  25.0*cg%w(ind)%arr(iarr_all_escr(ns), i  ,:,:)  &
-     &           -48.0*cg%w(ind)%arr(iarr_all_escr(ns), i-1,:,:)  &
-     &           +36.0*cg%w(ind)%arr(iarr_all_escr(ns), i-2,:,:)  &
-     &           -16.0*cg%w(ind)%arr(iarr_all_escr(ns), i-3,:,:)  &
-     &           + 3.0*cg%w(ind)%arr(iarr_all_escr(ns), i-4,:,:) ) / (12.0*cg%dl(xdim))
-         else
-            cg%w(gpci)%arr(xdim + 3*(ns-1),:,:,:) = 0.0
-         endif
-
-! --- Y-Direction Gradient ---
-         if (dom%has_dir(ydim)) then
-            ! interior: 4th-order centered
-            do concurrent ( k = cg%lhn(zdim,LO):cg%lhn(zdim,HI), &
-                            j = cg%lhn(ydim,LO)+2:cg%lhn(ydim,HI)-2, &
-                            i = cg%lhn(xdim,LO):cg%lhn(xdim,HI) )
-               cg%w(gpci)%arr(ydim + 3*(ns-1), i, j, k) = flind%scr(ns)%gam_1 * &
-     &            ( - cg%w(ind)%arr(iarr_all_escr(ns), i, j+2, k)   &
-     &              + 8.0*cg%w(ind)%arr(iarr_all_escr(ns), i, j+1, k)  &
-     &              - 8.0*cg%w(ind)%arr(iarr_all_escr(ns), i, j-1, k)  &
-     &              +      cg%w(ind)%arr(iarr_all_escr(ns), i, j-2, k) ) / (12.0*cg%dl(ydim))
-            enddo
-
-            ! first interior (j0): forward one-sided, 4th order
-            j = cg%lhn(ydim,LO)
-            cg%w(gpci)%arr(ydim + 3*(ns-1), :, j, :) = flind%scr(ns)%gam_1 * &
-     &         ( -25.0*cg%w(ind)%arr(iarr_all_escr(ns), :, j  ,:)  &
-     &           +48.0*cg%w(ind)%arr(iarr_all_escr(ns), :, j+1,:)  &
-     &           -36.0*cg%w(ind)%arr(iarr_all_escr(ns), :, j+2,:)  &
-     &           +16.0*cg%w(ind)%arr(iarr_all_escr(ns), :, j+3,:)  &
-     &           - 3.0*cg%w(ind)%arr(iarr_all_escr(ns), :, j+4,:) ) / (12.0*cg%dl(ydim))
-
-            ! last interior (j1): backward one-sided, 4th order
-            j = cg%lhn(ydim,HI)
-            cg%w(gpci)%arr(ydim + 3*(ns-1), :, j, :) = flind%scr(ns)%gam_1 * &
-     &         (  25.0*cg%w(ind)%arr(iarr_all_escr(ns), :, j  ,:)  &
-     &           -48.0*cg%w(ind)%arr(iarr_all_escr(ns), :, j-1,:)  &
-     &           +36.0*cg%w(ind)%arr(iarr_all_escr(ns), :, j-2,:)  &
-     &           -16.0*cg%w(ind)%arr(iarr_all_escr(ns), :, j-3,:)  &
-     &           + 3.0*cg%w(ind)%arr(iarr_all_escr(ns), :, j-4,:) ) / (12.0*cg%dl(ydim))
-         else
-            cg%w(gpci)%arr(ydim + 3*(ns-1),:,:,:) = 0.0
-         endif
-
-! --- Z-Direction Gradient ---
-         if (dom%has_dir(zdim)) then
-            ! interior: 4th-order centered
-            do concurrent ( k = cg%lhn(zdim,LO)+2:cg%lhn(zdim,HI)-2, &
-                            j = cg%lhn(ydim,LO):cg%lhn(ydim,HI),   &
-                            i = cg%lhn(xdim,LO):cg%lhn(xdim,HI) )
-               cg%w(gpci)%arr(zdim + 3*(ns-1), i, j, k) = flind%scr(ns)%gam_1 * &
-     &            ( - cg%w(ind)%arr(iarr_all_escr(ns), i, j, k+2)   &
-     &              + 8.0*cg%w(ind)%arr(iarr_all_escr(ns), i, j, k+1)  &
-     &              - 8.0*cg%w(ind)%arr(iarr_all_escr(ns), i, j, k-1)  &
-     &              +      cg%w(ind)%arr(iarr_all_escr(ns), i, j, k-2) ) / (12.0*cg%dl(zdim))
-            enddo
-
-            ! first interior (k0): forward one-sided, 4th order
-            k = cg%lhn(zdim,LO)
-            cg%w(gpci)%arr(zdim + 3*(ns-1), :, :, k) = flind%scr(ns)%gam_1 * &
-     &         ( -25.0*cg%w(ind)%arr(iarr_all_escr(ns), :, :, k  )  &
-     &           +48.0*cg%w(ind)%arr(iarr_all_escr(ns), :, :, k+1)  &
-     &           -36.0*cg%w(ind)%arr(iarr_all_escr(ns), :, :, k+2)  &
-     &           +16.0*cg%w(ind)%arr(iarr_all_escr(ns), :, :, k+3)  &
-     &           - 3.0*cg%w(ind)%arr(iarr_all_escr(ns), :, :, k+4) ) / (12.0*cg%dl(zdim))
-
-            ! last interior (k1): backward one-sided, 4th order
-            k = cg%lhn(zdim,HI)
-            cg%w(gpci)%arr(zdim + 3*(ns-1), :, :, k) = flind%scr(ns)%gam_1 * &
-     &         (  25.0*cg%w(ind)%arr(iarr_all_escr(ns), :, :, k  )  &
-     &           -48.0*cg%w(ind)%arr(iarr_all_escr(ns), :, :, k-1)  &
-     &           +36.0*cg%w(ind)%arr(iarr_all_escr(ns), :, :, k-2)  &
-     &           -16.0*cg%w(ind)%arr(iarr_all_escr(ns), :, :, k-3)  &
-     &           + 3.0*cg%w(ind)%arr(iarr_all_escr(ns), :, :, k-4) ) / (12.0*cg%dl(zdim))
-         else
-            cg%w(gpci)%arr(zdim + 3*(ns-1),:,:,:) = 0.0
-         endif
-
-      enddo
-
-end subroutine gradient_4th_order
 end module scr_helpers

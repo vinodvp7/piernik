@@ -58,7 +58,7 @@ contains
       type(grid_container), pointer, intent(in) :: cg
       integer,                       intent(in) :: istep     ! stage in the time integration scheme
       integer :: nmag, i
-      
+
 #ifdef STREAM_CR
          call update_interaction_term(cg, istep, .false.)
          if (wna%exists(mag_n))  call update_rotation_matrix(cg, istep)
@@ -180,7 +180,7 @@ contains
          call my_deallocate(u); call my_deallocate(flux); call my_deallocate(tflux)
 #ifdef STREAM_CR
          call my_deallocate(vdfst1d)
-#endif /* STREAM_CR */ 
+#endif /* STREAM_CR */
       enddo
       call apply_flux(cg,istep)
       call apply_source(cg,istep)
@@ -228,8 +228,8 @@ contains
       endif
 
 #ifdef STREAM_CR
-      scr_beg_1 = flind%scr(1)%beg - 1 
-      scr_beg   = flind%scr(1)%beg 
+      scr_beg_1 = flind%scr(1)%beg - 1
+      scr_beg   = flind%scr(1)%beg
 
       allocate(scrflux(lbound(flx, 1) : ubound(flx, 1), size(flx(:, scr_beg:), 2)))
 #endif /* STREAM_CR*/
@@ -242,7 +242,7 @@ contains
       uu(:, size(qls, 2)) = ui(:, iarr_all_mx(1))/ui(:, iarr_all_dn(1))
       call interpol_generic(uu, qls, qrs)
       call riemann_wrap_u(qlf, qrf, cs2, uflux)         ! Compute the fluxes for all fluids except streaming CR
-      call riemann_hlle_scr(qls, qrs, vdfst, scrflux)   ! Compute the fluxes for streaming CR 
+      call riemann_hlle_scr(qls, qrs, vdfst, scrflux)   ! Compute the fluxes for streaming CR
 #else /* !STREAM_CR */
       call riemann_wrap_u(qlf, qrf, cs2, uflux) ! Now we advance the left and right states by a timestep.
 #endif /* !STREAM_CR */

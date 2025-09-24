@@ -121,7 +121,7 @@ def main() -> None:
     parser.add_argument("--field", type=str, default="escr_01", help="Scalar field for panels (default: escr_01).")
     parser.add_argument("--rho", type=str, default="density", help="Density field name (default: density).")
     parser.add_argument("--bx", type=str, default="mag_field_x", help="Magnetic field component to use for v_A (default: mag_field_x).")
-    parser.add_argument("--alfven-exp", type=float, default=4.0/3.0, help="Exponent p in E_c * (v_A)^p (default: 4/3).")
+    parser.add_argument("--alfven-exp", type=float, default=4.0 / 3.0, help="Exponent p in E_c * (v_A)^p (default: 4/3).")
     parser.add_argument("--indices", type=int, nargs=3, default=[1, 2, 10], help="Three snapshot indices, e.g. 1 2 10.")
     parser.add_argument("--time-scale", type=float, default=100.0, help="Multiply file index by this for time labels (default: 100).")
     parser.add_argument("--xlim", type=float, nargs=2, default=[0.0, 600.0], help="x-axis limits (default: 0 600).")
@@ -143,7 +143,9 @@ def main() -> None:
 
     # Build x from first file
     first, cell_dims, origin, spacing = load_and_stitch_data(f1)
-    nx = int(cell_dims[0]); dx = float(spacing[0]); x0 = float(origin[0])
+    nx = int(cell_dims[0])
+    dx = float(spacing[0])
+    x0 = float(origin[0])
     xe = x0 + np.arange(nx + 1) * dx
     x = 0.5 * (xe[:-1] + xe[1:])  # centers
 

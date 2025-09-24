@@ -73,7 +73,7 @@ subroutine riemann_hlle_scr(ql, qr, vdiff, flx)
          do i = 1, size(flx, 1)
 
             mean_adv  = 0.5 * ( vl(i) + vr(i))
-            mean_diff = 0.5 * (vdiff_l(i) + vdiff_r(i)) 
+            mean_diff = 0.5 * (vdiff_l(i) + vdiff_r(i))
 
             al = min((mean_adv  - mean_diff ),(vl(i)  - vdiff_l(i) ))
             ar = max((mean_adv  + mean_diff ),(vr(i)  + vdiff_r(i) ))
@@ -81,7 +81,7 @@ subroutine riemann_hlle_scr(ql, qr, vdiff, flx)
             ar = min(ar,  vmax/sqrt(3.0))
             al = max(al, - vmax/sqrt(3.0))
 
-            bp = max(ar, 0.0)   
+            bp = max(ar, 0.0)
             bm = min(al, 0.0)
 
             fl(1) = ql(i, 2 + 4 * (j - 1)) * vmax - bm * ql(i, 1 + 4 * (j - 1))
@@ -90,17 +90,17 @@ subroutine riemann_hlle_scr(ql, qr, vdiff, flx)
             fl(2) = vmax / 3.0  * ql(i, 1 + 4 * (j - 1)) - bm * ql(i, 2 + 4 * (j - 1))
             fr(2) = vmax / 3.0  * qr(i, 1 + 4 * (j - 1)) - bp * qr(i, 2 + 4 * (j - 1))
 
-            fl(3) = - bm * ql(i, 3 + 4 * (j - 1)) ; fr(3) = - bp * qr(i, 3 + 4 * (j - 1)) 
+            fl(3) = - bm * ql(i, 3 + 4 * (j - 1)) ; fr(3) = - bp * qr(i, 3 + 4 * (j - 1))
 
-            fl(4) = - bm * ql(i, 4 + 4 * (j - 1)) ; fr(4) = - bp * qr(i, 4 + 4 * (j - 1)) 
+            fl(4) = - bm * ql(i, 4 + 4 * (j - 1)) ; fr(4) = - bp * qr(i, 4 + 4 * (j - 1))
 
             tmp = 0.0
             if (abs(bp - bm) > 1e-20) tmp = 0.5 * (bp + bm)/(bp - bm)
 
             flx(i,1 + 4 * (j - 1) : 4 + 4 * (j - 1)) = 0.5 * (fl + fr) + (fl - fr) * tmp
 
-         end do
-      end do
+         enddo
+      enddo
    end subroutine riemann_hlle_scr
 
-end module streaming_cr_hlle                   
+end module streaming_cr_hlle

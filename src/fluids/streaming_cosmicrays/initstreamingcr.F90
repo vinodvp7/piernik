@@ -38,11 +38,9 @@ module initstreamingcr
 
 ! pulled by STREAM_CR
 
-    use constants, only: cbuff_len
     implicit none
 
    public ! QA_WARN no secrets are kept here
-   private :: cbuff_len ! QA_WARN prevent reexport
 
    ! namelist parameters
    integer(kind=4)                         :: nscr                !< number of non-spectral streaming CR components
@@ -66,11 +64,12 @@ module initstreamingcr
 contains
 
    subroutine init_streamingcr
+
       use bcast,            only: piernik_MPI_Bcast
-      use constants,        only: cbuff_len
       use dataio_pub,       only: die, nh, msg, warn
-      use func,             only: operator(.notequals.)
+      use func,             only: operator(.equals.)
       use mpisetup,         only: ibuff, rbuff, lbuff, cbuff, master, slave
+      use constants,        only: cbuff_len
 
       implicit none
 
@@ -176,14 +175,14 @@ contains
          endif
 
          do nn=1,nscr
-            if (abs(sigma_paral(nn) - sigma_huge) < 1e-10 .or. abs(sigma_perp(nn) - sigma_huge) < 1e-10 ) then
+            if ((sigma_paral(nn) .equals. sigma_huge)  .or. (sigma_perp(nn) .equals. sigma_huge) ) then
                write(msg,'(A,ES0.2)') "[initstreamingcr:init_streamingcr] One or more CR species have default value of diffusion coefficient = ", sigma_huge
                call warn(msg)
             endif
             exit
          enddo
          do nn=1,nscr
-            if (abs(gamma_scr(nn) - gamma_def) < 1e-10 ) then
+            if (gamma_scr(nn) .equals. gamma_def) then
                write(msg,'(A,F0.3)') "[initstreamingcr:init_streamingcr] One or more CR species have default value of adiabatic index = ", gamma_def
                call warn(msg)
             endif

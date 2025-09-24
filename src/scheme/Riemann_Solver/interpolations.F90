@@ -132,7 +132,7 @@ contains
    end subroutine interpol
 
 !<
-!! \brief Apply chosen interpolation scheme to obtain estimates of left and right state for the streaming CR 
+!! \brief Apply chosen interpolation scheme to obtain estimates of left and right state for the streaming CR
 !>
    subroutine interpol_generic(u, ql, qr)
 

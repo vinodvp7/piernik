@@ -57,6 +57,9 @@ module sortable_list
 
       subroutine assign_list(this, a, b)
          import sortable_list_t
+
+         implicit none
+
          class(sortable_list_t), intent(inout) :: this
          integer,                intent(in)    :: a, b
       end subroutine assign_list

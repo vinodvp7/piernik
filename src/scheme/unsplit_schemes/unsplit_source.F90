@@ -77,7 +77,7 @@ contains
       b_ugly = 0.0
 #endif /* !MAGNETIC */
 #ifdef STREAM_CR
-      call apply_scr_source(cg,istep)              !< Call streaming CR source term 
+      call apply_scr_source(cg,istep)              !< Call streaming CR source term
 #endif /* STREAM_CR */
       uhi = wna%ind(uh_n)
       do ddim=xdim,zdim

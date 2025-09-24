@@ -49,6 +49,7 @@ def get_field_names(h5_file):
 
 AXES = ("x", "y", "z")
 
+
 def _detect_vector_groups(field_names):
     groups = {}
 

@@ -88,7 +88,7 @@ contains
          forward = .false.
       else
          forward = .true.
-      end if
+      endif
 
       call repeat_fluidstep
       call update_chspeed

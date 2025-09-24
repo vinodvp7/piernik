@@ -170,7 +170,7 @@ contains
          call my_deallocate(bflux)
 #ifdef STREAM_CR
          call my_deallocate(vdfst1d)
-#endif /* STREAM_CR */ 
+#endif /* STREAM_CR */
       enddo
       call apply_flux(cg,istep,.true.)
       call apply_flux(cg,istep,.false.)
@@ -220,8 +220,8 @@ contains
       scr_beg_1 = flind%all              !> By default this points to the last fluid index when nscr = 0
 
 #ifdef STREAM_CR
-      scr_beg_1 = flind%scr(1)%beg - 1 
-      scr_beg   = flind%scr(1)%beg 
+      scr_beg_1 = flind%scr(1)%beg - 1
+      scr_beg   = flind%scr(1)%beg
       allocate(scrflux(lbound(flx, 1) : ubound(flx, 1), size(flx(:, scr_beg:), 2)))
 #endif /* STREAM_CR*/
 
@@ -235,7 +235,7 @@ contains
       uu(:, size(qls, 2)) = ui(:, iarr_all_mx(1))/ui(:, iarr_all_dn(1))
       call interpol_generic(uu, qls, qrs)
       call riemann_wrap(qlf, qrf, bl, br, cs2, uflux, bflx) ! Compute the fluxes for all fluids except streaming CR
-      call riemann_hlle_scr(qls, qrs, vdfst, scrflux) ! Compute the fluxes for streaming CR 
+      call riemann_hlle_scr(qls, qrs, vdfst, scrflux) ! Compute the fluxes for streaming CR
 #else /* !STREAM_CR */
       call riemann_wrap(qlf, qrf, bl, br, cs2, uflux, bflx) ! Now we advance the left and right states by a timestep.
 #endif /* !STREAM_CR */

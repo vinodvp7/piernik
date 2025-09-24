@@ -118,7 +118,6 @@ contains
       use cg_leaves,   only: leaves
       use cg_list,     only: cg_list_element
       use constants,   only: xdim, ydim, zdim, LO, HI
-      use dataio_pub,  only: die
       use fluidindex,  only: flind
       use fluidtypes,  only: component_fluid, component_scr
       use func,        only: ekin, emag

@@ -28,23 +28,27 @@
 
 !>
 !! This module applies the relaxation/source term for the streaming cosmic rays.
-!! Consider the four equations : 
+!! Consider the four equations :
 !! dEc/dt         = - vtot * \tilde{sigma} ( \tilde{F}_c -  4/3 * v/vmax * Ec )  --- 1
 !! d\tilde{F}c/dt =  vmax * \tilde{sigma} ( \tilde{F}_c -  4/3 * v/vmax * Ec )   --- 2/3/4
 !! Here \tilde{F}c = Fc/vmax and \tilde{sigma} = vmax * sigma
 !! Notice that equation (2/3/4) has three components Fc_x, Fc_y, Fc_z
 !! We solve the combined set of these 4  equations implicitly.
-!! This gives us a equation of the form U^{n+1} = M U^{n} 
+!! This gives us a equation of the form U^{n+1} = M U^{n}
 !! where U^{n+1} = (Ec^{n+1}, Fc_x^{n+1}, Fc_y^{n+1}, Fc_z^{n+1})^T
 !! and U^{n} = (Ec^{n}, Fc_x^{n}, Fc_y^{n}, Fc_z^{n})^T
-!! M is a 4 x 4 matrix and the non zero coefficients of this matrix is obtained by a combination 
-!! of the terms m11 .. m44 
+!! M is a 4 x 4 matrix and the non zero coefficients of this matrix is obtained by a combination
+!! of the terms m11 .. m44
 !<
 module scr_source
 
 ! pulled by STREAM_CR
 
    implicit none
+
+   private
+
+   public :: apply_scr_source
 
 contains
 
@@ -57,14 +61,14 @@ contains
       use global,           only: integration_order, dt
       use fluidindex,       only: flind
       use fluidindex,       only: iarr_all_xfscr, iarr_all_escr, iarr_all_dn, iarr_all_gpcx, &
-      &                           iarr_all_gpcy, iarr_all_gpcz, iarr_all_mx, iarr_all_my, & 
+      &                           iarr_all_gpcy, iarr_all_gpcz, iarr_all_mx, iarr_all_my, &
       &                           iarr_all_mz, iarr_all_yfscr, iarr_all_zfscr, iarr_all_en
       use initstreamingcr,  only: vmax, disable_streaming, disable_feedback, use_escr_floor, escr_floor
-      use scr_helpers,      only: update_interaction_term 
+      use scr_helpers,      only: update_interaction_term
       use func,             only: operator(.equals.)
-#ifdef MAGNETIC  
-      use constants,        only: rtmn, magh_n, cphi, ctheta, sphi, stheta, sgmn   
-      use scr_helpers,      only: rotate_vec, inverse_rotate_vec, update_rotation_matrix  
+#ifdef MAGNETIC
+      use constants,        only: rtmn, magh_n, cphi, ctheta, sphi, stheta, sgmn
+      use scr_helpers,      only: rotate_vec, inverse_rotate_vec
 #endif /* MAGNETIC */
 
       implicit none
@@ -119,14 +123,14 @@ contains
             gpcy = cg%w(gpci)%arr(iarr_all_gpcy(ns), i, j, k)
             gpcz = cg%w(gpci)%arr(iarr_all_gpcz(ns), i, j, k)
 
-#ifdef MAGNETIC         
+#ifdef MAGNETIC
             bdotpc = gpcx * cg%w(magi)%arr(xdim, i, j, k) + gpcy * cg%w(magi)%arr(ydim, i, j, k) + &
             &        gpcz * cg%w(magi)%arr(zdim, i, j, k)
-            sgn_bgpc = 0.0 
+            sgn_bgpc = 0.0
             if (bdotpc > 1e-10  )   sgn_bgpc = 1.0     ! Careful with the magic number
             if (bdotpc < -1e-10 )   sgn_bgpc = -1.0    ! Careful with the magic number
-   
-            ! Need to floor rho ? 
+
+            ! Need to floor rho ?
             if (.not. disable_streaming) then
                vtot1 = vtot1 - sgn_bgpc * cg%w(magi)%arr(xdim, i, j, k)/sqrt(cg%w(uhi)%arr(iarr_all_dn(1), i, j, k)) ! vfluid + vs
                vtot2 = vtot2 - sgn_bgpc * cg%w(magi)%arr(ydim, i, j, k)/sqrt(cg%w(uhi)%arr(iarr_all_dn(1), i, j, k)) ! vfluid + vs
@@ -137,12 +141,12 @@ contains
             fcx = cg%w(uhi)%arr(iarr_all_xfscr(ns), i, j, k)
             fcy = cg%w(uhi)%arr(iarr_all_yfscr(ns), i, j, k)
             fcz = cg%w(uhi)%arr(iarr_all_zfscr(ns), i, j, k)
-#ifdef MAGNETIC         
+#ifdef MAGNETIC
             call rotate_vec(fcx, fcy, fcz, cp, sp, ct, st)
             call rotate_vec(v1, v2, v3, cp, sp, ct, st)
             call rotate_vec(vtot1, vtot2, vtot3, cp, sp, ct, st)
             call rotate_vec(gpcx, gpcy, gpcz, cp, sp, ct, st)
-            vtot2 = 0.0 ; vtot3 = 0.0 
+            vtot2 = 0.0 ; vtot3 = 0.0
 #endif /* MAGNETIC */
 
             sgm_paral = cg%w(sgmd)%arr(xdim + 2 * (ns - 1), i, j, k)
@@ -171,7 +175,7 @@ contains
             newfcz = (fcz - m41 * newec)/m44
 
             newec = newec + rk_coef(istep) * dt * (v2 * gpcy + v3 * gpcz)
-#ifdef MAGNETIC         
+#ifdef MAGNETIC
             call inverse_rotate_vec(newfcx, newfcy, newfcz, cp, sp, ct, st)
             fcx = cg%w(uhi)%arr(iarr_all_xfscr(ns), i, j, k)        ! Original fcx,fcy,fcz
             fcy = cg%w(uhi)%arr(iarr_all_yfscr(ns), i, j, k)
@@ -193,17 +197,17 @@ contains
                cg%w(uhi)%arr(iarr_all_my(1), i, j, k) = cg%w(uhi)%arr(iarr_all_my(1), i, j, k) - (newfcy - fcy)/vmax
                cg%w(uhi)%arr(iarr_all_mz(1), i, j, k) = cg%w(uhi)%arr(iarr_all_mz(1), i, j, k) - (newfcz - fcz)/vmax
             endif
-            
-            cg%w(uhi)%arr(iarr_all_escr(ns), i, j, k)  = newec         ! For test 1 and test 2 comment me 
+
+            cg%w(uhi)%arr(iarr_all_escr(ns), i, j, k)  = newec         ! For test 1 and test 2 comment me
             cg%w(uhi)%arr(iarr_all_xfscr(ns), i, j, k) = newfcx
             cg%w(uhi)%arr(iarr_all_yfscr(ns), i, j, k) = newfcy
             cg%w(uhi)%arr(iarr_all_zfscr(ns), i, j, k) = newfcz
-         end do
+         enddo
       enddo
 
    end subroutine apply_scr_source
 
-   ! This function needs to be optimized. Currenlty causing a 0.02 second overhead for a 256 x256 run 
+   ! This function needs to be optimized. Currenlty causing a 0.02 second overhead for a 256 x256 run
    subroutine update_gradpc_here(cg)
 
       use grid_cont,        only: grid_container
@@ -216,7 +220,7 @@ contains
       use initstreamingcr,  only: vmax
 
       implicit none
-   
+
       type :: fxptr
          real, pointer :: flx(:,:,:,:)
       end type fxptr
@@ -246,11 +250,11 @@ contains
 
       L0 = [ lbound(cg%u,2), lbound(cg%u,3), lbound(cg%u,4) ]
       U0 = [ ubound(cg%u,2), ubound(cg%u,3), ubound(cg%u,4) ]
-      
+
       cg%w(wna%ind(gpcn))%arr = 0.0
 
       T => cg%w(wna%ind(gpcn))%arr
-      
+
       do ns = 1, flind%nscr
          do d = xdim, zdim                          ! component of grad Pc (x,y,z)
             do afdim = xdim, zdim                    ! sweep direction
@@ -260,11 +264,11 @@ contains
                do concurrent (k = L(zdim) : U(zdim) , j = L(ydim):U(ydim) , i = L(xdim):U(xdim))
                   T(iarr_all_gpc(d,ns), i, j, k) = T(iarr_all_gpc(d,ns), i, j, k) - &
                   (F(afdim)%flx(iarr_all_fscr(d,ns), i, j, k) - &
-                  F(afdim)%flx(iarr_all_fscr(d,ns), i+shift(xdim),j+shift(ydim),k+shift(zdim)))/(cg%dl(afdim) * vmax) 
-               end do
-            end do
-         end do
-      end do
+                  F(afdim)%flx(iarr_all_fscr(d,ns), i+shift(xdim),j+shift(ydim),k+shift(zdim)))/(cg%dl(afdim) * vmax)
+               enddo
+            enddo
+         enddo
+      enddo
 
    end subroutine update_gradpc_here
 
@@ -282,14 +286,14 @@ contains
 
       integer :: d, nb_1
 
-      L = L0 ;  U = U0                     
+      L = L0 ;  U = U0
       nb_1 = dom%nb - I_ONE
 
       do d = xdim, zdim
-         if (active(d)) then               
+         if (active(d)) then
             L(d) = L(d) + I_ONE
             U(d) = U(d) - I_ONE
-            if (d /= afdim) then           
+            if (d /= afdim) then
                L(d) = L(d) + nb_1
                U(d) = U(d) - nb_1
             endif

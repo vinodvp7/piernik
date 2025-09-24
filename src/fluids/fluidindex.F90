@@ -125,7 +125,8 @@ contains
       implicit none
 
       class(component_scr), intent(inout) :: scr_fluid
-      integer(kind=4),  save :: ns = 0             ! Needed here because using scr_fluid%pos goes out of bound !
+
+      integer,  save   :: ns = 0             ! Needed here because using scr_fluid%pos goes out of bound !
 
       ns = ns + 1
 
@@ -156,7 +157,6 @@ contains
       use inittracer,     only: tracer_index, iarr_trc
 #endif /* TRACER */
 #ifdef STREAM_CR
-      use fluidtypes,      only: component_scr
       use initstreamingcr, only: nscr
 #endif /* STREAM_CR */
       implicit none

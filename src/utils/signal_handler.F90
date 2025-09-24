@@ -47,7 +47,7 @@ module signalhandler
       integer(kind=4) function signal_handler(signum)
          implicit none
          integer(kind=4), intent(in) :: signum
-      end function
+      end function signal_handler
    end interface
 
 contains

@@ -145,7 +145,9 @@ def main() -> None:
 
     # Build x from first file
     first, cell_dims, origin, spacing = load_and_stitch_data(f0)
-    nx = int(cell_dims[0]); dx = float(spacing[0]); x0 = float(origin[0])
+    nx = int(cell_dims[0])
+    dx = float(spacing[0])
+    x0 = float(origin[0])
     xe = x0 + np.arange(nx + 1) * dx
     x = 0.5 * (xe[:-1] + xe[1:])  # centers
 
@@ -157,7 +159,7 @@ def main() -> None:
 
     # Load the other two
     second, _, _, _ = load_and_stitch_data(f1)
-    third,  _, _, _ = load_and_stitch_data(f2)
+    third, _, _, _ = load_and_stitch_data(f2)
     for nm in (args.field, args.rho, args.vx):
         if nm not in second:
             print(f"{f1} missing '{nm}'. Available: {list(second.keys())}", file=sys.stderr)

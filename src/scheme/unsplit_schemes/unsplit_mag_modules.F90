@@ -214,7 +214,6 @@ contains
 #ifdef STREAM_CR
       real, dimension(size(ui, 1) - 1, 4 * nscr + 1), target :: qls, qrs
       real, dimension(size(ui, 1), 4 * nscr + 1 )            :: uu
-      real, dimension(size(ui, 1) - 1)                       :: vl, vr
       integer                                                :: scr_beg
 #endif /* STREAM_CR*/
 
@@ -240,7 +239,8 @@ contains
 #else /* !STREAM_CR */
       call riemann_wrap(qlf, qrf, bl, br, cs2, uflux, bflx) ! Now we advance the left and right states by a timestep.
 #endif /* !STREAM_CR */
-
+      !uflux(:,:) = 0.0             ! UNCOMMENT ME for wedge anisotropic diffusion along circular B test
+      !bflx(:,:) = 0.0
       flx(:,:scr_beg_1) = uflux(:,:)
 
 #ifdef STREAM_CR

@@ -1,15 +1,15 @@
 $BASE_DOMAIN
-  n_d = 512,512,1
+  n_d = 512,1,1
   nb  = 4
-  bnd_xl = 'out'
+  bnd_xl = 'user'             ! Custom boundary condition on the left where Ec fixed to 3.0 and reflective for Fc
   bnd_xr = 'out'
   bnd_yl = 'out'
   bnd_yr = 'out'
   bnd_zl = 'out'
   bnd_zr = 'out'
-  xmin   = -1.0
-  xmax   =  1.0
-  ymin   = -1.0
+  xmin   =  0.0
+  xmax   =  1000.0
+  ymin   =  0.0
   ymax   =  1.0
   zmin   =  0.0
   zmax   =  1.0
@@ -28,46 +28,50 @@ $RESTART_CONTROL
 /
 
 $END_CONTROL
-  tend = 0.26
-  nend = 100000
+  tend = 1000
+  nend = 1000000
 /
 
 $OUTPUT_CONTROL
    problem_name = 'scr'
    run_id = 'tst'
-   dt_hdf = 0.26
+   dt_hdf = 100
    dt_res = 0.0
-   dt_log = 0.02
-   dt_tsl = 0.02
-   vars(1:) = 'dens', 'ener', 'velx', 'pres', 'escr', 'xfscr', 'yfscr', 'gradpcx', 'sigmax', 'sigmay', 'magx', 'magy'
+   dt_log = 10
+   dt_tsl = 1000
+   vars(1:) = 'dens', 'ener', 'velx', 'pres', 'escr', 'xfscr', 'gradpcx', 'sigma_paral', 'magx'
 /
 
 $FLUID_IONIZED
-  gamma = 1.6667
+  gamma = 1.666667
 /
 $STREAMING_CR
    nscr                    = 1
    vmax                    = 100.0
-   sigma_paral             = 1.0
-   sigma_perp              = 1e6
+   sigma_paral             = 1e6
    ord_pc_grad             = 2
    disable_feedback        = .true.      ! feedback to MHD gas
-   disable_streaming       = .true.
+   disable_streaming       = .false.
    cr_sound_speed          = .true.
+   use_escr_floor          = .false.
 /
 $NUMERICAL_SETUP
-  cfl     = 0.5
-  smalld  = 1.e-5
-  smallei = 1.e-5
-  limiter = 'moncen'
-  solver_type = 'unsplit'
-  solver_str = 'riemann'
-  integration_order = 2
-  cfl_glm = 0.3
-  print_divb = 10
+   cfl     = 0.5
+   cfl_glm = 0.3
+   smalld  = 1.e-5
+   smallei = 1.e-5
+   limiter = 'moncen'
+   solver_str = 'riemann_unsplit'
+   integration_order = 2
 /
 
 $PROBLEM_CONTROL
+   dh = 0.1
+   dc = 1.0
+   x0 = 200.0
+   dx = 25.0
+   E0 = 1e-6
+   El = 3.0
 /
 
 $AMR

@@ -29,7 +29,7 @@ $RESTART_CONTROL
 
 $END_CONTROL
   tend = 0.4
-  nend = 100000
+  nend = 1000000
 /
 
 $OUTPUT_CONTROL
@@ -39,14 +39,14 @@ $OUTPUT_CONTROL
    dt_res = 0.0
    dt_log = 0.02
    dt_tsl = 0.02
-   vars(1:) = 'dens', 'ener', 'velx', 'pres', 'escr', 'xfscr', 'gradpcx', 'sigma_paral', 'magx'
+   vars(1:) = 'dens', 'ener', 'velx', 'pres', 'escr', 'xfscr', 'gradpcx', 'sigma_paral', 'magx', 'sigma_perp'
 /
 
 $FLUID_IONIZED
   gamma = 1.6667
 /
 $STREAMING_CR
-   nscr                    = 1
+   nscr                    = 2
    vmax                    = 100.0
    sigma_paral             = 10
    ord_pc_grad             = 2
@@ -59,13 +59,12 @@ $NUMERICAL_SETUP
   smalld  = 1.e-5
   smallei = 1.e-5
   limiter = 'moncen'
-  solver_type = 'unsplit'
-  solver_str = 'riemann'
+  solver_str = 'riemann_unsplit'
   integration_order = 2
 /
 
 $PROBLEM_CONTROL
-vx = 0.0     ! Gas velocity
+   vx = 0.0 ! Gas velocity
 /
 
 $AMR

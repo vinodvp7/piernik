@@ -46,7 +46,7 @@ contains
 
       use cg_list_dataop,      only: expanded_domain
       use dataio_pub,          only: halfstep
-      use global,              only: dt, t
+      use global,              only: dt, t, nstep, dtm
       use hdc,                 only: update_chspeed,glmdamping, eglm
       use mass_defect,         only: update_magic_mass
       use timestep_retry,      only: repeat_fluidstep
@@ -77,8 +77,20 @@ contains
 
       implicit none
 
+      logical :: forward
+
+      t = t + dt
+      halfstep = .false.
+
+      if (mod(nstep, 2) == 0) then
+         halfstep =.true.
+         dtm = dt
+         forward = .false.
+      else
+         forward = .true.
+      end if
+
       call repeat_fluidstep
-      halfstep = .true.
       call update_chspeed
 #ifdef SHEAR
       call shear_3sweeps
@@ -92,7 +104,7 @@ contains
 #else /* !MULTIGRID */
       if (use_CRdiff) then
 #endif /* !MULTIGRID */
-         call make_diff_sweeps(.true.)
+         call make_diff_sweeps(forward)
       endif
 #endif /* COSM_RAYS */
 
@@ -101,18 +113,18 @@ contains
 
       call eglm
       call glmdamping(.true.)
-      t = t + dt
+
 
       call unsplit_sweep
 #ifdef GRAV
       need_update = .true.
 #ifdef NBODY
-      if (associated(psolver)) call psolver(.true.)  ! this will clear need_update it it would call source_terms_grav
+      if (associated(psolver)) call psolver(forward)  ! this will clear need_update it it would call source_terms_grav
 #endif /* NBODY */
       if (need_update) call source_terms_grav
 #endif /* GRAV */
-      call external_sources(.true.)
-      if (associated(problem_customize_solution)) call problem_customize_solution(.true.)
+      call external_sources(forward)
+      if (associated(problem_customize_solution)) call problem_customize_solution(forward)
       call eglm
       call glmdamping(.true.)
 

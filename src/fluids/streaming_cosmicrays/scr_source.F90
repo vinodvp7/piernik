@@ -27,7 +27,18 @@
 #include "piernik.h"
 
 !>
-!! \brief Initialization of Streaming Cosmic Rays component
+!! This module applies the relaxation/source term for the streaming cosmic rays.
+!! Consider the four equations : 
+!! dEc/dt         = - vtot * \tilde{sigma} ( \tilde{F}_c -  4/3 * v/vmax * Ec )  --- 1
+!! d\tilde{F}c/dt =  vmax * \tilde{sigma} ( \tilde{F}_c -  4/3 * v/vmax * Ec )   --- 2/3/4
+!! Here \tilde{F}c = Fc/vmax and \tilde{sigma} = vmax * sigma
+!! Notice that equation (2/3/4) has three components Fc_x, Fc_y, Fc_z
+!! We solve the combined set of these 4  equations implicitly.
+!! This gives us a equation of the form U^{n+1} = M U^{n} 
+!! where U^{n+1} = (Ec^{n+1}, Fc_x^{n+1}, Fc_y^{n+1}, Fc_z^{n+1})^T
+!! and U^{n} = (Ec^{n}, Fc_x^{n}, Fc_y^{n}, Fc_z^{n})^T
+!! M is a 4 x 4 matrix and the non zero coefficients of this matrix is obtained by a combination 
+!! of the terms m11 .. m44 
 !<
 module scr_source
 
@@ -50,6 +61,7 @@ contains
       &                           iarr_all_mz, iarr_all_yfscr, iarr_all_zfscr, iarr_all_en
       use initstreamingcr,  only: vmax, disable_streaming, disable_feedback, use_escr_floor, escr_floor
       use scr_helpers,      only: update_interaction_term 
+      use func,             only: operator(.equals.)
 #ifdef MAGNETIC  
       use constants,        only: rtmn, magh_n, cphi, ctheta, sphi, stheta, sgmn   
       use scr_helpers,      only: rotate_vec, inverse_rotate_vec, update_rotation_matrix  
@@ -61,12 +73,14 @@ contains
       integer,                       intent(in) :: istep
 
       integer                                    :: i, j, k, ns
-      integer(kind=4)                            :: uhi, magi, sgmd, rtmi, gpci
-      real                                       :: v1, v2, v3, vtot1, vtot2, vtot3, f1, f2, f3, ec
-      real                                       :: sigmax, sigmay, sigmaz, m11,m12,m13,m14,m21,m22
-      real                                       :: m31, m33, m41, m44, newf1 ,newf2 ,newf3, e_coef, new_ec
-      real                                       :: gpcx, gpcy, gpcz, ec_source_, new_eg
+      integer(kind = 4)                          :: uhi, sgmd, rtmi, gpci
+      real                                       :: v1, v2, v3, vtot1, vtot2, vtot3
+      real                                       :: sgm_paral, sgm_perp
+      real                                       :: m11, m12, m13, m14, m21, m22, m31, m33, m41, m44
+      real                                       :: fcx, fcy, fcz, ec, newfcx ,newfcy ,newfcz, newec, e_feed
+      real                                       :: gpcx, gpcy, gpcz
 #ifdef MAGNETIC
+      integer(kind = 4)                          :: magi
       real                                       :: bdotpc, sgn_bgpc, st, ct, sp, cp
 #endif /* MAGNETIC */
       uhi    = wna%fi
@@ -80,11 +94,12 @@ contains
          uhi   = wna%ind(uh_n)
 #ifdef MAGNETIC
          magi   = wna%ind(magh_n)
-         !call update_rotation_matrix(cg,istep,.true.)
 #endif /* MAGNETIC */
       endif
+
       call update_gradpc_here(cg)
       call update_interaction_term(cg, istep, .true.)
+
       do ns = 1, flind%nscr
          do concurrent (k = cg%lhn(zdim,LO):cg%lhn(zdim,HI), j = cg%lhn(ydim,LO):cg%lhn(ydim,HI), &
          & i = cg%lhn(xdim,LO):cg%lhn(xdim,HI))
@@ -119,79 +134,70 @@ contains
             endif
 #endif /* MAGNETIC */
             ec = cg%w(uhi)%arr(iarr_all_escr(ns), i, j, k)
-            f1 = cg%w(uhi)%arr(iarr_all_xfscr(ns), i, j, k)
-            f2 = cg%w(uhi)%arr(iarr_all_yfscr(ns), i, j, k)
-            f3 = cg%w(uhi)%arr(iarr_all_zfscr(ns), i, j, k)
+            fcx = cg%w(uhi)%arr(iarr_all_xfscr(ns), i, j, k)
+            fcy = cg%w(uhi)%arr(iarr_all_yfscr(ns), i, j, k)
+            fcz = cg%w(uhi)%arr(iarr_all_zfscr(ns), i, j, k)
 #ifdef MAGNETIC         
-            call rotate_vec(f1, f2, f3, cp, sp, ct, st)
+            call rotate_vec(fcx, fcy, fcz, cp, sp, ct, st)
             call rotate_vec(v1, v2, v3, cp, sp, ct, st)
             call rotate_vec(vtot1, vtot2, vtot3, cp, sp, ct, st)
             call rotate_vec(gpcx, gpcy, gpcz, cp, sp, ct, st)
+            vtot2 = 0.0 ; vtot3 = 0.0 
 #endif /* MAGNETIC */
 
-            ec_source_ = v2 * gpcy + v3 * gpcz
+            sgm_paral = cg%w(sgmd)%arr(xdim + 2 * (ns - 1), i, j, k)
+            sgm_perp  = cg%w(sgmd)%arr(ydim + 2 * (ns - 1), i, j, k)
 
-            vtot2 = 0.0 ; vtot3 = 0.0 
+            m11 = 1.0 - rk_coef(istep) * dt * sgm_paral * vtot1 * v1 * (1.0/vmax) * 4.0/3.0 &
+            &         - rk_coef(istep) * dt * sgm_perp  * vtot2 * v2 * (1.0/vmax) * 4.0/3.0 &
+            &         - rk_coef(istep) * dt * sgm_perp  * vtot3 * v3 * (1.0/vmax) * 4.0/3.0
 
-            sigmax = cg%w(sgmd)%arr(xdim+2*(ns-1), i, j, k)
-            sigmay = cg%w(sgmd)%arr(ydim+2*(ns-1), i, j, k)
-            sigmaz = cg%w(sgmd)%arr(ydim+2*(ns-1), i, j, k)
+            m12 = rk_coef(istep) * dt * sgm_paral * vtot1
+            m13 = rk_coef(istep) * dt * sgm_perp * vtot2
+            m14 = rk_coef(istep) * dt * sgm_perp * vtot3
 
-            m11 = 1.0 - rk_coef(istep) * dt * sigmax * vtot1 * v1 * (1.0/vmax) * 4.0/3.0 &
-            &         - rk_coef(istep) * dt * sigmay * vtot2 * v2 * (1.0/vmax) * 4.0/3.0 &
-            &         - rk_coef(istep) * dt * sigmaz * vtot3 * v3 * (1.0/vmax) * 4.0/3.0
-            m12 = rk_coef(istep) * dt * sigmax * vtot1
-            m13 = rk_coef(istep) * dt * sigmay * vtot2
-            m14 = rk_coef(istep) * dt * sigmaz * vtot3
+            m21 = -rk_coef(istep) * dt * v1 * sgm_paral * 4.0/3.0
+            m22 = 1.0 + rk_coef(istep) * dt * vmax *  sgm_paral
 
-            m21 = -rk_coef(istep) * dt * v1 * sigmax * 4.0/3.0
-            m22 = 1.0 + rk_coef(istep) * dt * vmax *  sigmax
+            m31 = -rk_coef(istep) * dt * v2 * sgm_perp * 4.0/3.0
+            m33 = 1.0 + rk_coef(istep) * dt * vmax *  sgm_perp
 
-            m31 = -rk_coef(istep) * dt * v2 * sigmay * 4.0/3.0
-            m33 = 1.0 + rk_coef(istep) * dt * vmax *  sigmay
+            m41 = -rk_coef(istep) * dt * v3 * sgm_perp * 4.0/3.0
+            m44 = 1.0 + rk_coef(istep) * dt * vmax *  sgm_perp
 
-            m41 = -rk_coef(istep) * dt * v3 * sigmaz * 4.0/3.0
-            m44 = 1.0 + rk_coef(istep) * dt * vmax *  sigmaz
+            newec  = (ec - m12 * fcx/m22 - m13 * fcy/m33 - m14 * fcz/m44)/(m11 - m12 * m21/m22 - m13 * m31/m33 - m14 * m41/m44)
+            newfcx = (fcx - m21 * newec)/m22
+            newfcy = (fcy - m31 * newec)/m33
+            newfcz = (fcz - m41 * newec)/m44
 
-
-            e_coef = m11 - m12 * m21/m22 - m13 * m31/m33 &
-                         - m14 * m41/m44
-            new_ec = ec - m12 * f1/m22 - m13 * f2/m33  &
-                        - m14 * f3/m44
-            new_ec = new_ec /e_coef
-
-            newf1 = (f1 - m21 * new_ec)/m22
-            newf2 = (f2 - m31 * new_ec)/m33
-            newf3 = (f3 - m41 * new_ec)/m44
-
-            new_ec = new_ec + rk_coef(istep) * dt * ec_source_
+            newec = newec + rk_coef(istep) * dt * (v2 * gpcy + v3 * gpcz)
 #ifdef MAGNETIC         
-            call inverse_rotate_vec(newf1,newf2,newf3,cp,sp,ct,st)
-            f1 = cg%w(uhi)%arr(iarr_all_xfscr(ns), i, j, k)        ! Original f1,f2,f3
-            f2 = cg%w(uhi)%arr(iarr_all_yfscr(ns), i, j, k)
-            f3 = cg%w(uhi)%arr(iarr_all_zfscr(ns), i, j, k)
+            call inverse_rotate_vec(newfcx, newfcy, newfcz, cp, sp, ct, st)
+            fcx = cg%w(uhi)%arr(iarr_all_xfscr(ns), i, j, k)        ! Original fcx,fcy,fcz
+            fcy = cg%w(uhi)%arr(iarr_all_yfscr(ns), i, j, k)
+            fcz = cg%w(uhi)%arr(iarr_all_zfscr(ns), i, j, k)
 #endif /* MAGNETIC */
             if (use_escr_floor) then
-               if (new_ec < escr_floor) new_ec = escr_floor
+               if (newec < escr_floor) newec = escr_floor
             else
-               if (new_ec < 0.0) new_ec = ec
+               if (newec < 0.0) newec = ec
             endif
 
             if (.not. disable_feedback ) then  ! Energy feedback to the MHD gas . Only the first fluid
 #ifndef ISO
-               new_eg = cg%w(uhi)%arr(iarr_all_en(1), i, j, k) - (new_ec - ec)
-               if (new_eg < 0 .or. new_ec == escr_floor) new_eg = cg%w(uhi)%arr(iarr_all_en(1), i, j, k)
-               cg%w(uhi)%arr(iarr_all_en(1), i, j, k) = new_eg
+               e_feed = cg%w(uhi)%arr(iarr_all_en(1), i, j, k) - (newec - ec)
+               if ((e_feed < 0) .or. (newec .equals. escr_floor)) e_feed = cg%w(uhi)%arr(iarr_all_en(1), i, j, k)
+               cg%w(uhi)%arr(iarr_all_en(1), i, j, k) = e_feed
 #endif /* !ISO */
-               cg%w(uhi)%arr(iarr_all_mx(1), i, j, k) = cg%w(uhi)%arr(iarr_all_mx(1), i, j, k) - (newf1 - f1)/vmax
-               cg%w(uhi)%arr(iarr_all_my(1), i, j, k) = cg%w(uhi)%arr(iarr_all_my(1), i, j, k) - (newf2 - f2)/vmax
-               cg%w(uhi)%arr(iarr_all_mz(1), i, j, k) = cg%w(uhi)%arr(iarr_all_mz(1), i, j, k) - (newf3 - f3)/vmax
+               cg%w(uhi)%arr(iarr_all_mx(1), i, j, k) = cg%w(uhi)%arr(iarr_all_mx(1), i, j, k) - (newfcx - fcx)/vmax
+               cg%w(uhi)%arr(iarr_all_my(1), i, j, k) = cg%w(uhi)%arr(iarr_all_my(1), i, j, k) - (newfcy - fcy)/vmax
+               cg%w(uhi)%arr(iarr_all_mz(1), i, j, k) = cg%w(uhi)%arr(iarr_all_mz(1), i, j, k) - (newfcz - fcz)/vmax
             endif
             
-            cg%w(uhi)%arr(iarr_all_escr(ns), i, j, k)  = new_ec         ! For test 1 and test 2 comment me 
-            cg%w(uhi)%arr(iarr_all_xfscr(ns), i, j, k) = newf1
-            cg%w(uhi)%arr(iarr_all_yfscr(ns), i, j, k) = newf2
-            cg%w(uhi)%arr(iarr_all_zfscr(ns), i, j, k) = newf3
+            cg%w(uhi)%arr(iarr_all_escr(ns), i, j, k)  = newec         ! For test 1 and test 2 comment me 
+            cg%w(uhi)%arr(iarr_all_xfscr(ns), i, j, k) = newfcx
+            cg%w(uhi)%arr(iarr_all_yfscr(ns), i, j, k) = newfcy
+            cg%w(uhi)%arr(iarr_all_zfscr(ns), i, j, k) = newfcz
          end do
       enddo
 
@@ -252,9 +258,9 @@ contains
                call bounds_for_flux(L0,U0,active,afdim,L,U)
                shift = 0 ; shift(afdim) = I_ONE
                do concurrent (k = L(zdim) : U(zdim) , j = L(ydim):U(ydim) , i = L(xdim):U(xdim))
-               T(iarr_all_gpc(d,ns), i, j, k) = T(iarr_all_gpc(d,ns), i, j, k) - &
-               ( F(afdim)%flx(iarr_all_fscr(d,ns), i, j, k) - &
-               F(afdim)%flx(iarr_all_fscr(d,ns), i+shift(xdim),j+shift(ydim),k+shift(zdim)) ) / (cg%dl(afdim) * vmax) 
+                  T(iarr_all_gpc(d,ns), i, j, k) = T(iarr_all_gpc(d,ns), i, j, k) - &
+                  (F(afdim)%flx(iarr_all_fscr(d,ns), i, j, k) - &
+                  F(afdim)%flx(iarr_all_fscr(d,ns), i+shift(xdim),j+shift(ydim),k+shift(zdim)))/(cg%dl(afdim) * vmax) 
                end do
             end do
          end do
@@ -262,7 +268,8 @@ contains
 
    end subroutine update_gradpc_here
 
-   subroutine bounds_for_flux(L0,U0,active,afdim,L,U)
+   subroutine bounds_for_flux(L0, U0, active, afdim, L, U)
+
       use constants, only: xdim, zdim, I_ONE, ndims
       use domain,    only: dom
 
@@ -273,16 +280,16 @@ contains
       integer, intent(in)            :: afdim                  ! direction we are updating (1,2,3)
       integer, intent(out)           :: L(ndims), U(ndims)     ! returned bounds
 
-      integer :: d,nb_1
+      integer :: d, nb_1
 
-      L = L0 ;  U = U0                     ! start from raw array bounds
+      L = L0 ;  U = U0                     
       nb_1 = dom%nb - I_ONE
 
       do d = xdim, zdim
-         if (active(d)) then               ! remove outer 1-cell ghosts
+         if (active(d)) then               
             L(d) = L(d) + I_ONE
             U(d) = U(d) - I_ONE
-            if (d /= afdim) then           ! shrink transverse dirs by 3 extra
+            if (d /= afdim) then           
                L(d) = L(d) + nb_1
                U(d) = U(d) - nb_1
             endif

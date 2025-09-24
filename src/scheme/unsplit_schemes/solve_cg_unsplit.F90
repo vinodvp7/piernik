@@ -217,7 +217,6 @@ contains
 #ifdef STREAM_CR
       real, dimension(size(ui, 1) - 1, 4 * nscr + 1), target :: qls, qrs
       real, dimension(size(ui, 1), 4 * nscr + 1)             :: uu
-      real, dimension(size(ui, 1) - 1)                       :: vl, vr
       integer                                                :: scr_beg
 #endif /* STREAM_CR*/
 
@@ -242,8 +241,8 @@ contains
       uu(:,1 : size(qls, 2) - 1) = ui(:,scr_beg : flind%scr(nscr)%end)
       uu(:, size(qls, 2)) = ui(:, iarr_all_mx(1))/ui(:, iarr_all_dn(1))
       call interpol_generic(uu, qls, qrs)
-      call riemann_wrap_u(qlf, qrf, cs2, uflux) ! Compute the fluxes for all fluids except streaming CR
-      call riemann_hlle_scr(qls, qrs, vdfst, scrflux) ! Compute the fluxes for streaming CR 
+      call riemann_wrap_u(qlf, qrf, cs2, uflux)         ! Compute the fluxes for all fluids except streaming CR
+      call riemann_hlle_scr(qls, qrs, vdfst, scrflux)   ! Compute the fluxes for streaming CR 
 #else /* !STREAM_CR */
       call riemann_wrap_u(qlf, qrf, cs2, uflux) ! Now we advance the left and right states by a timestep.
 #endif /* !STREAM_CR */

@@ -28,24 +28,25 @@
 #include "piernik.h"
 
 module initproblem
+
 ! ------------------------------------------------!
 ! A New Numerical Scheme for Cosmic-Ray Transport !
 ! Yan-Fei Jiang and S. Peng Oh : ApJ 854 5        !
 ! DOI 10.3847/1538-4357/aaa6ce                    !
 ! ------------------------------------------------!
 ! Initial condition                               !
-! See section 4.2.1 CR-driven Waves with Mixed    !
-! Diffusion and Streaming                         !
+! See section 4.2.3 CR-driven Blast Waves         !
 ! ------------------------------------------------!
+
 
    implicit none
 
    private
    public :: read_problem_par, problem_initial_conditions, problem_pointers
 
-   real               :: a0, a1, kx
+   real                  :: r0, ecin, ecout, bx, by
 
-   namelist /PROBLEM_CONTROL/  a0, a1, kx
+   namelist /PROBLEM_CONTROL/ r0, ecin, ecout, bx, by
 
 contains
 
@@ -66,9 +67,11 @@ contains
 
       implicit none
 
-       a0  = 20.0
-       a1  = 10.0
-       kx  = acos(-1.0)          ! pi
+      r0       = 0.02
+      ecin     = 100.0
+      ecout    = 0.1
+      bx       = 1.0
+      by       = 0.0
 
       if (master) then
 
@@ -88,18 +91,23 @@ contains
          close(nh%lun)
          call nh%compare_namelist()
 
-         rbuff(1)  = a0
-         rbuff(2)  = a1
-         rbuff(3)  = kx
+         rbuff(1)        = r0
+         rbuff(2)        = ecin
+         rbuff(3)        = ecout
+         rbuff(4)        = bx
+         rbuff(5)        = by
+
       endif
 
       call piernik_MPI_Bcast(rbuff)
 
       if (slave) then
 
-         a0   = rbuff(1)
-         a1   = rbuff(2)
-         kx   = rbuff(3)
+         r0    = rbuff(1)
+         ecin  = rbuff(2)
+         ecout = rbuff(3)
+         bx    = rbuff(4)
+         by    = rbuff(5)
 
       endif
 
@@ -115,17 +123,20 @@ contains
       use fluidtypes,  only: component_fluid, component_scr
       use func,        only: ekin, emag
       use grid_cont,   only: grid_container
-
+#ifndef ISO
+!      use global,      only: smallei
+#endif /* !ISO */
       implicit none
 
       class(component_fluid), pointer :: fl
       class(component_scr),allocatable:: scr_fluid
       integer                         :: i, j, k
-      real                            :: xi, yj, zk, r, phi_c
+      real                            :: xi, yj, zk, r
       type(cg_list_element),  pointer :: cgl
       type(grid_container),   pointer :: cg
       integer                         :: p
 
+      !   Secondary parameters
       do p = 1, flind%fluids
 
          fl => flind%all_fluids(p)%fl
@@ -140,21 +151,19 @@ contains
                   do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
                      zk = cg%z(k)
 
-                     r = sqrt(xi * xi + yj * yj)
-
                      cg%u(fl%idn,i,j,k) = 1.0
                      cg%u(fl%imx,i,j,k) = 0.0
                      cg%u(fl%imy,i,j,k) = 0.0
                      cg%u(fl%imz,i,j,k) = 0.0
                      if (fl%has_energy) then
 
-                        cg%u(fl%ien,i,j,k) = 1.0/fl%gam_1
+                        cg%u(fl%ien,i,j,k) = 2.5
                         cg%u(fl%ien,i,j,k) = cg%u(fl%ien,i,j,k) + ekin(cg%u(fl%imx,i,j,k), cg%u(fl%imy,i,j,k), cg%u(fl%imz,i,j,k), cg%u(fl%idn,i,j,k))
 
                         if (fl%is_magnetized) then
 
-                           cg%b(xdim,i,j,k)   =  1.0
-                           cg%b(ydim,i,j,k)   =  0.0
+                           cg%b(xdim,i,j,k)   =  bx
+                           cg%b(ydim,i,j,k)   =  by
                            cg%b(zdim,i,j,k)   =  0.0
                            cg%u(fl%ien,i,j,k) = cg%u(fl%ien,i,j,k) + emag(cg%b(xdim,i,j,k), cg%b(ydim,i,j,k), cg%b(zdim,i,j,k))
 
@@ -179,7 +188,12 @@ contains
                   xi = cg%x(i)
                   do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
                      zk = cg%z(k)
-                     cg%u(scr_fluid%iescr, i,j,k) = a0 +  a1* sin(kx * xi)
+                     r = sqrt(xi * xi + yj * yj)
+                     if (r<r0) then
+                        cg%u(scr_fluid%iescr, i,j,k) = ecin
+                     else
+                        cg%u(scr_fluid%iescr, i,j,k) = ecout
+                     endif
                      cg%u(scr_fluid%ixfscr,i,j,k) = 0.0
                      cg%u(scr_fluid%iyfscr,i,j,k) = 0.0
                      cg%u(scr_fluid%izfscr,i,j,k) = 0.0

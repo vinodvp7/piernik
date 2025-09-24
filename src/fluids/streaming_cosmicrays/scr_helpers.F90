@@ -153,7 +153,7 @@ contains
 #endif /* MAGNETIC */
 
       if (ord_pc_grad == 2)  grad_pc => gradient_2nd_order
-      if (ord_pc_grad == 4)  grad_pc => gradient_4th_order 
+      if (ord_pc_grad == 4)  grad_pc => gradient_4th_order
 
       sgmd = wna%ind(sgmn)
       gpci = wna%ind(gpcn)
@@ -176,7 +176,6 @@ contains
 #endif /* MAGNETIC */
 
       if (.not. at_source) cg%w(gpci)%arr(:,:,:,:) = cg%get_gradient(ord = ord_pc_grad, iw = uhi, vec = iarr_all_escr)
-      !if (.not. at_source) call grad_pc(cg,uhi)
 
       do ns = 1, flind%nscr
          cg%w(sgmd)%arr(2*(ns - 1) + xdim ,:,:,:) = sigma_paral(ns) * vmax
@@ -266,7 +265,7 @@ contains
    end subroutine rotate_vec
 
    pure elemental subroutine inverse_rotate_vec(vx, vy, vz, cp, sp, ct, st)
-   
+
       implicit none
 
       real, intent(inout)  :: vx, vy, vz
@@ -400,7 +399,7 @@ contains
       ny   = cg%n_(ydim)
       nz   = cg%n_(zdim)
 
-      do ns = 1, flind%nscr 
+      do ns = 1, flind%nscr
 ! --- X-Direction Gradient ---
          if (dom%has_dir(xdim)) then
             ! Loop over the entire domain (including ghosts), except the very first and last cells
@@ -410,7 +409,7 @@ contains
                   cg%w(gpci)%arr(xdim + 3*(ns-1),i,j,k) = &
                   & flind%scr(ns)%gam_1 * (cg%w(ind)%arr(iarr_all_escr(ns),i+1,j,k) - cg%w(ind)%arr(iarr_all_escr(ns),i-1,j,k)) &
                   & / (2. * cg%dl(xdim))
-               end do
+               enddo
             i = cg%lhn(xdim,LO)                    ! first interior
             cg%w(gpci)%arr( xdim + 3*(ns-1), i, :,: ) = &
                (flind%scr(ns)%gam_1) * ( -3.0*cg%w(ind)%arr(iarr_all_escr(ns), i  ,:,:)  &
@@ -432,7 +431,7 @@ contains
                cg%w(gpci)%arr(ydim + 3*(ns-1),i,j,k) = &
                & flind%scr(ns)%gam_1 * (cg%w(ind)%arr(iarr_all_escr(ns),i,j+1,k) - cg%w(ind)%arr(iarr_all_escr(ns),i,j-1,k)) &
                & / (2. * cg%dl(ydim))
-            end do
+            enddo
 
             ! first interior (j0)
             j = cg%lhn(ydim,LO)
@@ -454,11 +453,11 @@ contains
          ! --- Z-Direction Gradient ---
          if (dom%has_dir(zdim)) then
             do concurrent(k = cg%lhn(zdim,LO)+1:cg%lhn(zdim,HI)-1, j = cg%lhn(ydim,LO):cg%lhn(ydim,HI), &
-            &  i = cg%lhn(xdim,LO):cg%lhn(xdim,HI)) 
+            &  i = cg%lhn(xdim,LO):cg%lhn(xdim,HI))
                cg%w(gpci)%arr(zdim + 3*(ns-1),i,j,k) = &
                & flind%scr(ns)%gam_1 * (cg%w(ind)%arr(iarr_all_escr(ns),i,j,k+1) - cg%w(ind)%arr(iarr_all_escr(ns),i,j,k-1)) &
                & / (2. * cg%dl(zdim))
-            end do
+            enddo
 
             k = cg%lhn(zdim,LO)
             cg%w(gpci)%arr( zdim + 3*(ns-1), :, :, k ) = &
@@ -475,7 +474,7 @@ contains
          else
             cg%w(gpci)%arr(zdim + 3*(ns-1),:,:,:) = 0.0
          endif
-      end do
+      enddo
 
 end subroutine gradient_2nd_order
 
@@ -514,7 +513,7 @@ subroutine gradient_4th_order(cg, ind)
      &              + 8.0*cg%w(ind)%arr(iarr_all_escr(ns), i+1, j, k)  &
      &              - 8.0*cg%w(ind)%arr(iarr_all_escr(ns), i-1, j, k)  &
      &              +      cg%w(ind)%arr(iarr_all_escr(ns), i-2, j, k) ) / (12.0*cg%dl(xdim))
-            end do
+            enddo
 
             ! first interior (forward one-sided, 4th order)
             i = cg%lhn(xdim,LO)
@@ -535,7 +534,7 @@ subroutine gradient_4th_order(cg, ind)
      &           + 3.0*cg%w(ind)%arr(iarr_all_escr(ns), i-4,:,:) ) / (12.0*cg%dl(xdim))
          else
             cg%w(gpci)%arr(xdim + 3*(ns-1),:,:,:) = 0.0
-         end if
+         endif
 
 ! --- Y-Direction Gradient ---
          if (dom%has_dir(ydim)) then
@@ -548,7 +547,7 @@ subroutine gradient_4th_order(cg, ind)
      &              + 8.0*cg%w(ind)%arr(iarr_all_escr(ns), i, j+1, k)  &
      &              - 8.0*cg%w(ind)%arr(iarr_all_escr(ns), i, j-1, k)  &
      &              +      cg%w(ind)%arr(iarr_all_escr(ns), i, j-2, k) ) / (12.0*cg%dl(ydim))
-            end do
+            enddo
 
             ! first interior (j0): forward one-sided, 4th order
             j = cg%lhn(ydim,LO)
@@ -569,7 +568,7 @@ subroutine gradient_4th_order(cg, ind)
      &           + 3.0*cg%w(ind)%arr(iarr_all_escr(ns), :, j-4,:) ) / (12.0*cg%dl(ydim))
          else
             cg%w(gpci)%arr(ydim + 3*(ns-1),:,:,:) = 0.0
-         end if
+         endif
 
 ! --- Z-Direction Gradient ---
          if (dom%has_dir(zdim)) then
@@ -582,7 +581,7 @@ subroutine gradient_4th_order(cg, ind)
      &              + 8.0*cg%w(ind)%arr(iarr_all_escr(ns), i, j, k+1)  &
      &              - 8.0*cg%w(ind)%arr(iarr_all_escr(ns), i, j, k-1)  &
      &              +      cg%w(ind)%arr(iarr_all_escr(ns), i, j, k-2) ) / (12.0*cg%dl(zdim))
-            end do
+            enddo
 
             ! first interior (k0): forward one-sided, 4th order
             k = cg%lhn(zdim,LO)
@@ -603,9 +602,9 @@ subroutine gradient_4th_order(cg, ind)
      &           + 3.0*cg%w(ind)%arr(iarr_all_escr(ns), :, :, k-4) ) / (12.0*cg%dl(zdim))
          else
             cg%w(gpci)%arr(zdim + 3*(ns-1),:,:,:) = 0.0
-         end if
+         endif
 
-      end do
+      enddo
 
 end subroutine gradient_4th_order
 end module scr_helpers

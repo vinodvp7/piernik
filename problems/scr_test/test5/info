@@ -1,1 +1,2 @@
-Anisotropic diffusion of Ec in 2d with no streaming or feedback
+Anisotropic diffusion of Ec in 2d with no streaming or feedback along a circular B field 
+Disable MHD update by setting uflux = 0.0 in unsplit_mag_modules:solve for this test

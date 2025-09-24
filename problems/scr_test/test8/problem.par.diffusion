@@ -1,16 +1,16 @@
 $BASE_DOMAIN
-  n_d = 1025,1,1
+  n_d = 512,512,1
   nb  = 4
-  bnd_xl = 'user'
-  bnd_xr = 'user'
+  bnd_xl = 'out'
+  bnd_xr = 'out'
   bnd_yl = 'out'
   bnd_yr = 'out'
   bnd_zl = 'out'
   bnd_zr = 'out'
-  xmin   =  -5.0
-  xmax   =  5.0
-  ymin   =  -1.0
-  ymax   =  1.0
+  xmin   =  -0.5
+  xmax   =  0.5
+  ymin   =  -0.5
+  ymax   =  0.5
   zmin   =  0.0
   zmax   =  1.0
 /
@@ -28,44 +28,44 @@ $RESTART_CONTROL
 /
 
 $END_CONTROL
-  tend = 0.50
+  tend = 0.1
   nend = 100000000
 /
 
 $OUTPUT_CONTROL
    problem_name = 'scr'
-   run_id = 'tst'
-   dt_hdf = 0.05
+   run_id = 'dif'
+   dt_hdf = 0.02
    dt_res = 0.0
-   dt_log = 0.01
+   dt_log = 0.02
    dt_tsl = 0.02
-   vars(1:) = 'dens', 'ener', 'velx', 'pres', 'escr', 'xfscr', 'gradpcx', 'sigmax', 'magx'
+   vars(1:) = 'dens', 'ener', 'velx', 'vely' , 'pres', 'escr', 'xfscr', 'yfscr', 'magx','magy'
 /
 
 $FLUID_IONIZED
-  gamma = 1.666666667
+  gamma = 1.6667
 /
+
 $STREAMING_CR
    nscr                    = 1
-   vm                      = 100.0
-   sigma_paral             = 0.5
-   ord_scr_grad            = 4
-   disable_streaming       = .false.
+   vmax                    = 100.0
+   sigma_paral             = 10
+   sigma_perp              = 1e6
+   ord_pc_grad             = 4
    disable_feedback        = .false.      ! feedback to MHD gas 
+   disable_streaming       = .true.  
 /
 $NUMERICAL_SETUP
   cfl     = 0.5
-  smalld  = 1.e-6
-  smallei = 1.e-6
-  limiter = 'moncen'
   cfl_glm = 0.3
-  solver_type = 'unsplit'
-  solver_str = 'riemann'
+  smalld  = 1.e-5
+  smallei = 1.e-5
+  limiter = 'moncen'
+  solver_str = 'riemann_unsplit'
   integration_order = 2
 /
 
 $PROBLEM_CONTROL
-
 /
 
 $AMR

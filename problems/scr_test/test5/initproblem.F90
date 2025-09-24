@@ -28,23 +28,24 @@
 #include "piernik.h"
 
 module initproblem
-! ------------------------------------------------!
+! ----------------------------------------------- !
 ! A New Numerical Scheme for Cosmic-Ray Transport !
 ! Yan-Fei Jiang and S. Peng Oh : ApJ 854 5        !
 ! DOI 10.3847/1538-4357/aaa6ce                    !
-! ------------------------------------------------!
+! ----------------------------------------------- !
 ! Initial condition                               !
 ! See section 4.1.5 Anisotropic Diffusion         !
 ! ------------------------------------------------!
+
 
    implicit none
 
    private
    public :: read_problem_par, problem_initial_conditions, problem_pointers
 
-   real               :: a, b, bx, by
+   real               :: rin, rout, phi
 
-   namelist /PROBLEM_CONTROL/  a, b, bx, by
+   namelist /PROBLEM_CONTROL/   rin, rout, phi
 
 contains
 
@@ -60,16 +61,15 @@ contains
    subroutine read_problem_par
 
       use bcast,      only: piernik_MPI_Bcast
+      use constants,  only: cbuff_len
       use dataio_pub, only: nh
-      use mpisetup,   only: rbuff, master, slave
+      use mpisetup,   only: rbuff, cbuff, master, slave
 
       implicit none
 
-      a  = 40.0
-      b  = 40.0
-      bx = 1.0
-      by = 1.0
-
+       rin  = 0.5
+       rout = 0.7
+       phi  = 0.523598776            ! pi/6
 
       if (master) then
 
@@ -89,21 +89,19 @@ contains
          close(nh%lun)
          call nh%compare_namelist()
 
-         rbuff(1)  = a
-         rbuff(2)  = b
-         rbuff(3)  = bx
-         rbuff(4)  = by
-
+         rbuff(1)  = rin
+         rbuff(2)  = rout
+         rbuff(3)  = phi
       endif
 
       call piernik_MPI_Bcast(rbuff)
+      call piernik_MPI_Bcast(cbuff, cbuff_len)
 
       if (slave) then
 
-         a   = rbuff(1)
-         b   = rbuff(2)
-         bx  = rbuff(3)
-         by  = rbuff(4)
+         rin   = rbuff(1)
+         rout  = rbuff(2)
+         phi   = rbuff(3)
 
       endif
 
@@ -119,18 +117,21 @@ contains
       use fluidtypes,  only: component_fluid, component_scr
       use func,        only: ekin, emag
       use grid_cont,   only: grid_container
-
-
+#ifndef ISO
+!      use global,      only: smallei
+#endif /* !ISO */
       implicit none
 
       class(component_fluid), pointer :: fl
       class(component_scr),allocatable:: scr_fluid
       integer                         :: i, j, k
-      real                            :: xi, yj, zk
+      real                            :: xi, yj, zk, r, phi_c
       type(cg_list_element),  pointer :: cgl
       type(grid_container),   pointer :: cg
       integer                         :: p
+      real            :: ang, halfphi
 
+      !   Secondary parameters
       do p = 1, flind%fluids
 
          fl => flind%all_fluids(p)%fl
@@ -144,19 +145,27 @@ contains
                   xi = cg%x(i)
                   do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
                      zk = cg%z(k)
+
+                     r = sqrt(xi * xi + yj * yj)
+
                      cg%u(fl%idn,i,j,k) = 1.0
                      cg%u(fl%imx,i,j,k) = 0.0
                      cg%u(fl%imy,i,j,k) = 0.0
                      cg%u(fl%imz,i,j,k) = 0.0
                      if (fl%has_energy) then
-                        cg%u(fl%ien,i,j,k) = 1.0/fl%gam_1
+
+                        cg%u(fl%ien,i,j,k) = 1.0
                         cg%u(fl%ien,i,j,k) = cg%u(fl%ien,i,j,k) + ekin(cg%u(fl%imx,i,j,k), cg%u(fl%imy,i,j,k), cg%u(fl%imz,i,j,k), cg%u(fl%idn,i,j,k))
+
                         if (fl%is_magnetized) then
-                           cg%b(xdim,i,j,k)   =  bx
-                           cg%b(ydim,i,j,k)   =  by
+
+                           cg%b(xdim,i,j,k)   =  - yj / r
+                           cg%b(ydim,i,j,k)   =  + xi / r
                            cg%b(zdim,i,j,k)   =  0.0
                            cg%u(fl%ien,i,j,k) = cg%u(fl%ien,i,j,k) + emag(cg%b(xdim,i,j,k), cg%b(ydim,i,j,k), cg%b(zdim,i,j,k))
+
                         endif
+
                      endif
                   enddo
                enddo
@@ -164,7 +173,7 @@ contains
             cgl => cgl%nxt
          enddo
       enddo
-! Initializing streaming cosmic ray fluid components Ec, Fcx, Fcy, Fcz
+
       do p = 1, flind%nscr
          scr_fluid = flind%scr(p)
          cgl => leaves%first
@@ -176,7 +185,16 @@ contains
                   xi = cg%x(i)
                   do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
                      zk = cg%z(k)
-                     cg%u(scr_fluid%iescr, i,j,k) = exp( - a * xi * xi - b * yj * yj )
+
+                     r = sqrt(xi * xi + yj * yj)
+                     ang     = atan2(yj, xi)                  ! (-π, π]
+                     halfphi = 0.5*phi
+
+                     if (r > rin .and. r < rout .and. abs(ang) <= halfphi) then
+                        cg%u(scr_fluid%iescr, i,j,k) = 12.0
+                     else
+                        cg%u(scr_fluid%iescr, i,j,k) = 10.0
+                     endif
                      cg%u(scr_fluid%ixfscr,i,j,k) = 0.0
                      cg%u(scr_fluid%iyfscr,i,j,k) = 0.0
                      cg%u(scr_fluid%izfscr,i,j,k) = 0.0

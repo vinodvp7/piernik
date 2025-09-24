@@ -1,182 +1,268 @@
+#!/usr/bin/env python3
+"""
+Stitch PIERNIK .h5 blocks in CWD and plot a 2×2 panel with streamlines.
+
+By default:
+  - searches for 'scr_tst_*.h5' (or any '*.h5' if none) in the current directory,
+  - plots scalar field 'escr_01' at the first three times found,
+  - overlays streamlines from 'mag_field_x'/'mag_field_y' (z=0),
+  - writes <field>.png unless --out is given.
+
+Examples
+--------
+python plot.py
+python plot.py --field escr_01 --bx mag_field_x --by mag_field_y --time-scale 0.2
+"""
+
+from __future__ import annotations
+
+import argparse
+import glob
+import os
 import sys
+
 import h5py
 import numpy as np
-
-# --- VTK Imports ---
-# We wrap this in a try/except block to provide a helpful error message
-# if the user doesn't have VTK installed.
-
-
-def get_field_names(h5_file):
-    """
-    Scans the first data block in the HDF5 file to find all available
-    dataset names (e.g., 'density', 'pressure').
-
-    Args:
-        h5_file (h5py.File): An open H5py file object.
-
-    Returns:
-        list: A list of strings with the names of the data fields.
-    """
-    print("Scanning for available data fields...")
-    field_names = []
-    # Get the name of the first grid block (e.g., 'grid_0000000000')
-    first_block_name = list(h5_file["data"].keys())[0]
-    for name in h5_file["data"][first_block_name]:
-        field_names.append(name)
-    print(f"Found fields: {field_names}")
-    return field_names
-
-
-def load_and_stitch_data(fname):
-    """
-    Loads and stitches a 3D field from multiple blocks in an HDF5 file.
-    This function is based on the user-provided reference code and the
-    HDF5 inspection report.
-
-    Args:
-        fname (str): Path to the HDF5 file.
-        field_names (list): A list of all field names to extract.
-
-    Returns:
-        tuple: A tuple containing:
-            - dict: A dictionary of the stitched 3D data arrays for each field.
-            - np.ndarray: The global dimensions of the stitched cell grid (Nx, Ny, Nz).
-            - np.ndarray: The physical coordinates of the grid origin (x0, y0, z0).
-            - np.ndarray: The cell spacing in each direction (dx, dy, dz).
-    """
-    stitched_data = {}
-    with h5py.File(fname, "r") as f:
-        field_names = get_field_names(f)
-    with h5py.File(fname, "r") as f:
-        # --- 1. Read metadata from the HDF5 file ---
-        block_names = list(f["data"].keys())
-        all_offsets = np.array([f["data"][name].attrs["off"] for name in block_names], dtype=int)
-        all_dims = np.array([f["data"][name].attrs["n_b"] for name in block_names], dtype=int)
-
-        # Determine the full size of the stitched grid of cells
-        global_cell_dims = np.max(all_offsets + all_dims, axis=0)
-        print(f"Global cell grid dimensions determined to be: {global_cell_dims}")
-
-        # Get global grid physical properties from the root attributes
-        origin = f["simulation_parameters"].attrs["domain_left_edge"]
-        domain_size = f["simulation_parameters"].attrs["domain_right_edge"] - origin
-
-        # For cell-centered data, spacing is domain size / number of cells.
-        spacing = domain_size / np.maximum(1, global_cell_dims)
-
-        print(f"Global grid origin: {origin}")
-        print(f"Cell spacing: {spacing}")
-
-        # --- 2. Load and stitch each data field ---
-        for field in field_names:
-            print(f"  Processing field: {field}")
-            # Create an empty array to hold the full stitched data
-            # The data on disk is (z, y, x), so we create the numpy array in that order.
-            stitched_field = np.empty((global_cell_dims[2], global_cell_dims[1], global_cell_dims[0]), dtype=np.float32)
-
-            # Iterate over each block and place its data into the large array
-            for i, name in enumerate(block_names):
-                block_data = f["data"][name][field][:]  # This is already (z, y, x)
-                offset = all_offsets[i]
-                dims = all_dims[i]
-
-                # Define the slice where this block goes in the big array
-                slc = np.s_[
-                    offset[2]: offset[2] + dims[2],
-                    offset[1]: offset[1] + dims[1],
-                    offset[0]: offset[0] + dims[0],
-                ]
-                stitched_field[slc] = block_data
-
-            stitched_data[field] = stitched_field
-
-    return stitched_data, global_cell_dims.astype(int), origin, spacing
-#%%
 import matplotlib.pyplot as plt
-from matplotlib.colors import LogNorm  # optional
+from matplotlib.colors import LogNorm
 import matplotlib.patches as mpatches
 
-plt.rcParams.update({
-    'figure.dpi': 150, 'savefig.dpi': 720,
-    'axes.linewidth': 2.5,
-    'font.size': 12,
-    'xtick.major.size': 5, 'ytick.major.size': 5,
-    'xtick.major.width': 1.0, 'ytick.major.width': 1.0,
-    'xtick.direction': 'out', 'ytick.direction': 'out',
-    'legend.frameon': True, 'legend.edgecolor': 'black', 'legend.framealpha': 1.0,
-    'figure.figsize': (8, 6)
-})
+
+def get_field_names(h5_file: h5py.File) -> list[str]:
+    """Return dataset names from the first block under '/data'."""
+    if "data" not in h5_file:
+        raise ValueError("HDF5 file is missing group '/data'.")
+    try:
+        first_block = next(iter(h5_file["data"]))
+    except StopIteration as exc:
+        raise ValueError("HDF5 group '/data' is empty.") from exc
+    return list(h5_file["data"][first_block].keys())
 
 
-data_to_plot = 'escr_01'
+def load_and_stitch_data(fname: str):
+    """
+    Load and stitch 3D cell-centered fields from all blocks.
 
-file = '/home/vinodvp/simdir/piernik/runs/test3/scr_tst_0000.h5'
-data, cell_dims, origin, spacing = load_and_stitch_data(file)
-N, dx, x0 = cell_dims[0], spacing[0], origin[0]
-xe = x0 + np.arange(N+1)*dx                   # assume x0 is left edge
-x  = 0.5*(xe[:-1] + xe[1:])                   # centers
+    Returns
+    -------
+    stitched_data : dict[str, np.ndarray]
+        Field -> ndarray (Nz, Ny, Nx).
+    global_cell_dims : np.ndarray
+        Integer array [Nx, Ny, Nz].
+    origin : np.ndarray
+        Physical left edge [x0, y0, z0].
+    spacing : np.ndarray
+        Cell spacing [dx, dy, dz].
+    """
+    stitched_data: dict[str, np.ndarray] = {}
+    with h5py.File(fname, "r") as f:
+        field_names = get_field_names(f)
+        block_names = list(f["data"].keys())
 
-N, dy, y0 = cell_dims[1], spacing[1], origin[1]
-ye = y0 + np.arange(N+1)*dy                   # assume x0 is left edge
-y  = 0.5*(ye[:-1] + ye[1:])                   # centers
+        all_off = np.array([f["data"][n].attrs["off"] for n in block_names], dtype=int)
+        all_dims = np.array([f["data"][n].attrs["n_b"] for n in block_names], dtype=int)
 
-fig,ax=plt.subplots(2,2,figsize=(8,6))
+        global_cell_dims = np.max(all_off + all_dims, axis=0).astype(int)
 
-d0=data[data_to_plot][0,:,:]
-ax[0,0].imshow(d0, extent=[x[0], x[-1], y[0], y[-1]],
-               origin="lower",
-               cmap="RdGy_r", norm=LogNorm(vmin=1e-6, vmax=1))
+        origin = np.array(
+            f["simulation_parameters"].attrs["domain_left_edge"], dtype=float
+        )
+        domain_right = np.array(
+            f["simulation_parameters"].attrs["domain_right_edge"], dtype=float
+        )
+        spacing = (domain_right - origin) / np.maximum(
+            1.0, global_cell_dims.astype(float)
+        )
 
-ax[0,0].streamplot(x,y,
-    data["mag_field_x"][0,:,:],data["mag_field_y"][0,:,:],
-    density=0.1,color='b')
+        # On-disk arrays are (z, y, x); stitch in that order.
+        for field in field_names:
+            vol = np.empty(
+                (global_cell_dims[2], global_cell_dims[1], global_cell_dims[0]),
+                dtype=np.float32,
+            )
+            for i, name in enumerate(block_names):
+                block = f["data"][name][field][:]
+                off = all_off[i]
+                dims = all_dims[i]
+                slc = np.s_[off[2]: off[2] + dims[2], off[1]: off[1] + dims[1], off[0]: off[0] + dims[0]]
+                vol[slc] = block
+            stitched_data[field] = vol
 
-ax[0,0].set_xlabel(r'$\mathbf{x}$', fontweight='bold')
-ax[0,0].set_ylabel(r'$\mathbf{y}$', fontweight='bold')
-ax[0,0].set_title('t=0.0', fontweight='bold')
-
-file = '/home/vinodvp/simdir/piernik/runs/test3/scr_tst_0001.h5'
-data, cell_dims, origin, spacing = load_and_stitch_data(file)
-d1=data[data_to_plot][0,:,:]
-ax[0,1].imshow(d1, extent=[x[0], x[-1], y[0], y[-1]],
-               origin="lower",
-               cmap="RdGy_r", norm=LogNorm(vmin=1e-6, vmax=1))
-
-ax[0,1].streamplot(x,y,
-    data["mag_field_x"][0,:,:],data["mag_field_y"][0,:,:],
-    density=0.1,color='b')
-
-ax[0,1].set_xlabel(r'$\mathbf{x}$', fontweight='bold')
-ax[0,1].set_ylabel(r'$\mathbf{y}$', fontweight='bold')
-ax[0,1].set_title('t=0.2', fontweight='bold')
+    return stitched_data, global_cell_dims, origin, spacing
 
 
-file = '/home/vinodvp/simdir/piernik/runs/test3/scr_tst_0002.h5'
-data, cell_dims, origin, spacing = load_and_stitch_data(file)
-d2=data[data_to_plot][0,:,:]
-ax[1,0].imshow(d2, extent=[x[0], x[-1], y[0], y[-1]],
-               origin="lower",
-               cmap="RdGy_r", norm=LogNorm(vmin=1e-6, vmax=1))
+def pick_input_files() -> list[str]:
+    """Return up to three .h5 files: prefer 'scr_tst_*.h5', else any '*.h5'."""
+    files = sorted(glob.glob("scr_tst_*.h5"))
+    if not files:
+        files = sorted(glob.glob("*.h5"))
+    if not files:
+        print("No HDF5 files found in CWD.", file=sys.stderr)
+        sys.exit(1)
+    return files[:3]
 
-ax[1,0].streamplot(x,y,
-    data["mag_field_x"][0,:,:],data["mag_field_y"][0,:,:],
-    density=0.1,color='b')
 
-ax[1,0].set_xlabel(r'$\mathbf{x}$', fontweight='bold')
-ax[1,0].set_ylabel(r'$\mathbf{y}$', fontweight='bold')
-ax[1,0].set_title('t=0.4', fontweight='bold')
+def parse_time_from_name(fname: str, time_scale: float) -> float | None:
+    """
+    Parse time from 'scr_tst_0002.h5' -> 2 * time_scale.
+    Returns None if pattern doesn't match.
+    """
+    base = os.path.basename(fname)
+    if base.startswith("scr_tst_") and base.endswith(".h5"):
+        num = base.replace("scr_tst_", "").replace(".h5", "")
+        try:
+            return int(num) * time_scale
+        except Exception:
+            return None
+    return None
 
-for a in (ax[0,0], ax[0,1], ax[1,0]):
-    cb = fig.colorbar(a.images[-1], ax=a, fraction=0.046, pad=0.04)
-    cb.set_label(r'$\mathbf{E}_c$', fontweight='bold', labelpad=6)  # bold E with subscript c
 
-ax[1,1].axis('off')
-plt.tight_layout()
-for a in (ax[0,0], ax[0,1], ax[1,0]):
-    for s in a.spines.values(): s.set_linewidth(3)
+def build_xy(first_fname: str):
+    """Construct cell-centered x,y from the first file's grid."""
+    _, cell_dims, origin, spacing = load_and_stitch_data(first_fname)
+    nx = int(cell_dims[0])
+    ny = int(cell_dims[1])
+    dx = float(spacing[0])
+    dy = float(spacing[1])
+    x0 = float(origin[0])
+    y0 = float(origin[1])
 
-# Bold border around the whole figure
-fig.add_artist(mpatches.Rectangle((0.005, 0.005), 0.99, 0.99,
-                                  transform=fig.transFigure, fill=False, lw=4, ec='black'))
-plt.savefig(r'{}.png'.format(data_to_plot),dpi=720)
+    xe = x0 + np.arange(nx + 1) * dx
+    ye = y0 + np.arange(ny + 1) * dy
+    x = 0.5 * (xe[:-1] + xe[1:])
+    y = 0.5 * (ye[:-1] + ye[1:])
+    return x, y
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Stitch PIERNIK .h5 outputs in CWD and plot scalar + streamlines."
+    )
+    parser.add_argument(
+        "--field", type=str, default="escr_01", help="Scalar field to imshow (default: escr_01)."
+    )
+    parser.add_argument(
+        "--bx", type=str, default="mag_field_x", help="X-component field for streamplot."
+    )
+    parser.add_argument(
+        "--by", type=str, default="mag_field_y", help="Y-component field for streamplot."
+    )
+    parser.add_argument(
+        "--time-scale",
+        type=float,
+        default=0.2,
+        help="Multiply file index by this to label time (default: 0.2).",
+    )
+    parser.add_argument(
+        "--vmin", type=float, default=1e-6, help="LogNorm vmin for imshow (default: 1e-6)."
+    )
+    parser.add_argument(
+        "--vmax", type=float, default=1.0, help="LogNorm vmax for imshow (default: 1)."
+    )
+    parser.add_argument(
+        "--out", type=str, default=None, help="Output PNG (default: <field>.png)."
+    )
+    args = parser.parse_args()
+
+    # Style
+    plt.rcParams.update(
+        {
+            "figure.dpi": 150,
+            "savefig.dpi": 720,
+            "axes.linewidth": 2.5,
+            "font.size": 12,
+            "xtick.major.size": 5,
+            "ytick.major.size": 5,
+            "xtick.major.width": 1.0,
+            "ytick.major.width": 1.0,
+            "xtick.direction": "out",
+            "ytick.direction": "out",
+            "legend.frameon": True,
+            "legend.edgecolor": "black",
+            "legend.framealpha": 1.0,
+            "figure.figsize": (8, 6),
+        }
+    )
+
+    files = pick_input_files()
+    x, y = build_xy(files[0])
+
+    fig, axes = plt.subplots(2, 2, figsize=(8, 6))
+    axes = np.asarray(axes)
+    panels = [(0, 0), (0, 1), (1, 0)]
+    titles: list[str] = []
+
+    for idx, (ii, jj) in enumerate(panels):
+        if idx >= len(files):
+            break
+        fname = files[idx]
+        stitched, _, _, _ = load_and_stitch_data(fname)
+
+        for needed in (args.field, args.bx, args.by):
+            if needed not in stitched:
+                print(
+                    f"Field '{needed}' not found in {fname}. "
+                    f"Available: {list(stitched.keys())}",
+                    file=sys.stderr,
+                )
+                sys.exit(2)
+
+        z0 = 0  # z-index for the slice
+        scalar = stitched[args.field][z0, :, :]
+        bx = stitched[args.bx][z0, :, :]
+        by = stitched[args.by][z0, :, :]
+
+        ax = axes[ii, jj]
+        im = ax.imshow(
+            scalar,
+            extent=[x[0], x[-1], y[0], y[-1]],
+            origin="lower",
+            cmap="RdGy_r",
+            norm=LogNorm(vmin=args.vmin, vmax=args.vmax),
+            aspect="auto",
+        )
+        ax.streamplot(x, y, bx, by, density=0.1, color="b")
+
+        t_val = parse_time_from_name(fname, args.time_scale)
+        if t_val is None:
+            title = os.path.basename(fname)
+        else:
+            title = f"t={t_val:g}"
+        titles.append(title)
+
+        ax.set_xlabel(r"$\mathbf{x}$", fontweight="bold")
+        ax.set_ylabel(r"$\mathbf{y}$", fontweight="bold")
+        ax.set_title(title, fontweight="bold")
+
+        cb = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+        cb.set_label(r"$\mathbf{E}_c$", fontweight="bold", labelpad=6)
+
+    # Turn off the empty fourth panel
+    axes[1, 1].axis("off")
+
+    # Layout and cosmetics
+    plt.tight_layout()
+    for a in (axes[0, 0], axes[0, 1], axes[1, 0]):
+        for spine in a.spines.values():
+            spine.set_linewidth(3)
+
+    # Bold border around the whole figure
+    rect = mpatches.Rectangle(
+        (0.005, 0.005),
+        0.99,
+        0.99,
+        transform=fig.transFigure,
+        fill=False,
+        lw=4,
+        ec="black",
+        zorder=10,
+    )
+    fig.add_artist(rect)
+
+    outname = args.out if args.out is not None else f"{args.field}.png"
+    plt.savefig(outname, dpi=720)
+    print(f"Saved plot to {outname}")
+
+
+if __name__ == "__main__":
+    main()

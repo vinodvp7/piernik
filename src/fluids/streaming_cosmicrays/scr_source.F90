@@ -59,16 +59,18 @@ contains
       use named_array_list, only: wna
       use constants,        only: LO, HI, first_stage, xdim, ydim, zdim,rk_coef, gpcn, uh_n
       use global,           only: integration_order, dt
-      use fluidindex,       only: flind
-      use fluidindex,       only: iarr_all_xfscr, iarr_all_escr, iarr_all_dn, iarr_all_gpcx, &
+      use fluidindex,       only: flind, iarr_all_xfscr, iarr_all_escr, iarr_all_dn, iarr_all_gpcx, &
       &                           iarr_all_gpcy, iarr_all_gpcz, iarr_all_mx, iarr_all_my, &
-      &                           iarr_all_mz, iarr_all_yfscr, iarr_all_zfscr, iarr_all_en
+      &                           iarr_all_mz, iarr_all_yfscr, iarr_all_zfscr
+#ifndef ISO
+      use fluidindex,       only: iarr_all_en
+#endif /* !ISO */
       use initstreamingcr,  only: vmax, disable_streaming, disable_feedback, use_escr_floor, escr_floor
       use scr_helpers,      only: update_interaction_term
       use func,             only: operator(.equals.)
 #ifdef MAGNETIC
       use constants,        only: rtmn, magh_n, cphi, ctheta, sphi, stheta, sgmn
-      use scr_helpers,      only: rotate_vec, inverse_rotate_vec
+      use scr_helpers,      only: rotate_vec, inverse_rotate_vec, enforce_escr_floor
 #endif /* MAGNETIC */
 
       implicit none
@@ -81,8 +83,11 @@ contains
       real                                       :: v1, v2, v3, vtot1, vtot2, vtot3
       real                                       :: sgm_paral, sgm_perp
       real                                       :: m11, m12, m13, m14, m21, m22, m31, m33, m41, m44
-      real                                       :: fcx, fcy, fcz, ec, newfcx ,newfcy ,newfcz, newec, e_feed
+      real                                       :: fcx, fcy, fcz, ec, newfcx ,newfcy ,newfcz, newec
       real                                       :: gpcx, gpcy, gpcz
+#ifndef ISO
+      real                                       :: e_feed
+#endif /* !ISO */
 #ifdef MAGNETIC
       integer(kind = 4)                          :: magi
       real                                       :: bdotpc, sgn_bgpc, st, ct, sp, cp
@@ -103,7 +108,7 @@ contains
 
       call update_gradpc_here(cg)
       call update_interaction_term(cg, istep, .true.)
-
+      if (use_escr_floor) call enforce_escr_floor(cg, istep)
       do ns = 1, flind%nscr
          do concurrent (k = cg%lhn(zdim,LO):cg%lhn(zdim,HI), j = cg%lhn(ydim,LO):cg%lhn(ydim,HI), &
          & i = cg%lhn(xdim,LO):cg%lhn(xdim,HI))

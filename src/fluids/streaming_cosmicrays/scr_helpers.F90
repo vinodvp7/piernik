@@ -43,7 +43,7 @@ module scr_helpers
    private
 
    public :: scr_initial_tasks, update_interaction_term, &
-   &         rotate_vec, inverse_rotate_vec, update_vdfst
+   &         rotate_vec, inverse_rotate_vec, update_vdfst, enforce_escr_floor
 
 #ifdef MAGNETIC
    public :: update_rotation_matrix
@@ -127,6 +127,7 @@ contains
       use constants,          only: magh_n
       use initstreamingcr,    only: disable_streaming
 #endif /* MAGNETIC */
+      use func,               only: operator(.equals.)
 
       implicit none
 
@@ -185,7 +186,7 @@ contains
             & (flind%scr(ns)%gam * Bxyz * cg%w(uhi)%arr(iarr_all_escr(ns),:,:,:)))) &
             & /(cg%w(sgmd)%arr(2 * (ns - 1) + xdim ,:,:,:) + &
             & ( abs(bdotpc) * sqrt(cg%w(uhi)%arr(iarr_all_dn(1) ,:,:,:)) * vmax / &
-            &  (flind%scr(ns)%gam * Bxyz * cg%w(uhi)%arr(iarr_all_escr(ns),:,:,:))))
+            &  (flind%scr(ns)%gam * Bxyz * (cg%w(uhi)%arr(iarr_all_escr(ns),:,:,:)))))
          enddo
       endif
 #endif /* MAGNETIC */
@@ -315,8 +316,13 @@ contains
                & i = cg%lhn(xdim,LO):cg%lhn(xdim,HI))
 
                   if (dom%has_dir(cdim)) then
-                     v(cdim + 3 * (ns - 1), i, j, k) = sd(cdim + 2 * (ns - 1), i, j, k) * cg%dl(cdim)
-                     if (cdim == zdim) v(cdim + 3 * (ns - 1), i, j, k) = sd(ydim + 2 * (ns - 1), i, j, k) * cg%dl(cdim)
+
+                     if (cdim == zdim) then 
+                        v(cdim + 3 * (ns - 1), i, j, k) = sd(ydim + 2 * (ns - 1), i, j, k) * cg%dl(cdim)
+                     else
+                        v(cdim + 3 * (ns - 1), i, j, k) = sd(cdim + 2 * (ns - 1), i, j, k) * cg%dl(cdim)
+                     endif
+                     
                      v(cdim + 3 * (ns - 1), i, j, k) = v(cdim + 3 * (ns - 1), i, j, k)**2 * 1.5
 
                      if ( v(cdim + 3 * (ns - 1), i, j, k) < tau_asym ) then
@@ -367,5 +373,30 @@ contains
          enddo
       endif
    end subroutine update_vdfst
+
+   subroutine enforce_escr_floor(cg, istep)
+
+      use grid_cont,        only: grid_container
+      use named_array_list, only: wna
+      use constants,        only: first_stage, rk_coef, gpcn, uh_n
+      use global,           only: integration_order
+      use fluidindex,       only: iarr_all_escr
+      use initstreamingcr,  only: escr_floor
+
+      implicit none
+
+      type(grid_container), pointer, intent(in) :: cg
+      integer,                       intent(in) :: istep
+
+      integer(kind = 4)                          :: uhi
+
+      uhi    = wna%fi
+      if (istep == first_stage(integration_order) .and. integration_order > 1 )  then
+         uhi   = wna%ind(uh_n)
+      endif
+
+      cg%w(uhi)%arr(iarr_all_escr,:,:,:) = max(cg%w(uhi)%arr(iarr_all_escr,:,:,:), escr_floor )
+
+   end subroutine enforce_escr_floor
 
 end module scr_helpers

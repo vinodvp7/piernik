@@ -76,9 +76,6 @@ contains
       real, dimension(1, 1)                                       :: b_ugly ! ugly
       b_ugly = 0.0
 #endif /* !MAGNETIC */
-#ifdef STREAM_CR
-      call apply_scr_source(cg,istep)              !< Call streaming CR source term
-#endif /* STREAM_CR */
       uhi = wna%ind(uh_n)
       do ddim=xdim,zdim
          if (.not. dom%has_dir(ddim)) cycle
@@ -131,5 +128,8 @@ contains
             call my_deallocate(b)
 #endif /* MAGNETIC */
       enddo
+#ifdef STREAM_CR
+      call apply_scr_source(cg,istep)              !< Call streaming CR source term
+#endif /* STREAM_CR */
    end subroutine apply_source
 end module unsplit_source

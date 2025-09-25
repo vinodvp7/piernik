@@ -74,9 +74,9 @@ contains
       use bcast,      only: piernik_MPI_Bcast
       use dataio_pub, only: nh
       use mpisetup,   only: rbuff, master, slave, lbuff
-#if defined(COSM_RAYS) && defined(SN_SRC)
-      use snsources,  only: amp_ecr_sn
-#endif /* COSM_RAYS && SN_SRC */
+#if defined(STREAM_CR) && defined(SN_SRC)
+      use snsources,  only: amp_escr_sn
+#endif /* STREAM_CR && SN_SRC */
 
       implicit none
 
@@ -147,9 +147,9 @@ contains
       sn_pos = [x0,  y0,  z0 ]
       b_n    = [bxn, byn, bzn]
 
-#if defined(COSM_RAYS) && defined(SN_SRC)
-      if (amp_cr < 0.) amp_cr = amp_ecr_sn
-#endif /* COSM_RAYS && SN_SRC */
+#if defined(STREAM_CR) && defined(SN_SRC)
+      if (amp_cr < 0.) amp_cr = amp_escr_sn
+#endif /* STREAM_CR && SN_SRC */
 
    end subroutine read_problem_par
 
@@ -161,7 +161,7 @@ contains
       use cg_list,        only: cg_list_element
       use constants,      only: xdim, ydim, zdim, LO, HI
       use fluidindex,     only: flind
-      use fluidtypes,     only: component_fluid
+      use fluidtypes,     only: component_fluid, component_scr
       use func,           only: ekin, emag
       use global,         only: smalld
       use grid_cont,      only: grid_container
@@ -169,20 +169,19 @@ contains
 #ifdef SHEAR
       use shear,          only: qshear, omega
 #endif /* SHEAR */
-#ifdef COSM_RAYS
-      use initcosmicrays, only: gamma_cr_1, iarr_crn, iarr_crs
 #ifdef SN_SRC
-      use snsources,      only: cr_sn
+      use snsources,      only: scr_sn
 #endif /* SN_SRC */
-#endif /* COSM_RAYS */
 
       implicit none
 
       class(component_fluid), pointer :: fl
-      integer                         :: i, j, k
+      class(component_scr),allocatable:: scr_fluid
+      integer                         :: i, j, k, ns, p
       real                            :: b0, csim2
       type(cg_list_element),  pointer :: cgl
       type(grid_container),   pointer :: cg
+      real                            :: xi, yj, zk
 
 !   Secondary parameters
       fl => flind%ion
@@ -202,10 +201,6 @@ contains
          cg%u(fl%imx, RNG) = 0.0
          cg%u(fl%imy, RNG) = 0.0
          cg%u(fl%imz, RNG) = 0.0
-#ifdef COSM_RAYS
-         cg%u(iarr_crs, RNG)  = 0.0
-#endif /* COSM_RAYS */
-
          do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
             cg%u(fl%idn,:,:,k) = max(smalld, dprof(k))
             do j = cg%lhn(ydim,LO), cg%lhn(ydim,HI)
@@ -219,9 +214,7 @@ contains
                   cg%u(fl%ien,i,j,k) = fl%cs2 / fl%gam_1 * cg%u(fl%idn,i,j,k) + ekin(cg%u(fl%imx,i,j,k), cg%u(fl%imy,i,j,k), cg%u(fl%imz,i,j,k), cg%u(fl%idn,i,j,k)) + &
                                      & emag(cg%b(xdim,i,j,k), cg%b(ydim,i,j,k), cg%b(zdim,i,j,k))
 #endif /* !ISO */
-#ifdef COSM_RAYS
-                  cg%u(iarr_crn(1),i,j,k) = beta_cr * fl%cs2 * cg%u(fl%idn,i,j,k) / gamma_cr_1
-#endif /* COSM_RAYS */
+
                enddo
             enddo
          enddo
@@ -229,9 +222,30 @@ contains
          cgl => cgl%nxt
       enddo
 
-#if defined(COSM_RAYS) && defined(SN_SRC)
-      call cr_sn(sn_pos, amp_cr)
-#endif /* COSM_RAYS && SN_SRC */
+      do p = 1, flind%nscr
+         scr_fluid = flind%scr(p)
+         cgl => leaves%first
+         do while (associated(cgl))
+            cg => cgl%cg
+            do j = cg%lhn(ydim,LO), cg%lhn(ydim,HI)
+               yj = cg%y(j)
+               do i = cg%lhn(xdim,LO), cg%lhn(xdim,HI)
+                  xi = cg%x(i)
+                  do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
+                     zk = cg%z(k)
+                     cg%u(scr_fluid%iescr,i,j,k) = beta_cr * fl%cs2 * cg%u(fl%idn,i,j,k) / scr_fluid%gam_1
+                     cg%u(scr_fluid%ixfscr,i,j,k) = 0.0
+                     cg%u(scr_fluid%iyfscr,i,j,k) = 0.0
+                     cg%u(scr_fluid%izfscr,i,j,k) = 0.0
+                  enddo
+               enddo
+            enddo
+            cgl => cgl%nxt
+         enddo
+      enddo
+#if defined(STREAM_CR) && defined(SN_SRC)
+      call scr_sn(sn_pos, amp_cr)
+#endif /* STREAM_CR && SN_SRC */
 
    end subroutine problem_initial_conditions
 

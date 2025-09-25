@@ -161,7 +161,12 @@ contains
       enddo
 #endif /* MAGNETIC */
 
-      if (.not. at_source) cg%w(gpci)%arr(:,:,:,:) = cg%get_gradient(ord = ord_pc_grad, iw = uhi, vec = iarr_all_escr)
+      if (.not. at_source) then
+         cg%w(gpci)%arr(:,:,:,:) = cg%get_gradient(ord = ord_pc_grad, iw = uhi, vec = iarr_all_escr)
+         do ns = 1, flind%nscr
+            cg%w(gpci)%arr(ns,:,:,:) = cg%w(gpci)%arr(ns,:,:,:) * flind%scr(ns)%gam_1
+         end do
+      end if   
 
       do ns = 1, flind%nscr
          cg%w(sgmd)%arr(2*(ns - 1) + xdim ,:,:,:) = sigma_paral(ns) * vmax

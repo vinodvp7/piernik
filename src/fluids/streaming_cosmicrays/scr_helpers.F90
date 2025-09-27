@@ -165,7 +165,7 @@ contains
       if (.not. at_source) then
          cg%w(gpci)%arr(:,:,:,:) = cg%get_gradient(ord = ord_pc_grad, iw = uhi, vec = iarr_all_escr)
          do ns = 1, flind%nscr
-            cg%w(gpci)%arr(ns,:,:,:) = cg%w(gpci)%arr(ns,:,:,:) * flind%scr(ns)%gam_1
+            cg%w(gpci)%arr(xdim + 3 * (ns - 1) : 3 * ns,:,:,:) = cg%w(gpci)%arr(xdim + 3 * (ns - 1) : 3 * ns,:,:,:) * flind%scr(ns)%gam_1
          end do
       end if   
 
@@ -181,12 +181,10 @@ contains
             do ddim = xdim, zdim
                bdotpc(:,:,:) = bdotpc(:,:,:) + cg%w(magi)%arr(ddim,:,:,:) * cg%w(gpci)%arr(3 * (ns-1) + ddim,:,:,:)
             enddo
-            cg%w(sgmd)%arr(2 * (ns - 1) + xdim ,:,:,:) = (cg%w(sgmd)%arr(2 * (ns - 1) + xdim ,:,:,:) * &
-            & ( abs(bdotpc) * sqrt(cg%w(uhi)%arr(iarr_all_dn(1) ,:,:,:)) * vmax / &
-            & (flind%scr(ns)%gam * Bxyz * cg%w(uhi)%arr(iarr_all_escr(ns),:,:,:)))) &
-            & /(cg%w(sgmd)%arr(2 * (ns - 1) + xdim ,:,:,:) + &
-            & ( abs(bdotpc) * sqrt(cg%w(uhi)%arr(iarr_all_dn(1) ,:,:,:)) * vmax / &
-            &  (flind%scr(ns)%gam * Bxyz * (cg%w(uhi)%arr(iarr_all_escr(ns),:,:,:)))))
+            cg%w(sgmd)%arr(2 * (ns - 1) + xdim ,:,:,:) = cg%w(sgmd)%arr(2 * (ns - 1) + xdim ,:,:,:) * &
+            &  abs(bdotpc) * sqrt(cg%w(uhi)%arr(iarr_all_dn(1) ,:,:,:)) * vmax / &
+            &  (abs(bdotpc) * sqrt(cg%w(uhi)%arr(iarr_all_dn(1) ,:,:,:)) * vmax + &
+            &  flind%scr(ns)%gam * cg%w(sgmd)%arr(2 * (ns - 1) + xdim ,:,:,:) * Bxyz * (cg%w(uhi)%arr(iarr_all_escr(ns),:,:,:)))
          enddo
       endif
 #endif /* MAGNETIC */

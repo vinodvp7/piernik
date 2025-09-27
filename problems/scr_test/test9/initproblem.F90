@@ -41,11 +41,11 @@ module initproblem
    public :: read_problem_par, problem_initial_conditions, problem_pointers
 
    real :: d0, alpha, bxn, byn, bzn, amp_cr, beta_cr                         !< galactic disk specific parameters
-   real :: x0, y0, z0                                                        !< parameters for a single supernova exploding at t=0
+   real :: x0, y0, z0, tlim                                                   !< parameters for a single supernova exploding at t=0
    real, dimension(ndims) :: b_n, sn_pos
    logical :: fixedsn
 
-   namelist /PROBLEM_CONTROL/  d0, bxn, byn, bzn, x0, y0, z0, alpha, amp_cr, beta_cr, fixedsn
+   namelist /PROBLEM_CONTROL/  d0, bxn, byn, bzn, x0, y0, z0, alpha, amp_cr, beta_cr, fixedsn, tlim
 
 contains
 
@@ -90,6 +90,7 @@ contains
       alpha   = 0.0
       amp_cr  = 0.0
       beta_cr = 0.0
+      tlim    = 25
       fixedsn = .false.
 
       if (master) then
@@ -120,6 +121,7 @@ contains
          rbuff(8)  = amp_cr
          rbuff(9)  = beta_cr
          rbuff(10) = alpha
+         rbuff(11) = tlim
          lbuff(1)  = fixedsn
 
       endif
@@ -139,6 +141,7 @@ contains
          amp_cr    = rbuff(8)
          beta_cr   = rbuff(9)
          alpha     = rbuff(10)
+         tlim      = rbuff(11)
 
          fixedsn  = lbuff(1)
 
@@ -187,7 +190,7 @@ contains
       fl => flind%ion
 
       b0 = sqrt(2. * alpha * d0 * fl%cs2)
-      csim2 = fl%cs2 * (1.0 + alpha)
+      csim2 = fl%cs2 * (1.0 + alpha )
 
       cgl => leaves%first
       do while (associated(cgl))
@@ -250,18 +253,22 @@ contains
    end subroutine problem_initial_conditions
 
    subroutine supernovae_wrapper(forward)
+      use global,   only: t
 #ifdef SN_SRC
       use snsources, only: random_sn, fixed_sn
 #endif /* SN_SRC */
+
       implicit none
 
       logical, intent(in) :: forward
 #ifdef SN_SRC
-      if (forward) then
-         if (fixedsn) then 
-            call fixed_sn(sn_pos)
-         else
-            call random_sn
+      if (t < tlim ) then
+         if (forward) then
+            if (fixedsn) then 
+               call fixed_sn(sn_pos)
+            else
+               call random_sn
+            endif
          endif
       endif
 #endif /* SN_SRC */

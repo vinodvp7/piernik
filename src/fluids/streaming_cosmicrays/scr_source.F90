@@ -108,7 +108,7 @@ contains
 
       call update_gradpc_here(cg)
       call update_interaction_term(cg, istep, .true.)
-      if (use_escr_floor) call enforce_escr_floor(cg, istep)
+      !if (use_escr_floor) call enforce_escr_floor(cg, istep)
       do ns = 1, flind%nscr
          do concurrent (k = cg%lhn(zdim,LO):cg%lhn(zdim,HI), j = cg%lhn(ydim,LO):cg%lhn(ydim,HI), &
          & i = cg%lhn(xdim,LO):cg%lhn(xdim,HI))

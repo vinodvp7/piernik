@@ -76,6 +76,9 @@ contains
       real, dimension(1, 1)                                       :: b_ugly ! ugly
       b_ugly = 0.0
 #endif /* !MAGNETIC */
+#ifdef STREAM_CR
+      call apply_scr_source(cg,istep)              !< Call streaming CR source term
+#endif /* STREAM_CR */
       uhi = wna%ind(uh_n)
       do ddim=xdim,zdim
          if (.not. dom%has_dir(ddim)) cycle
@@ -105,7 +108,6 @@ contains
                   vx = u(:, iarr_all_mx) / u(:, iarr_all_dn) ! this may also be useful for gravitational acceleration
 #ifdef MAGNETIC
                   call internal_sources(size(u, 1, kind=4), u, u1, b, cg, istep, ddim, i1, i2, rk_coef(istep) * dt, vx)
-
                   if (istep == last_stage(integration_order)) then
                      call care_for_positives(size(u, 1, kind=4), u1, b, cg, ddim, i1, i2)
                   endif
@@ -115,21 +117,14 @@ contains
                   if (istep == last_stage(integration_order)) then
                      call care_for_positives(size(u, 1, kind=4), u1, b_ugly, cg, ddim, i1, i2)
                   endif
-
 #endif /* MAGNETIC */
                   pu(:,:) = transpose(u1(:, iarr_all_swp(ddim,:)))
-
                enddo
-
             enddo
-
             call my_deallocate(vx); call my_deallocate(u1); call my_deallocate(u)
 #ifdef MAGNETIC
             call my_deallocate(b)
 #endif /* MAGNETIC */
       enddo
-#ifdef STREAM_CR
-      call apply_scr_source(cg,istep)              !< Call streaming CR source term
-#endif /* STREAM_CR */
    end subroutine apply_source
 end module unsplit_source

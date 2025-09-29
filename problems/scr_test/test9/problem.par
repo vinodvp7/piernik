@@ -1,5 +1,5 @@
  $BASE_DOMAIN
-    n_d = 1, 48, 96
+    n_d = 48, 1, 96             ! For streaming module need to rotate the problem
     nb           = 4
     bnd_xl       = 'per'
     bnd_xr       = 'per'
@@ -7,10 +7,10 @@
     bnd_yr       = 'per'
     bnd_zl       = 'outd'
     bnd_zr       = 'outd'
-    xmin         =-250.0
-    xmax         = 250.0
-    ymin         =-500.0
-    ymax         = 500.0
+    xmin         =-500.0
+    xmax         = 500.0
+    ymin         =-250.0
+    ymax         = 250.0
     zmin         =-1000.0
     zmax         = 1000.0
  /
@@ -50,18 +50,18 @@
 
 $STREAMING_CR
    nscr                    = 1
-   vmax                    = 1000.0                     ! For accurate result this needs to be high
-   sigma_paral             = 1e-2
+   vmax                    = 1500.0       ! For accurate result this needs to be high
+   sigma_paral             = 1e-4
    sigma_perp              = 1e10
    ord_pc_grad             = 2
    disable_feedback        = .false.      ! feedback to MHD gas
-   disable_streaming       = .true.
+   disable_streaming       = .true.       ! knob for streaming + diffusion or only diffusion
    cr_sound_speed          = .true.
-   escr_floor              = 1e-6
+   escr_floor              =  1e-6        ! floor value of 0.0 will blow up interaction coefficient calculation
 /
 $NUMERICAL_SETUP
-  cfl     = 0.1
-  smalld  = 1.e-5
+  cfl     = 0.5
+  smalld  = 1.e-2                          ! Default value of 1e-5 will lead to huge spikes in speed that crashes the code    
   smallei = 1.e-4
   limiter = 'vanleer'
   solver_str = 'unsplit'
@@ -91,8 +91,8 @@ $NUMERICAL_SETUP
 
  $PROBLEM_CONTROL
     d0           =  5.0     ! density in galactic plane
-    bxn          =  0.0     !
-    byn          =  1.0     ! __direction__ of B field
+    bxn          =  1.0     !
+    byn          =  0.0     ! __direction__ of B field
     bzn          =  0.0     !
     x0           =  0.0     ! coordinates of single expl with amplitude
     y0           =  0.0     ! that is set in problem_initial_conditions (testing purpose)

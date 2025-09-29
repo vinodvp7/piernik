@@ -60,12 +60,12 @@ subroutine timestep_scr(dt)
 
    real, intent(inout) :: dt
 
-   real :: dt_local_min, dt_patch
+   real :: dt_scr, dt_patch
    type(cg_list_element), pointer :: cgl
    type(grid_container),  pointer :: cg
    integer :: dir
 
-   dt_local_min = huge(1.0)
+   dt_scr = huge(1.0)
 
    cgl => leaves%first
    do while (associated(cgl))
@@ -75,18 +75,18 @@ subroutine timestep_scr(dt)
 
       do dir = xdim, zdim
          if (.not. dom%has_dir(dir)) cycle
-         dt_patch = min(dt_patch, cg%dl(dir) / (vmax / sqrt(3.0)))          !> isotropic closure: sqrt(f_ii)=1/sqrt(3)
-
-      enddo
-
-      dt_local_min = min(dt_local_min, dt_patch)
+         dt_patch = min(dt_patch, cg%dl(dir) / vmax)          !> We consider a more aggressive value of vmax rather than
+                                                              !> vmax/sqrt(3) as that will track well with the definition that
+      enddo                                                   !> vmax is the maximum speed in the domain and the global timestepping
+                                                              !> while using this module should be controlled by this time step
+      dt_scr = min(dt_scr, dt_patch)
 
       cgl => cgl%nxt
    enddo
 
-   call piernik_MPI_Allreduce(dt_local_min, pMIN)
+   call piernik_MPI_Allreduce(dt_scr, pMIN)
 
-   dt =  cfl * min(dt, dt_local_min)
+   dt =   min(dt, cfl * dt_scr)
 end subroutine timestep_scr
 
 end module timestepscr

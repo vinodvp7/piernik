@@ -58,7 +58,7 @@ contains
       use grid_cont,        only: grid_container
       use named_array_list, only: wna
       use constants,        only: LO, HI, first_stage, xdim, ydim, zdim,rk_coef, gpcn, uh_n
-      use global,           only: integration_order, dt
+      use global,           only: integration_order, dt, smalld
       use fluidindex,       only: flind, iarr_all_xfscr, iarr_all_escr, iarr_all_dn, iarr_all_gpcx, &
       &                           iarr_all_gpcy, iarr_all_gpcz, iarr_all_mx, iarr_all_my, &
       &                           iarr_all_mz, iarr_all_yfscr, iarr_all_zfscr
@@ -105,10 +105,9 @@ contains
          magi   = wna%ind(magh_n)
 #endif /* MAGNETIC */
       endif
-
+      if (use_escr_floor) call enforce_escr_floor(cg, istep)
       call update_gradpc_here(cg)
       call update_interaction_term(cg, istep, .true.)
-      !if (use_escr_floor) call enforce_escr_floor(cg, istep)
       do ns = 1, flind%nscr
          do concurrent (k = cg%lhn(zdim,LO):cg%lhn(zdim,HI), j = cg%lhn(ydim,LO):cg%lhn(ydim,HI), &
          & i = cg%lhn(xdim,LO):cg%lhn(xdim,HI))
@@ -137,9 +136,9 @@ contains
 
             ! Need to floor rho ?
             if (.not. disable_streaming) then
-               vtot1 = vtot1 - sgn_bgpc * cg%w(magi)%arr(xdim, i, j, k)/sqrt(cg%w(uhi)%arr(iarr_all_dn(1), i, j, k)) ! vfluid + vs
-               vtot2 = vtot2 - sgn_bgpc * cg%w(magi)%arr(ydim, i, j, k)/sqrt(cg%w(uhi)%arr(iarr_all_dn(1), i, j, k)) ! vfluid + vs
-               vtot3 = vtot3 - sgn_bgpc * cg%w(magi)%arr(zdim, i, j, k)/sqrt(cg%w(uhi)%arr(iarr_all_dn(1), i, j, k)) ! vfluid + vs  .
+               vtot1 = vtot1 - sgn_bgpc * cg%w(magi)%arr(xdim, i, j, k)/sqrt(max(cg%w(uhi)%arr(iarr_all_dn(1), i, j, k), smalld)) ! vfluid + vs
+               vtot2 = vtot2 - sgn_bgpc * cg%w(magi)%arr(ydim, i, j, k)/sqrt(max(cg%w(uhi)%arr(iarr_all_dn(1), i, j, k), smalld)) ! vfluid + vs
+               vtot3 = vtot3 - sgn_bgpc * cg%w(magi)%arr(zdim, i, j, k)/sqrt(max(cg%w(uhi)%arr(iarr_all_dn(1), i, j, k), smalld)) ! vfluid + vs  .
             endif
 #endif /* MAGNETIC */
             ec = cg%w(uhi)%arr(iarr_all_escr(ns), i, j, k)

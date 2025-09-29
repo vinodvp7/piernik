@@ -124,7 +124,7 @@ contains
       use initstreamingcr,    only: sigma_paral, sigma_perp, vmax, ord_pc_grad
       use fluidindex,         only: flind, iarr_all_dn, iarr_all_escr
 #ifdef MAGNETIC
-      use constants,          only: magh_n
+      use constants,          only: magh_n, LO, HI
       use initstreamingcr,    only: disable_streaming
 #endif /* MAGNETIC */
       use func,               only: operator(.equals.)
@@ -138,8 +138,8 @@ contains
       integer :: sgmd, uhi, ns, ddim, gpci
 #ifdef MAGNETIC
       integer :: magi
-      real    :: bdotpc(cg%n_(xdim), cg%n_(ydim), cg%n_(zdim))
-      real    :: Bxyz(cg%n_(xdim), cg%n_(ydim), cg%n_(zdim))
+      real    :: bdotpc(cg%lhn(xdim, LO) : cg%lhn(xdim, HI), cg%lhn(ydim, LO) : cg%lhn(ydim, HI), cg%lhn(zdim, LO) : cg%lhn(zdim, HI))
+      real    :: Bxyz(cg%lhn(xdim, LO) : cg%lhn(xdim, HI), cg%lhn(ydim, LO) : cg%lhn(ydim, HI), cg%lhn(zdim, LO) : cg%lhn(zdim, HI))
 #endif /* MAGNETIC */
 
       sgmd = wna%ind(sgmn)

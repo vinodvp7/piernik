@@ -807,6 +807,10 @@ contains
       use constants,             only: BND_OUTH, BND_OUTHD, I_ZERO
       use fluidboundaries_funcs, only: outh_fluidbnd
 #endif /* GRAV */
+#ifdef STREAM_CR
+      use initstreamingcr,       only: nscr, vmax
+      use fluidindex,            only: iarr_all_escr
+#endif /* STREAM_CR */
 
       implicit none
 
@@ -819,6 +823,9 @@ contains
       integer(kind=4)                         :: side, ssign, ib
       type(cg_list_element), pointer          :: cgl
       character(len=*), parameter             :: bu_label = "bnd_u"
+#ifdef STREAM_CR
+       integer                                :: ns
+#endif /* STREAM_CR */
 
       if (.not. any([xdim, ydim, zdim] == dir)) call die("[cg_list_bnd:bnd_u] Invalid direction.")
 
@@ -885,6 +892,15 @@ contains
                   else
                      cg%u(iarr_all_dn+dir,l(xdim,LO):l(xdim,HI),l(ydim,LO):l(ydim,HI),l(zdim,LO):l(zdim,HI)) = max(cg%u(iarr_all_dn+dir,l(xdim,LO):l(xdim,HI),l(ydim,LO):l(ydim,HI),l(zdim,LO):l(zdim,HI)),  vel_outd * cg%u(iarr_all_dn,l(xdim,LO):l(xdim,HI),l(ydim,LO):l(ydim,HI),l(zdim,LO):l(zdim,HI)))
                   endif
+#ifdef STREAM_CR
+                  do ns =1,nscr
+                     if (side == LO) then
+                        cg%u(iarr_all_escr(ns)+dir,l(xdim,LO):l(xdim,HI),l(ydim,LO):l(ydim,HI),l(zdim,LO):l(zdim,HI)) = min(cg%u(iarr_all_escr(ns)+dir,l(xdim,LO):l(xdim,HI),l(ydim,LO):l(ydim,HI),l(zdim,LO):l(zdim,HI)), -vel_outd/vmax * cg%u(iarr_all_escr(ns),l(xdim,LO):l(xdim,HI),l(ydim,LO):l(ydim,HI),l(zdim,LO):l(zdim,HI)))
+                     else
+                        cg%u(iarr_all_escr(ns)+dir,l(xdim,LO):l(xdim,HI),l(ydim,LO):l(ydim,HI),l(zdim,LO):l(zdim,HI)) = max(cg%u(iarr_all_escr(ns)+dir,l(xdim,LO):l(xdim,HI),l(ydim,LO):l(ydim,HI),l(zdim,LO):l(zdim,HI)),  vel_outd/vmax * cg%u(iarr_all_escr(ns),l(xdim,LO):l(xdim,HI),l(ydim,LO):l(ydim,HI),l(zdim,LO):l(zdim,HI)))
+                     endif
+                  enddo
+#endif /* STREAM_CR */
 #ifdef GRAV
                case (BND_OUTH)
                   call outh_fluidbnd(dir, side, cg, wn=I_ZERO)

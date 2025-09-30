@@ -36,6 +36,7 @@
 !<
 module initstreamingcr
 
+
 ! pulled by STREAM_CR
 
     implicit none
@@ -55,12 +56,14 @@ module initstreamingcr
    logical                                 :: disable_feedback    !< whether streaming cosmic ray feedback momentum and energy change to the gas.
    logical                                 :: disable_streaming   !< whether cosmic rays stream along B
    logical                                 :: cr_sound_speed      !< whether to add cr sound speed when calculating v_diff. Ideally keep it as false so that sound speed is added as it increases numerical stability.
+   logical                                 :: track_feedback      !< whether to track feedback of energy/momentum to MHD gas. Need to output var if enabled 
 
    integer, parameter                      :: nscr_max   = 50     !< Maximum number of allowed streaming cr component
    real, parameter                         :: tau_asym   = 1e-3   !< Used in the calculation of R in streaming_cr_hlle where below this value the function is taylor expanded in tau
    real, parameter                         :: sigma_huge = 1e10   !< Default huge value for interaction coefficient that essentially means diffusion is switched off
    real, parameter                         :: gamma_def  = 4./3.  !< Default huge value for interaction coefficient that essentially means diffusion is switched off
-
+   
+   
 contains
 
    subroutine init_streamingcr
@@ -76,7 +79,7 @@ contains
       integer(kind=4) :: nl, nn
 
       namelist /STREAMING_CR/ nscr, escr_floor, use_escr_floor, sigma_paral, sigma_perp, vmax, ord_pc_grad, &
-      &                       disable_feedback, disable_streaming, gamma_scr, cr_sound_speed, scr_eff
+      &                       disable_feedback, disable_streaming, gamma_scr, cr_sound_speed, scr_eff, track_feedback
 
 
       nscr                     = 1
@@ -91,6 +94,7 @@ contains
       disable_feedback         = .false.
       disable_streaming        = .false.
       cr_sound_speed           = .true.
+      track_feedback           = .false.
 
       if (master) then
          if (.not.nh%initialized) call nh%init()
@@ -123,8 +127,9 @@ contains
          lbuff(2) = disable_feedback
          lbuff(3) = disable_streaming
          lbuff(4) = cr_sound_speed
+         lbuff(5) = track_feedback
 
-         nl       = 4                                     ! this must match the last lbuff() index above
+         nl       = 5                                     ! this must match the last lbuff() index above
          nn       = count(rbuff(:) < huge(1.), kind=4)    ! this must match the last rbuff() index above
          ibuff(ubound(ibuff, 1)    ) = nn
          ibuff(ubound(ibuff, 1) - 1) = nl
@@ -157,6 +162,7 @@ contains
          disable_feedback    = lbuff(2)
          disable_streaming   = lbuff(3)
          cr_sound_speed      = lbuff(4)
+         track_feedback      = lbuff(5)
 
          nn                  = ibuff(ubound(ibuff, 1)    )    ! this must match the last rbuff() index above
          nl                  = ibuff(ubound(ibuff, 1) - 1)    ! this must match the last lbuff() index above
@@ -189,6 +195,7 @@ contains
             exit
          enddo
       endif
+
    end subroutine init_streamingcr
 
 end module initstreamingcr

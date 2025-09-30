@@ -376,6 +376,26 @@ contains
                write(aux, '(a,"_",i2.2)') 'sigma_perp', s
                call append_var(aux)
             enddo
+         case ('fdbck_e')
+            do s = 1, nscr
+               write(aux, '(a,"_",i2.2)') 'fdbck_e', s
+               call append_var(aux)
+            enddo
+         case ('fdbck_mx')
+            do s = 1, nscr
+               write(aux, '(a,"_",i2.2)') 'fdbck_mx', s
+               call append_var(aux)
+            enddo
+         case ('fdbck_my')
+            do s = 1, nscr
+               write(aux, '(a,"_",i2.2)') 'fdbck_my', s
+               call append_var(aux)
+            enddo
+         case ('fdbck_mz')
+            do s = 1, nscr
+               write(aux, '(a,"_",i2.2)') 'fdbck_mz', s
+               call append_var(aux)
+            enddo
 #endif /* STREAM_CR */
             case default
                if (.not. has_ion .and. (any(trim(vars(i)) == ["deni", "vlxi", "vlyi", "vlzi", "enei", "ethi", "prei"]) .or. any(trim(vars(i)) == ["momxi", "momyi", "momzi"]))) then

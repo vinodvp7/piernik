@@ -232,7 +232,12 @@ contains
       last_res_time = 0.0
 
 #ifdef HDF5
-      if (master .and. restart == 'last') call find_last_restart(nrestart)
+       
+      if (master .and. restart == 'last') then
+         nrestart = INVALID
+         call find_last_restart(nrestart)
+      endif
+      if (master .and. restart /= 'last' ) call find_last_restart(nrestart)
 #endif /* HDF5 */
       call piernik_MPI_Barrier
       call piernik_MPI_Bcast(nrestart)
@@ -925,30 +930,43 @@ contains
 
       use common_hdf5, only: output_fname
       use constants,   only: RD
-      use dataio_pub,  only: restarted_sim
+      use dataio_pub,  only: restarted_sim, die
+      use constants,   only: INVALID
 
       implicit none
 
-      integer(kind=4), intent(out) :: restart_number
+      integer(kind=4), intent(inout) :: restart_number
 
       integer(kind=4)              :: nres
       integer                      :: unlink_stat
       logical                      :: exist
+      if (restart_number == INVALID) then
+         restart_number = 0
 
-      restart_number = 0
+         open(newunit=unlink_stat, file='restart_list.tmp', status='unknown')
+         close(unlink_stat, status='delete')
 
-      open(newunit=unlink_stat, file='restart_list.tmp', status='unknown')
-      close(unlink_stat, status='delete')
-
-      do nres = 999, 0, -1
+         do nres = 999, 0, -1
+            inquire(file = trim(output_fname(RD,'.res', nres)), exist = exist)
+            if (exist) then
+               restart_number = nres
+               restarted_sim = .true.
+               return
+            endif
+         enddo
+      else
+         open(newunit=unlink_stat, file='restart_list.tmp', status='unknown')
+         close(unlink_stat, status='delete')
+         nres = restart_number
          inquire(file = trim(output_fname(RD,'.res', nres)), exist = exist)
          if (exist) then
             restart_number = nres
             restarted_sim = .true.
             return
+         else
+            call die("[dataio:find_last_restart] specified restart file unavailable")
          endif
-      enddo
-
+      endif
    end subroutine find_last_restart
 #endif /* HDF5 */
 !>

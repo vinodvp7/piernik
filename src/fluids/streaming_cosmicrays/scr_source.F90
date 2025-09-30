@@ -57,7 +57,7 @@ contains
 
       use grid_cont,        only: grid_container
       use named_array_list, only: wna
-      use constants,        only: LO, HI, first_stage, xdim, ydim, zdim,rk_coef, gpcn, uh_n
+      use constants,        only: LO, HI, first_stage, xdim, ydim, zdim,rk_coef, gpcn, uh_n, fdbck
       use global,           only: integration_order, dt, smalld
       use fluidindex,       only: flind, iarr_all_xfscr, iarr_all_escr, iarr_all_dn, iarr_all_gpcx, &
       &                           iarr_all_gpcy, iarr_all_gpcz, iarr_all_mx, iarr_all_my, &
@@ -65,21 +65,20 @@ contains
 #ifndef ISO
       use fluidindex,       only: iarr_all_en
 #endif /* !ISO */
-      use initstreamingcr,  only: vmax, disable_streaming, disable_feedback, use_escr_floor, escr_floor
+      use initstreamingcr,  only: vmax, disable_streaming, disable_feedback, use_escr_floor, escr_floor, track_feedback
       use scr_helpers,      only: update_interaction_term
       use func,             only: operator(.equals.)
 #ifdef MAGNETIC
       use constants,        only: rtmn, magh_n, cphi, ctheta, sphi, stheta, sgmn
       use scr_helpers,      only: rotate_vec, inverse_rotate_vec, enforce_escr_floor
 #endif /* MAGNETIC */
-
       implicit none
 
       type(grid_container), pointer, intent(in) :: cg
       integer,                       intent(in) :: istep
 
       integer                                    :: i, j, k, ns
-      integer(kind = 4)                          :: uhi, sgmd, rtmi, gpci
+      integer(kind = 4)                          :: uhi, sgmd, rtmi, gpci, fdbki
       real                                       :: v1, v2, v3, vtot1, vtot2, vtot3
       real                                       :: sgm_paral, sgm_perp
       real                                       :: m11, m12, m13, m14, m21, m22, m31, m33, m41, m44
@@ -93,6 +92,7 @@ contains
       real                                       :: bdotpc, sgn_bgpc, st, ct, sp, cp
 #endif /* MAGNETIC */
       uhi    = wna%fi
+      fdbki  = wna%ind(fdbck)
 #ifdef MAGNETIC
       magi   = wna%bi
       rtmi   = wna%ind(rtmn)
@@ -190,13 +190,40 @@ contains
             else
                if (newec < 0.0) newec = ec
             endif
-
+            if (track_feedback) then
+               cg%w(fdbki)%arr(iarr_all_escr(ns), i, j, k) = 0.0
+            endif
             if (.not. disable_feedback ) then  ! Energy feedback to the MHD gas . Only the first fluid
 #ifndef ISO
                e_feed = cg%w(uhi)%arr(iarr_all_en(1), i, j, k) - (newec - ec)
-               if ((e_feed < 0) .or. (newec .equals. escr_floor)) e_feed = cg%w(uhi)%arr(iarr_all_en(1), i, j, k)
+
+               if (track_feedback) then
+                  cg%w(fdbki)%arr(iarr_all_escr(ns), i, j, k) = (newec - ec)
+               endif
+
+               if ((e_feed < 0) .or. (newec .equals. escr_floor)) then
+
+                  e_feed = cg%w(uhi)%arr(iarr_all_en(1), i, j, k)
+
+                  if (track_feedback) then
+                     cg%w(fdbki)%arr(iarr_all_escr(ns), i, j, k) = 0.0
+                  endif
+
+               endif
+
                cg%w(uhi)%arr(iarr_all_en(1), i, j, k) = e_feed
+
 #endif /* !ISO */
+               if (track_feedback) then
+                  cg%w(fdbki)%arr(iarr_all_xfscr(ns), i, j, k) = (newfcx - fcx)/vmax
+                  cg%w(fdbki)%arr(iarr_all_yfscr(ns), i, j, k) = (newfcy - fcy)/vmax
+                  cg%w(fdbki)%arr(iarr_all_zfscr(ns), i, j, k) = (newfcz - fcz)/vmax
+               else
+                  cg%w(fdbki)%arr(iarr_all_xfscr(ns), i, j, k) = 0.0
+                  cg%w(fdbki)%arr(iarr_all_yfscr(ns), i, j, k) = 0.0
+                  cg%w(fdbki)%arr(iarr_all_zfscr(ns), i, j, k) = 0.0
+               endif
+
                cg%w(uhi)%arr(iarr_all_mx(1), i, j, k) = cg%w(uhi)%arr(iarr_all_mx(1), i, j, k) - (newfcx - fcx)/vmax
                cg%w(uhi)%arr(iarr_all_my(1), i, j, k) = cg%w(uhi)%arr(iarr_all_my(1), i, j, k) - (newfcy - fcy)/vmax
                cg%w(uhi)%arr(iarr_all_mz(1), i, j, k) = cg%w(uhi)%arr(iarr_all_mz(1), i, j, k) - (newfcz - fcz)/vmax

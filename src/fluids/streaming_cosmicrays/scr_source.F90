@@ -191,7 +191,7 @@ contains
                if (newec < 0.0) newec = ec
             endif
             if (track_feedback) then
-               cg%w(fdbki)%arr(iarr_all_escr(ns), i, j, k) = 0.0
+               cg%w(fdbki)%arr(ns + 4*(ns-1), i, j, k) = 0.0
             endif
             if (.not. disable_feedback ) then  ! Energy feedback to the MHD gas . Only the first fluid
 #ifndef ISO
@@ -215,13 +215,13 @@ contains
 
 #endif /* !ISO */
                if (track_feedback) then
-                  cg%w(fdbki)%arr(iarr_all_xfscr(ns), i, j, k) = (newfcx - fcx)/vmax
-                  cg%w(fdbki)%arr(iarr_all_yfscr(ns), i, j, k) = (newfcy - fcy)/vmax
-                  cg%w(fdbki)%arr(iarr_all_zfscr(ns), i, j, k) = (newfcz - fcz)/vmax
+                  cg%w(fdbki)%arr(ns + 1 + 4*(ns-1), i, j, k) = (newfcx - fcx)/vmax
+                  cg%w(fdbki)%arr(ns + 2 + 4*(ns-1), i, j, k) = (newfcy - fcy)/vmax
+                  cg%w(fdbki)%arr(ns + 3 + 4*(ns-1), i, j, k) = (newfcz - fcz)/vmax
                else
-                  cg%w(fdbki)%arr(iarr_all_xfscr(ns), i, j, k) = 0.0
-                  cg%w(fdbki)%arr(iarr_all_yfscr(ns), i, j, k) = 0.0
-                  cg%w(fdbki)%arr(iarr_all_zfscr(ns), i, j, k) = 0.0
+                  cg%w(fdbki)%arr(ns + 1 + 4*(ns-1), i, j, k) = 0.0
+                  cg%w(fdbki)%arr(ns + 2 + 4*(ns-1), i, j, k) = 0.0
+                  cg%w(fdbki)%arr(ns + 3 + 4*(ns-1), i, j, k) = 0.0
                endif
 
                cg%w(uhi)%arr(iarr_all_mx(1), i, j, k) = cg%w(uhi)%arr(iarr_all_mx(1), i, j, k) - (newfcx - fcx)/vmax

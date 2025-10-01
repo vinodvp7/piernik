@@ -557,16 +557,16 @@ contains
             tab(:,:,:) = cg%w(wna%ind(gpcn))%arr( (is-1)*ndims + zdim, RNG )
          case('fdbck_e_01':'fdbck_e_99')
             read(var, '(A8,I2)') aux, is
-            tab(:,:,:) = cg%w(wna%ind(gpcn))%arr(flind%scr(is)%iescr, RNG )
+            tab(:,:,:) = cg%w(wna%ind(gpcn))%arr(is + 4*(is-1), RNG )
          case('fdbck_mx_01':'fdbck_mx_99')
             read(var, '(A9,I2)') aux, is
-            tab(:,:,:) = cg%w(wna%ind(fdbck))%arr(flind%scr(is)%ixfscr, RNG )
+            tab(:,:,:) = cg%w(wna%ind(fdbck))%arr(is +1 + 4*(is-1), RNG )
          case('fdbck_my_01':'fdbck_my_99')
             read(var, '(A9,I2)') aux, is
-            tab(:,:,:) = cg%w(wna%ind(fdbck))%arr(flind%scr(is)%iyfscr, RNG )
+            tab(:,:,:) = cg%w(wna%ind(fdbck))%arr(is + 2 + 4*(is-1), RNG )
          case('fdbck_mz_01':'fdbck_mz_99')
             read(var, '(A9,I2)') aux, is
-            tab(:,:,:) = cg%w(wna%ind(fdbck))%arr(flind%scr(is)%izfscr, RNG )
+            tab(:,:,:) = cg%w(wna%ind(fdbck))%arr(is +3 + 4*(is-1), RNG )
 #ifdef MAGNETIC
          !< |B·∇Pc|
          case ('bdotgradpc_01':'bdotgradpc_50')

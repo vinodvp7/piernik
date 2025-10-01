@@ -231,12 +231,7 @@ contains
       last_res_time = 0.0
 
 #ifdef HDF5
-       
-      if (master .and. restart == 'last') then
-         nrestart = INVALID
-         call find_last_restart(nrestart)
-      endif
-      if (master .and. restart /= 'last' ) call find_last_restart(nrestart)
+      if (master .and. restart == 'last') call find_last_restart(nrestart)
 #endif /* HDF5 */
       call piernik_MPI_Barrier
       call piernik_MPI_Bcast(nrestart)
@@ -933,7 +928,7 @@ contains
 
       implicit none
 
-      integer(kind=4), intent(inout) :: restart_number
+      integer(kind=4), intent(out) :: restart_number
 
       integer(kind=4)              :: nres
       integer                      :: unlink_stat
@@ -941,8 +936,8 @@ contains
 
       restart_number = INVALID
 
-         open(newunit=unlink_stat, file='restart_list.tmp', status='unknown')
-         close(unlink_stat, status='delete')
+      open(newunit=unlink_stat, file='restart_list.tmp', status='unknown')
+      close(unlink_stat, status='delete')
 
       do nres = 9999, 0, -1
          inquire(file = trim(output_fname(RD,'.res', nres)), exist = exist)
@@ -1689,7 +1684,7 @@ contains
       use constants,          only: MINL
 #endif /* COSM_RAYS || MAGNETIC */
 #ifdef MAGNETIC
-      use constants,          only: DIVB_HDC, I_ZERO, RIEMANN_SPLIT, RIEMANN_UNSPLIT, half, V_LOG
+      use constants,          only: DIVB_HDC, I_ZERO, RIEMANN_SPLIT, half, V_LOG
       use dataio_pub,         only: msg
       use func,               only: sq_sum3
       use global,             only: cfl, divB_0_method, which_solver, cc_mag
@@ -2001,7 +1996,7 @@ contains
             call cmnlog_s(fmt_loc,   'max(|b|)    ', id, b_max)
 #endif /* CRESP */
             call cmnlog_s(fmt_loc,   'max(|divb|) ', id, divb_max)
-            if (divB_0_method /= DIVB_HDC .or. all(which_solver /= [RIEMANN_SPLIT, RIEMANN_UNSPLIT])) id = "N/A"
+            if (divB_0_method /= DIVB_HDC .or. which_solver /= RIEMANN_SPLIT) id = "N/A"
             call cmnlog_s(fmt_loc, 'max(|c_h|)  ', id, ch_max)
 #endif /* MAGNETIC */
             if (has_neu) call common_shout(flind%neu%snap,'NEU',.true.,.true.,.true.)

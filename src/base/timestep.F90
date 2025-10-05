@@ -223,6 +223,7 @@ contains
          endif
          call write_crashed("[timestep:time_step] dt < dt_min")
       endif
+      if (main_call) dt_full = dt
 
       if (which_solver == RIEMANN_UNSPLIT) then  ! here it should be something more general than just split/unsplit difference
          dt = min(min(dt, dt_max), ((tend-t)) + (two*epsilon(one)*((tend-t))))
@@ -239,7 +240,6 @@ contains
       endif
 #endif /* DEBUG */
       call compare_array1D([dt])  ! just in case
-      if (main_call) dt_full = dt
 
       call ppp_main%stop(ts_label)
 
@@ -267,6 +267,10 @@ contains
 #ifdef CRESP
       use cresp_grid,     only: cfl_cresp_violation
 #endif /* CRESP */
+#ifdef STREAM_CR
+      use scr_stability,   only: check_for_scr_cfl_violations
+      use initstreamingcr, only: scr_cfl_violation
+#endif /* STREAM_CR */
 
       implicit none
 
@@ -286,6 +290,15 @@ contains
          unwanted_negatives = .true.
       endif
 #endif /* CRESP */
+#ifdef STREAM_CR
+      call check_for_scr_cfl_violations
+      call piernik_MPI_Allreduce(scr_cfl_violation, pLOR)
+      if (scr_cfl_violation) then
+         if (master) call warn("[timestep:check_cfl_violation] Possible violation of CFL in Streaming CR module")
+         unwanted_negatives = .true.
+         scr_cfl_violation  = .false.
+      endif
+#endif /* STREAM_CR */
 #ifdef COSM_RAYS
       call piernik_MPI_Allreduce(cr_negative, pLOR)
       if (cr_negative .and. disallow_CRnegatives) then

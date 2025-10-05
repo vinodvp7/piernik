@@ -45,9 +45,13 @@ module initstreamingcr
 
    ! namelist parameters
    integer(kind=4)                         :: nscr                !< number of non-spectral streaming CR components
+   integer(kind=4)                         :: n_adaptive_step     !< number of steps upto which adaptive vmax is applied before returning backto original vmax
+   integer(kind=4)                         :: max_flips           !< Maximum allowed flips of divFc at a single cell before cfl is violated
    real                                    :: escr_floor          !< floor value of streaming CR energy density
    real                                    :: vmax                !< maximum speed in the simulation which controls the streaming CR timestepping
    real                                    :: scr_eff             !< conversion rate of SN explosion energy to streaming CR energy (default = 0.1)
+   real                                    :: vmax_growth_factor  !< rate at which vmax should be increased for adaptive vmax
+   real                                    :: max_vmax            !< maximum allowed vmax . sim fails if adaptive vmax demands more than this
    logical                                 :: use_escr_floor      !< floor streaming CR energy density or not
    real, dimension(50)                     :: gamma_scr           !< adiabatic coefficient of streaming cosmic ray species
    real, dimension(50)                     :: sigma_paral         !< diffusion coefficient in the direction parallel to B
@@ -57,11 +61,15 @@ module initstreamingcr
    logical                                 :: disable_streaming   !< whether cosmic rays stream along B
    logical                                 :: cr_sound_speed      !< whether to add cr sound speed when calculating v_diff. Ideally keep it as false so that sound speed is added as it increases numerical stability.
    logical                                 :: track_feedback      !< whether to track feedback of energy/momentum to MHD gas. Need to output var if enabled 
+   logical                                 :: adaptive_vmax       !< Whether vmax is fixed or adaptive
 
    integer, parameter                      :: nscr_max   = 50     !< Maximum number of allowed streaming cr component
    real, parameter                         :: tau_asym   = 1e-3   !< Used in the calculation of R in streaming_cr_hlle where below this value the function is taylor expanded in tau
    real, parameter                         :: sigma_huge = 1e10   !< Default huge value for interaction coefficient that essentially means diffusion is switched off
    real, parameter                         :: gamma_def  = 4./3.  !< Default huge value for interaction coefficient that essentially means diffusion is switched off
+   real                                    :: user_vmax
+   real,parameter                          :: min_sign_func = 1e-10
+   logical                                 :: scr_cfl_violation = .false.
    
    
 contains
@@ -79,12 +87,17 @@ contains
       integer(kind=4) :: nl, nn
 
       namelist /STREAMING_CR/ nscr, escr_floor, use_escr_floor, sigma_paral, sigma_perp, vmax, ord_pc_grad, &
-      &                       disable_feedback, disable_streaming, gamma_scr, cr_sound_speed, scr_eff, track_feedback
+      &                       disable_feedback, disable_streaming, gamma_scr, cr_sound_speed, scr_eff, track_feedback, adaptive_vmax, &
+      &                       max_vmax, vmax_growth_factor, n_adaptive_step, max_flips
 
 
       nscr                     = 1
+      n_adaptive_step          = 50
+      max_flips                = 5
       ord_pc_grad              = 2
       escr_floor               = 1e-6
+      max_vmax                 = 50000.0
+      vmax_growth_factor       = 2.0
       vmax                     = 100.0
       scr_eff                  = 0.1        ! Maybe this should be an array for different conversion rate to different species ?
       use_escr_floor           = .true.
@@ -95,6 +108,8 @@ contains
       disable_streaming        = .false.
       cr_sound_speed           = .true.
       track_feedback           = .false.
+      adaptive_vmax            = .true.
+
 
       if (master) then
          if (.not.nh%initialized) call nh%init()
@@ -118,18 +133,24 @@ contains
 
       if (master) then
          ibuff(1) = nscr
-         ibuff(2) = ord_pc_grad
+         ibuff(2) = n_adaptive_step
+         ibuff(3) = ord_pc_grad
+         ibuff(4) = max_flips
+
          rbuff(1) = escr_floor
          rbuff(2) = vmax
          rbuff(3) = scr_eff
+         rbuff(4) = vmax_growth_factor
+         rbuff(5) = max_vmax
 
          lbuff(1) = use_escr_floor
          lbuff(2) = disable_feedback
          lbuff(3) = disable_streaming
          lbuff(4) = cr_sound_speed
          lbuff(5) = track_feedback
+         lbuff(6) = adaptive_vmax
 
-         nl       = 5                                     ! this must match the last lbuff() index above
+         nl       = 6                                     ! this must match the last lbuff() index above
          nn       = count(rbuff(:) < huge(1.), kind=4)    ! this must match the last rbuff() index above
          ibuff(ubound(ibuff, 1)    ) = nn
          ibuff(ubound(ibuff, 1) - 1) = nl
@@ -152,17 +173,22 @@ contains
       if (slave) then
 
          nscr                = ibuff(1)
-         ord_pc_grad         = ibuff(2)
+         n_adaptive_step     = ibuff(2)
+         ord_pc_grad         = ibuff(3)
+         max_flips           = ibuff(4)
 
          escr_floor          = rbuff(1)
          vmax                = rbuff(2)
          scr_eff             = rbuff(3)
+         vmax_growth_factor  = rbuff(4)
+         max_vmax            = rbuff(5)
 
          use_escr_floor      = lbuff(1)
          disable_feedback    = lbuff(2)
          disable_streaming   = lbuff(3)
          cr_sound_speed      = lbuff(4)
          track_feedback      = lbuff(5)
+         adaptive_vmax       = lbuff(6)
 
          nn                  = ibuff(ubound(ibuff, 1)    )    ! this must match the last rbuff() index above
          nl                  = ibuff(ubound(ibuff, 1) - 1)    ! this must match the last lbuff() index above
@@ -195,6 +221,11 @@ contains
             exit
          enddo
       endif
+
+      if (master) user_vmax = vmax
+
+      call piernik_MPI_Bcast(user_vmax)
+
 
    end subroutine init_streamingcr
 

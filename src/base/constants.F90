@@ -283,6 +283,8 @@ module constants
    character(len=dsetnamelen), parameter :: sgmn      = "sgmn"      !< interaction coefficient for streaming cosmic rays
    character(len=dsetnamelen), parameter :: v_dfst    = "v_dfst"    !< Diffusion + streaming speed
    character(len=dsetnamelen), parameter :: fdbck     = "fdbck"     !< main array carrying the flux of the auxillary scalar psi
+   character(len=dsetnamelen), parameter :: sign_dvf  = "sign_dvf"  !< main array carrying the flux of the auxillary scalar psi
+   character(len=dsetnamelen), parameter :: scr_cfl_n = "scr_cfl_n" !< main array carrying the flux of the auxillary scalar psi
 #endif /* STREAM_CR */
    ! misc
    character(len=dsetnamelen), parameter :: wcu_n   = "wcu"     !< (resistivity) COMMENT ME

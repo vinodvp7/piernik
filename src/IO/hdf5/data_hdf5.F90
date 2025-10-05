@@ -394,7 +394,7 @@ contains
 #endif /* !ISO */
 #ifdef STREAM_CR
       use initstreamingcr,    only: nscr, vmax
-      use constants,          only: gpcn, sgmn, ndims, fdbck
+      use constants,          only: gpcn, sgmn, ndims, fdbck, scr_cfl_n, sign_dvf
       use named_array_list,   only: wna
 #endif /* STREAM_CR */
 
@@ -582,6 +582,12 @@ contains
          case ('sigma_perp_01':'sigma_perp_50')                      !> perpendicular component of σ
             read(var, '(A12,I2)') aux, is
             tab(:,:,:) = 1.0/vmax * cg%w(wna%ind(sgmn))%arr( 2 * (is-1) + 2, RNG )
+         case ('sgnfc_01':'sgnfc_50')                      !> perpendicular component of σ
+            read(var, '(A6,I2)') aux, is
+            tab(:,:,:) = cg%w(wna%ind(scr_cfl_n))%arr(is, RNG )
+         case ('divfc_01':'divfc_50')                      !> perpendicular component of σ
+            read(var, '(A6,I2)') aux, is
+            tab(:,:,:) = cg%w(wna%ind(sign_dvf))%arr(is, RNG )
 #endif /* STREAM_CR */
 #ifdef TRACER
          case ("trcr")

@@ -396,6 +396,16 @@ contains
                write(aux, '(a,"_",i2.2)') 'fdbck_mz', s
                call append_var(aux)
             enddo
+         case ('sgnfc')
+            do s = 1, nscr
+               write(aux, '(a,"_",i2.2)') 'sgnfc', s
+               call append_var(aux)
+            enddo
+         case ('divfc')
+            do s = 1, nscr
+               write(aux, '(a,"_",i2.2)') 'divfc', s
+               call append_var(aux)
+            enddo
 #endif /* STREAM_CR */
             case default
                if (.not. has_ion .and. (any(trim(vars(i)) == ["deni", "vlxi", "vlyi", "vlzi", "enei", "ethi", "prei"]) .or. any(trim(vars(i)) == ["momxi", "momyi", "momzi"]))) then
@@ -763,7 +773,7 @@ contains
          &                       last_res_time, last_tsl_time, last_log_time, nres, nhdf, domain_dump
       use domain,          only: dom
       use fluidindex,      only: flind
-      use global,          only: t, dt, nstep
+      use global,          only: t, dt_full, nstep
       use hdf5,            only: HID_T, SIZE_T
       use h5lt,            only: h5ltset_attribute_double_f, h5ltset_attribute_int_f, h5ltset_attribute_string_f
       use mass_defect,     only: magic_mass
@@ -787,7 +797,7 @@ contains
 
       rbuffer_size = bufsize
       rbuffer(1)   = t                       ; rbuffer_name(1)   = "time" !rr2
-      rbuffer(2)   = dt                      ; rbuffer_name(2)   = "timestep" !rr2
+      rbuffer(2)   = dt_full                 ; rbuffer_name(2)   = "timestep" !rr2
       rbuffer(3:4) = dom%edge(xdim, :)       ; rbuffer_name(3:4) = [ "xmin", "xmax" ] !rr1
       rbuffer(5:6) = dom%edge(ydim, :)       ; rbuffer_name(5:6) = [ "ymin", "ymax" ] !rr1
       rbuffer(7:8) = dom%edge(zdim, :)       ; rbuffer_name(7:8) = [ "zmin", "zmax" ] !rr1
@@ -851,7 +861,7 @@ contains
       use constants,          only: I_ONE
       use dataio_pub,         only: require_problem_IC, piernik_hdf5_version2, problem_name, run_id, last_hdf_time, &
          &                          last_res_time, last_log_time, last_tsl_time, nres, nhdf, domain_dump
-      use global,             only: t, dt, nstep
+      use global,             only: t, dt_full, nstep
       use hdf5,               only: HID_T
       use mass_defect,        only: magic_mass
       use set_get_attributes, only: set_attr
@@ -863,7 +873,7 @@ contains
 
       ! real attributes
       call set_attr(file_id, "time",          [t                     ]) !rr2
-      call set_attr(file_id, "timestep",      [dt                    ]) !rr2
+      call set_attr(file_id, "timestep",      [dt_full               ]) !rr2
       call set_attr(file_id, "piernik",       [piernik_hdf5_version2 ]) !rr1, rr2
       call set_attr(file_id, "last_log_time", [last_log_time         ]) !rr2
       call set_attr(file_id, "last_tsl_time", [last_tsl_time         ]) !rr2

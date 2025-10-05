@@ -44,7 +44,7 @@ module dataio
    implicit none
 
    private
-   public :: check_log, check_tsl, dump, write_data, write_crashed, cleanup_dataio, init_dataio, init_dataio_parameters, user_msg_handler, vars
+   public :: check_log, check_tsl, dump, write_data, write_crashed, cleanup_dataio, init_dataio, init_dataio_parameters, user_msg_handler, vars, restart_from_last
 
    integer, parameter       :: nvarsmx = 50          !< maximum number of variables to dump in hdf files
    character(len=cbuff_len) :: restart               !< choice of restart %file: if restart = 'last': automatic choice of the last restart file regardless of "nrestart" value; if something else is set: "nrestart" value is fixing
@@ -67,7 +67,7 @@ module dataio
    logical                  :: tsl_with_ptc          !< place pressure, temperature and sound speed extrema in timeslice file (even if ISO while they are constant or only density dependent)
    logical                  :: init_hdf_dump, init_res_dump      !< force initial hdf/res dump
    logical, dimension(RES:TSL) :: dump = .false.     !< logical values for all dump types to restrict to only one dump of each type a step
-
+   logical                  :: restart_from_last = .false.
 !   integer                  :: nchar                 !< number of characters in a user/system message
    integer(kind=4), parameter :: umsg_len = 16
    character(len=umsg_len)  :: umsg                  !< string of characters - content of a user/system message
@@ -504,6 +504,11 @@ contains
             piernik_verbosity = V_INFO
             if (master) call warn("[dataio:dataio_par_io] non recognized verbosity level '" // trim(verbosity) // "', defaulting to '" // trim(v_name(piernik_verbosity)) // "'")
       end select
+
+#ifdef HDF5
+      if (master .and. restart == 'last') restart_from_last = .true.
+      call piernik_MPI_Bcast(restart_from_last)
+#endif /* HDF5 */
 
    end subroutine dataio_par_io
 

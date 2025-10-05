@@ -243,7 +243,7 @@ contains
       use global,           only: cc_mag, ord_mag_prolong
 #endif /* MAGNETIC */
 #ifdef STREAM_CR
-      use constants,        only: rtmn, gpcn, sgmn, v_dfst, fdbck
+      use constants,        only: rtmn, gpcn, sgmn, v_dfst, fdbck, sign_dvf, scr_cfl_n
       use initstreamingcr,  only: nscr
 #endif /* STREAM_CR */
 
@@ -286,6 +286,8 @@ contains
          call this%reg_var(sgmn,   vital = .false., restart_mode = AT_NO_B, dim4 = 2 * nscr, ord_prolong = ord_fluid_prolong)       !! Stores interaction coefficient parallel and perpendicular to B
          call this%reg_var(v_dfst, vital = .false., restart_mode = AT_NO_B, dim4 = ndims * nscr, ord_prolong = ord_fluid_prolong)   !! Store the streaming + diffusion mixed transport speed of streaming cosmic rays
          call this%reg_var(fdbck,  vital = .false., restart_mode = AT_NO_B, dim4 = 4 * nscr, ord_prolong = ord_fluid_prolong)   !! Store the streaming + diffusion mixed transport speed of streaming cosmic rays
+         call this%reg_var(scr_cfl_n,  vital = .false., restart_mode = AT_NO_B, dim4 = nscr, ord_prolong = ord_fluid_prolong)   !! Store the streaming + diffusion mixed transport speed of streaming cosmic rays
+         call this%reg_var(sign_dvf,  vital = .false., restart_mode = AT_NO_B, dim4 = nscr, ord_prolong = ord_fluid_prolong)   !! Store the streaming + diffusion mixed transport speed of streaming cosmic rays
 
          call set_streamingcr_names
 #endif STREAM_CR /* STREAM_CR */

@@ -199,7 +199,7 @@ contains
       use fluidindex,        only: iarr_all_xfscr, iarr_all_yfscr, iarr_all_zfscr
       use initstreamingcr,   only: vmax
       use named_array_list,  only: wna
-      use constants,         only: uh_n, first_stage
+      use constants,         only: uh_n, first_stage, scr_cfl_n, sign_dvf
       use global,            only: integration_order
 #ifdef MAGNETIC
       use constants,         only: magh_n
@@ -228,6 +228,10 @@ contains
 #endif /* MAGNETIC */
 
          call update_interaction_term(cg, istep = first_stage(integration_order), at_source = .false.)
+
+         cg%w(wna%ind(sign_dvf))%arr(:,:,:,:) = 1.0
+
+         cg%w(wna%ind(scr_cfl_n))%arr(:,:,:,:) = 0.0
 
          cgl => cgl%nxt
 

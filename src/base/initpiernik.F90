@@ -50,7 +50,7 @@ contains
            &                           PIERNIK_INIT_GRID, PIERNIK_INIT_IO_IC, PIERNIK_POST_IC, &
            &                           INCEPTIVE, tmr_fu, cbuff_len, PPP_PROB, &
            &                           v_name, V_LOG, V_DEBUG, V_INFO, V_ESSENTIAL, V_LOWEST, V_HIGHEST
-      use dataio,                only: init_dataio, init_dataio_parameters, write_data
+      use dataio,                only: init_dataio, init_dataio_parameters, write_data, restart_from_last
       use dataio_pub,            only: nrestart, restarted_sim, wd_rd, par_file, tmp_log_file, msg, printio, printinfo, piernik_verbosity, &
            &                           warn, die, require_problem_IC, problem_name, run_id, code_progress, log_wr, set_colors
       use decomposition,         only: init_decomposition
@@ -291,6 +291,7 @@ contains
             if (master) call printinfo("[initpiernik] Calling problem specific, post restart procedure", V_INFO)
             call problem_post_restart
          endif
+         if (restart_from_last) call init_psi ! initialize the auxiliary field for divergence cleaning when needed . call it to clean because at the end of simulation it dumped a huge value in psi
       else
 
          call ppp_main%start(iter_label // "0", PPP_PROB)

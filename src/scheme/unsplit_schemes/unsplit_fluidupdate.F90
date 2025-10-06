@@ -79,6 +79,11 @@ contains
 
       logical :: forward
 
+
+
+      call repeat_fluidstep
+      call update_chspeed
+
       t = t + dt
       halfstep = .false.
 
@@ -89,9 +94,7 @@ contains
       else
          forward = .true.
       endif
-
-      call repeat_fluidstep
-      call update_chspeed
+      
 #ifdef SHEAR
       call shear_3sweeps
 #endif /* SHEAR */

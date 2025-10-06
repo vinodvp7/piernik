@@ -107,7 +107,9 @@ contains
 #ifdef RANDOMIZE
       use randomization,    only: randoms_redostep
 #endif /* RANDOMIZE */
-
+#ifdef STREAM_CR
+      use scr_stability,    only: scr_rescale_after_retry
+#endif /* STREAM_CR */
       implicit none
 
       type(cg_list_element), pointer :: cgl
@@ -137,6 +139,9 @@ contains
          nstep = nstep_saved
          dt = dt_full * dt_cur_shrink
          call reset_freezing_speed
+#ifdef STREAM_CR
+         call scr_rescale_after_retry()   ! <— add this call
+#endif /* STREAM_CR */
          call downgrade_magic_mass
          if (associated(user_reaction_to_redo_step)) call user_reaction_to_redo_step
       else

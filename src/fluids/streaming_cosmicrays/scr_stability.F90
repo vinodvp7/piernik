@@ -34,113 +34,155 @@
 !! In this module following namelist of parameters is specified:
 !! \copydetails initstreamingcr::init_streamingcr
 !<
+!-------------------------------------------------------------------------------
+! Streaming-CR stability helpers (sign(div Fc) flip detection + adaptive vmax)
+!-------------------------------------------------------------------------------
 module scr_stability
-
 ! pulled by STREAM_CR
-
    implicit none
 
-   integer, protected, save :: num_adapt = 0, num_growth_applied = 0
-   public :: num_adapt, num_growth_applied, check_for_scr_cfl_violations
+   public :: check_for_scr_cfl_violations, scr_rescale_after_retry
+   public :: scr_pending_rescale, num_adapt, num_growth_applied
+
+   logical, save :: scr_pending_rescale = .false.   ! set true after MPI allreduce if violation seen
+   integer, save :: num_adapt = 0                   ! step index when vmax was last grown
+   integer, save :: num_growth_applied = 0          ! how many growths are active (since last revert)
 
 contains
 
+!--- Detect flip bursts; don't change vmax here. Also handle quiet-window revert. ---
    subroutine check_for_scr_cfl_violations
-
-      use constants,          only: xdim, ydim, zdim, sign_dvf, scr_cfl_n, LO, HI
+      use constants,          only: xdim, ydim, zdim, LO, HI, sign_dvf, scr_cfl_n
       use named_array_list,   only: wna
-      use mpisetup,           only: master
       use global,             only: nstep
-      use dataio_pub,         only: die
       use fluidindex,         only: flind, iarr_all_xfscr, iarr_all_yfscr, iarr_all_zfscr
       use cg_leaves,          only: leaves
       use cg_list,            only: cg_list_element
       use grid_cont,          only: grid_container
-      use initstreamingcr,    only: vmax, min_sign_func, max_vmax, scr_cfl_violation, &
-      &                             vmax_growth_factor, n_adaptive_step, max_flips, user_vmax
-
+      use initstreamingcr,    only: min_sign_func, max_flips, vmax, user_vmax, &
+     &                               n_adaptive_step, scr_cfl_violation
       implicit none
 
-      type(cg_list_element), pointer            :: cgl
-      type(grid_container),  pointer            :: cg
-      integer                                   :: ns, i, j ,k, sign_dvfi, scr_cfl_i
-      real, dimension(:,:,:), allocatable       :: div_fc
-      logical                                   :: any_violation, grew_this_step
+      type(cg_list_element), pointer :: cgl
+      type(grid_container),  pointer :: cg
+      integer :: ns, i, j, k, i_sign, i_flip
+      real, allocatable :: div_fc(:,:,:)
+      logical :: any_violation
+      real    :: r_back
 
-      grew_this_step = .false.
       any_violation = .false.
-
-      sign_dvfi = wna%ind(sign_dvf)
-      scr_cfl_i = wna%ind(scr_cfl_n)
+      i_sign = wna%ind(sign_dvf)
+      i_flip = wna%ind(scr_cfl_n)
 
       cgl => leaves%first
       do while (associated(cgl))
          cg => cgl%cg
+         allocate(div_fc( cg%lhn(xdim,LO):cg%lhn(xdim,HI), &
+                          cg%lhn(ydim,LO):cg%lhn(ydim,HI), &
+                          cg%lhn(zdim,LO):cg%lhn(zdim,HI) ))
 
-         allocate(div_fc(cg%lhn(xdim,LO):cg%lhn(xdim,HI), cg%lhn(ydim,LO):cg%lhn(ydim,HI), cg%lhn(zdim,LO):cg%lhn(zdim,HI)))
+         do ns = 1, flind%nscr
+            div_fc = cg%get_divergence(ord=2, iw=wna%fi, &
+                     vec=(/iarr_all_xfscr(ns), iarr_all_yfscr(ns), iarr_all_zfscr(ns)/))
 
-         do ns =1 , flind%nscr
-            div_fc(:,:,:) = cg%get_divergence(ord = 2, iw = wna%fi, vec = [iarr_all_xfscr(ns), iarr_all_yfscr(ns), iarr_all_zfscr(ns)])
-            do concurrent (k = cg%lhn(zdim,LO):cg%lhn(zdim,HI), j = cg%lhn(ydim,LO):cg%lhn(ydim,HI), &
-            & i = cg%lhn(xdim,LO):cg%lhn(xdim,HI))
+            do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
+               do j = cg%lhn(ydim,LO), cg%lhn(ydim,HI)
+                  do i = cg%lhn(xdim,LO), cg%lhn(xdim,HI)
 
-               if (cg%w(sign_dvfi)%arr(ns, i, j, k) * div_fc(i, j, k) < 0 .and. abs(div_fc(i, j, k)) > min_sign_func) then
-                  cg%w(scr_cfl_i)%arr(ns, i, j, k) = cg%w(scr_cfl_i)%arr(ns, i, j, k) + 1
-               else
-                  cg%w(scr_cfl_i)%arr(ns, i, j, k) = 0.0
-               endif
+                     if ( abs(div_fc(i,j,k)) > min_sign_func .and. &
+                          cg%w(i_sign)%arr(ns,i,j,k) * div_fc(i,j,k) < 0.0 ) then
+                        cg%w(i_flip)%arr(ns,i,j,k) = cg%w(i_flip)%arr(ns,i,j,k) + 1.0
+                     else
+                        cg%w(i_flip)%arr(ns,i,j,k) = 0.0
+                     end if
 
-               cg%w(sign_dvfi)%arr(ns, i, j, k) = div_fc(i, j, k) 
+                     cg%w(i_sign)%arr(ns,i,j,k) = div_fc(i,j,k)
 
-               if (cg%w(scr_cfl_i)%arr(ns,i,j,k) > max_flips) any_violation = .true.
+                     if (cg%w(i_flip)%arr(ns,i,j,k) > real(max_flips, kind(cg%w(i_flip)%arr))) any_violation = .true.
+                  end do
+               end do
             end do
          end do
+
          deallocate(div_fc)
          cgl => cgl%nxt
       end do
 
       scr_cfl_violation = any_violation
-      if (scr_cfl_violation) then
-         if (vmax_growth_factor * vmax < max_vmax) then
-            vmax      = vmax_growth_factor * vmax
-            num_adapt = nstep
-            grew_this_step = .true.
-         else
-            if (master) call die("[scr_stability:check_for_scr_cfl_violations] Maximum value of vmax reached")
-         endif
-      endif
-      cgl => leaves%first
-      do while (associated(cgl))
-         cg => cgl%cg
-         if (scr_cfl_violation) then
-            cg%u(iarr_all_xfscr, :, :, :) = cg%u(iarr_all_xfscr, :, :, :) / vmax_growth_factor
-            cg%u(iarr_all_yfscr, :, :, :) = cg%u(iarr_all_yfscr, :, :, :) / vmax_growth_factor
-            cg%u(iarr_all_zfscr, :, :, :) = cg%u(iarr_all_zfscr, :, :, :) / vmax_growth_factor
-         else if ( (nstep - num_adapt) > n_adaptive_step .and. num_growth_applied > 0 ) then
-            cg%u(iarr_all_xfscr, :, :, :) = cg%u(iarr_all_xfscr, :, :, :) * vmax_growth_factor**num_growth_applied
-            cg%u(iarr_all_yfscr, :, :, :) = cg%u(iarr_all_yfscr, :, :, :) * vmax_growth_factor**num_growth_applied
-            cg%u(iarr_all_zfscr, :, :, :) = cg%u(iarr_all_zfscr, :, :, :) * vmax_growth_factor**num_growth_applied
-         endif
-         cgl => cgl%nxt
-      end do
 
-      if (grew_this_step) then
-         num_growth_applied = num_growth_applied + 1
-         cg%w(scr_cfl_i)%arr = 0.0
-      endif
+      ! Quiet-window revert: only after >= n_adaptive_step quiet steps
+      if (.not. any_violation) then
+         if (num_growth_applied > 0 .and. (nstep - num_adapt) >= n_adaptive_step) then
+            if (vmax /= user_vmax) then
+               r_back = user_vmax / vmax     ! keep F/vmax invariant => F *= r_back; vmax := user_vmax
+               cgl => leaves%first
+               do while (associated(cgl))
+                  cg => cgl%cg
+                  cg%u(iarr_all_xfscr, :, :, :) = cg%u(iarr_all_xfscr, :, :, :) * r_back
+                  cg%u(iarr_all_yfscr, :, :, :) = cg%u(iarr_all_yfscr, :, :, :) * r_back
+                  cg%u(iarr_all_zfscr, :, :, :) = cg%u(iarr_all_zfscr, :, :, :) * r_back
+                  cg%w(i_flip)%arr = 0.0      ! clear flip counters; keep sign history
+                  cgl => cgl%nxt
+               end do
+            end if
+            vmax               = user_vmax
+            num_growth_applied = 0
+         end if
+      end if
+   end subroutine check_for_scr_cfl_violations
 
-      ! --- revert block (after n_adaptive_step) ---
-      if (.not. scr_cfl_violation .and. (nstep - num_adapt) > n_adaptive_step .and. num_growth_applied > 0) then
-         vmax = user_vmax
-         ! (Fc already multiplied by vmax_growth_factor**num_growth_applied inside the cgl loop)
-         num_growth_applied = 0
+!--- Apply the growth after a retry is scheduled; rescale F and clear counters. ---
+   subroutine scr_rescale_after_retry()
+      use cg_leaves,        only: leaves
+      use cg_list,          only: cg_list_element
+      use grid_cont,        only: grid_container
+      use named_array_list, only: wna
+      use constants,        only: scr_cfl_n
+      use fluidindex,       only: iarr_all_xfscr, iarr_all_yfscr, iarr_all_zfscr
+      use initstreamingcr,  only: vmax, user_vmax, vmax_growth_factor, max_vmax
+      use global,           only: nstep
+      implicit none
+
+      type(cg_list_element), pointer :: cgl
+      type(grid_container),  pointer :: cg
+      integer :: i_flip
+      real    :: cap, r_grow
+
+      if (.not. scr_pending_rescale) return
+
+      cap    = max_vmax / vmax
+      r_grow = min(vmax_growth_factor, cap)
+      if (r_grow <= 1.0) then
+         ! At cap; just clear counters so we don't instantly re-trigger
+         i_flip = wna%ind(scr_cfl_n)
          cgl => leaves%first
          do while (associated(cgl))
             cg => cgl%cg
-            cg%w(scr_cfl_i)%arr = 0.0
+            cg%w(i_flip)%arr = 0.0
             cgl => cgl%nxt
          end do
-      endif
-   end subroutine check_for_scr_cfl_violations
+         scr_pending_rescale = .false.
+         return
+      end if
+
+      vmax = min(vmax * r_grow, max_vmax)
+
+      ! Keep F/vmax invariant: F_new = F_old / r_grow
+      i_flip = wna%ind(scr_cfl_n)
+      cgl => leaves%first
+      do while (associated(cgl))
+         cg => cgl%cg
+         cg%u(iarr_all_xfscr, :, :, :) = cg%u(iarr_all_xfscr, :, :, :) / r_grow
+         cg%u(iarr_all_yfscr, :, :, :) = cg%u(iarr_all_yfscr, :, :, :) / r_grow
+         cg%u(iarr_all_zfscr, :, :, :) = cg%u(iarr_all_zfscr, :, :, :) / r_grow
+         cg%w(i_flip)%arr = 0.0
+         cgl => cgl%nxt
+      end do
+
+      num_adapt           = nstep
+      num_growth_applied  = num_growth_applied + 1
+      scr_pending_rescale = .false.
+   end subroutine scr_rescale_after_retry
 
 end module scr_stability
+

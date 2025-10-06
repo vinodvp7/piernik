@@ -150,7 +150,7 @@ contains
                   do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
                      zk = cg%z(k)
 
-                     cg%u(fl%idn,i,j,k) = 1.0
+                     cg%u(fl%idn,i,j,k) = 1.e-3
                      cg%u(fl%imx,i,j,k) = 0.0
                      cg%u(fl%imy,i,j,k) = 0.0
                      cg%u(fl%imz,i,j,k) = 0.0

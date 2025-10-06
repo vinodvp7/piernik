@@ -268,8 +268,8 @@ contains
       use cresp_grid,     only: cfl_cresp_violation
 #endif /* CRESP */
 #ifdef STREAM_CR
-      use scr_stability,   only: check_for_scr_cfl_violations
-      use initstreamingcr, only: scr_cfl_violation
+      use scr_stability,   only: check_for_scr_cfl_violations, scr_pending_rescale
+      use initstreamingcr, only: scr_cfl_violation, adaptive_vmax
 #endif /* STREAM_CR */
 
       implicit none
@@ -291,12 +291,17 @@ contains
       endif
 #endif /* CRESP */
 #ifdef STREAM_CR
-      call check_for_scr_cfl_violations
-      call piernik_MPI_Allreduce(scr_cfl_violation, pLOR)
-      if (scr_cfl_violation) then
-         if (master) call warn("[timestep:check_cfl_violation] Possible violation of CFL in Streaming CR module")
-         unwanted_negatives = .true.
-         scr_cfl_violation  = .false.
+      if (adaptive_vmax) then
+         call check_for_scr_cfl_violations
+         call piernik_MPI_Allreduce(scr_cfl_violation, pLOR)
+
+         if (scr_cfl_violation) then
+            if (master) call warn("[timestep:check_cfl_violation] Possible violation of CFL in Streaming CR module")
+            unwanted_negatives = .true.
+            scr_pending_rescale = .true.         ! <— tell retry path to grow vmax & rescale F
+            ! (optional) you may clear scr_cfl_violation here; the repeat flag is already set
+            scr_cfl_violation = .false.
+         end if
       endif
 #endif /* STREAM_CR */
 #ifdef COSM_RAYS

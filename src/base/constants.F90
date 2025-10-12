@@ -267,6 +267,13 @@ module constants
    character(len=dsetnamelen), parameter :: nbdn_n  = "nbdn"    !< density from particles
    character(len=dsetnamelen), parameter :: prth_n  = "prth"    !< histogram of particles on the grid
 #endif /* NBODY */
+#ifdef STREAM_CR
+   character(len=dsetnamelen), parameter :: gpcn      = "gpcn"      !< array of gradient of Pc
+   character(len=dsetnamelen), parameter :: rtmn      = "rtmn"      !< rotation matrix for frame transformation where B is along Bx
+   character(len=dsetnamelen), parameter :: sgmn      = "sgmn"      !< interaction coefficient for streaming cosmic rays
+   character(len=dsetnamelen), parameter :: v_dfst    = "v_dfst"    !< Diffusion + streaming speed
+   character(len=dsetnamelen), parameter :: fdbck     = "fdbck"     !< main array carrying the flux of the auxillary scalar psi
+#endif /* STREAM_CR */
    ! misc
    character(len=dsetnamelen), parameter :: wcu_n   = "wcu"     !< (resistivity) COMMENT ME
    character(len=dsetnamelen), parameter :: cs_i2_n = "cs_iso2" !< map of imposed isothermal sound speed

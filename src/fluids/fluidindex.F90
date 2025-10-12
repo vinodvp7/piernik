@@ -109,22 +109,54 @@ contains
 
    end subroutine set_fluidindex_arrays
 
+#ifdef STREAM_CR
+
+   subroutine set_scrindex_arrays(scr_fluid)
+
+      use fluidtypes,      only: component_scr
+      use initstreamingcr, only: iarr_all_escr, iarr_all_xfscr, iarr_all_yfscr, iarr_all_zfscr, &
+      &                          iarr_all_scr_swp
+
+      implicit none
+
+      class(component_scr), intent(inout) :: scr_fluid
+
+      integer,  save   :: ns = 0             ! Needed here because using scr_fluid%pos goes out of bound !
+
+      ns = ns + 1
+
+      iarr_all_escr(ns)  = scr_fluid%iescr
+      iarr_all_xfscr(ns) = scr_fluid%ixfscr
+      iarr_all_yfscr(ns) = scr_fluid%iyfscr
+      iarr_all_zfscr(ns) = scr_fluid%izfscr
+
+      iarr_all_scr_swp(:, 1 + 4 * (ns - 1) : 4 * ns)  = scr_fluid%iarr_scr_swp(:,:)
+      iarr_all_swp(:, scr_fluid%beg : scr_fluid%end)  = scr_fluid%iarr_scr_swp(:,:)
+
+   end subroutine set_scrindex_arrays
+
+#endif /* STREAM_CR */
+
 !>
 !! \brief Subroutine fluid_index constructing all multi-fluid indexes used in other parts of PIERNIK code
 !<
    subroutine fluid_index
 
-      use constants,      only: ndims, xdim, ydim, zdim
-      use fluids_pub,     only: has_dst, has_ion, has_neu
-      use initdust,       only: dust_fluid
-      use initionized,    only: ion_fluid
-      use initneutral,    only: neutral_fluid
+      use constants,       only: ndims, xdim, ydim, zdim
+      use fluids_pub,      only: has_dst, has_ion, has_neu
+      use initdust,        only: dust_fluid
+      use initionized,     only: ion_fluid
+      use initneutral,     only: neutral_fluid
 #ifdef COSM_RAYS
-      use initcosmicrays, only: iarr_crn, iarr_cre, iarr_crs, cosmicray_index
+      use initcosmicrays,  only: iarr_crn, iarr_cre, iarr_crs, cosmicray_index
 #endif /* COSM_RAYS */
 #ifdef TRACER
-      use inittracer,     only: tracer_index, iarr_trc
+      use inittracer,      only: tracer_index, iarr_trc
 #endif /* TRACER */
+#ifdef STREAM_CR
+      use initstreamingcr, only: nscr, iarr_all_escr, iarr_all_xfscr, iarr_all_yfscr, iarr_all_zfscr, &
+      &                          iarr_all_scr_swp
+#endif /* STREAM_CR */
 
       implicit none
 
@@ -159,6 +191,13 @@ contains
       call tracer_index(flind)
 #endif /* TRACER */
 
+#ifdef STREAM_CR
+      allocate(flind%scr(nscr))
+      do i = 1, nscr
+            call flind%scr(i)%set_scr_index(flind)
+      enddo
+#endif /* STREAM_CR */
+
 ! Allocate index arrays
       allocate(iarr_mag_swp(ndims,nmag),iarr_all_mag(nmag))
       allocate(iarr_all_swp(xdim:zdim, flind%all))
@@ -179,6 +218,14 @@ contains
       allocate(iarr_all_cre(0))
       allocate(iarr_all_crs(0))
 #endif /* !COSM_RAYS */
+
+#ifdef STREAM_CR
+      allocate(iarr_all_scr_swp(xdim:zdim, 4*nscr))
+      allocate(iarr_all_escr(nscr),iarr_all_xfscr(nscr),iarr_all_yfscr(nscr),iarr_all_zfscr(nscr))
+#else /* !STREAM_CR */
+      allocate(iarr_all_scr_swp(0, 0))
+      allocate(iarr_all_escr(0),iarr_all_xfscr(0),iarr_all_yfscr(0),iarr_all_zfscr(0))
+#endif /* !STREAM_CR */
 
 #ifdef TRACER
       allocate(iarr_all_trc(flind%trc%all))
@@ -220,6 +267,12 @@ contains
       iarr_all_trc(1:flind%trc%all) = iarr_trc
 #endif /* TRACER */
 
+#ifdef STREAM_CR
+      do i=1, flind%nscr
+            call set_scrindex_arrays(flind%scr(i))
+      enddo
+#endif /* STREAM_CR */
+
       allocate(flind%all_fluids(flind%fluids))
 
       i = 1
@@ -242,8 +295,12 @@ contains
 
    subroutine cleanup_fluidindex
 
-      use diagnostics, only: my_deallocate
-      use fluids_pub,  only: has_ion, has_neu, has_dst
+      use diagnostics,     only: my_deallocate
+      use fluids_pub,      only: has_ion, has_neu, has_dst
+#ifdef STREAM_CR
+      use initstreamingcr, only: iarr_all_escr, iarr_all_xfscr, iarr_all_yfscr, iarr_all_zfscr, &
+      &                          iarr_all_scr_swp
+#endif /* STREAM_CR */
 
       implicit none
 
@@ -262,6 +319,15 @@ contains
       call my_deallocate(iarr_all_crn)
       call my_deallocate(iarr_all_cre)
       call my_deallocate(iarr_all_crs)
+#ifdef STREAM_CR
+      if ( flind%nscr > 0 ) then
+         call my_deallocate(iarr_all_escr)
+         call my_deallocate(iarr_all_xfscr)
+         call my_deallocate(iarr_all_yfscr)
+         call my_deallocate(iarr_all_zfscr)
+         call my_deallocate(iarr_all_scr_swp)
+      endif
+#endif /* STREAM_CR */
 
       call my_deallocate(iarr_all_trc)
 

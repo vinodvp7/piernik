@@ -237,6 +237,16 @@ module constants
    real, dimension(EULER:RK2_2), parameter :: rk_coef = [ one, &      !! EULER
         &                                                 half, one ] !! RK2
 
+   ! enumerate the position of cos and sin angle of rotation matrix useful for streaming CR
+#ifdef STREAM_CR
+   enum, bind(C)
+      enumerator :: cphi = 1      ! cos phi   : Bx/sqrt(Bx^2 + By^2)
+      enumerator :: sphi          ! sin phi   : By/sqrt(Bx^2 + By^2)
+      enumerator :: ctheta        ! cos theta : Bz/sqrt(Bx^2 + By^2 + Bz^2)
+      enumerator :: stheta        ! sin theta : sqrt(Bx^2 + By^2)/sqrt(Bx^2 + By^2 + Bz^2)
+   end enum
+#endif /* STREAM_CR */
+
    ! 3D and 4D array names
    ! fluids
    character(len=dsetnamelen), parameter :: fluid_n = "fluid"   !< main fluid array

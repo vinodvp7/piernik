@@ -533,15 +533,15 @@ contains
             tab(:,:,:) = cg%u( flind%scr(is)%iescr, RNG )
          case ('xfscr_01':'xfscr_99')
             read(var, '(A6,I2)') aux, is     ! 'fxscr_' + nn
-            tab(:,:,:) = cg%u( flind%scr(is)%ixfscr, RNG )
+            tab(:,:,:) = vmax * cg%u( flind%scr(is)%ixfscr, RNG )
 
          case ('yfscr_01':'yfscr_99')
             read(var, '(A6,I2)') aux, is     ! 'fyscr_' + nn
-            tab(:,:,:) = cg%u( flind%scr(is)%iyfscr, RNG )
+            tab(:,:,:) = vmax * cg%u( flind%scr(is)%iyfscr, RNG )
 
          case ('zfscr_01':'zfscr_99')
             read(var, '(A6,I2)') aux, is     ! 'fzscr_' + nn
-            tab(:,:,:) = cg%u( flind%scr(is)%izfscr, RNG )
+            tab(:,:,:) = vmax * cg%u( flind%scr(is)%izfscr, RNG )
 
          !< ∇Pc
          case ('gradpcx_01':'gradpcx_99')
@@ -578,10 +578,10 @@ contains
          !< σ
          case ('sigma_paral_01':'sigma_paral_50')                    !> parallel component of σ
             read(var, '(A12,I2)') aux, is
-            tab(:,:,:) = cg%w(wna%ind(sgmn))%arr( 2 * (is-1) + 1, RNG )
+            tab(:,:,:) = 1.0 / vmax * cg%w(wna%ind(sgmn))%arr( 2 * (is-1) + 1, RNG )
          case ('sigma_perp_01':'sigma_perp_50')                      !> perpendicular component of σ
             read(var, '(A12,I2)') aux, is
-            tab(:,:,:) = cg%w(wna%ind(sgmn))%arr( 2 * (is-1) + 2, RNG )
+            tab(:,:,:) = 1.0 / vmax * cg%w(wna%ind(sgmn))%arr( 2 * (is-1) + 2, RNG )
 #endif /* STREAM_CR */
 #ifdef TRACER
          case ("trcr")

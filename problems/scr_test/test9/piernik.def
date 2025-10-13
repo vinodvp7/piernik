@@ -1,0 +1,18 @@
+#if !defined LOCAL_FR_SPEED
+#  define GLOBAL_FR_SPEED
+#endif
+
+#define ISO
+
+#define IONIZED
+
+#define STREAM_CR
+
+#define MAGNETIC
+#undef RESISTIVE
+
+#define SELF_GRAV
+
+#define SN_SRC
+#define RANDOMIZE
+#define MULTIGRID

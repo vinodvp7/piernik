@@ -106,7 +106,9 @@ contains
 #ifdef CRESP
       use cresp_grid,     only: cresp_update_grid, cresp_clean_grid
 #endif /* CRESP */
-
+#ifdef STREAM_CR
+      use scr_source,     only: split_scr_source
+#endif /* STREAM_CR*/
       implicit none
 
       call repeat_fluidstep
@@ -114,7 +116,9 @@ contains
 
       halfstep = .false.
       t = t + dt
-
+#ifdef STREAM_CR
+      call split_scr_source
+#endif /* STREAM_CR*/
       call make_3sweeps(.true.) ! X -> Y -> Z
 
 ! Sources should be hooked to problem_customize_solution with forward argument
@@ -132,7 +136,9 @@ contains
 #ifdef CRESP
       call cresp_clean_grid ! BEWARE: due to diffusion some junk remains in the grid - this nullifies all inactive bins.
 #endif /* CRESP */
-
+#ifdef STREAM_CR
+      call split_scr_source
+#endif /* STREAM_CR*/
    end subroutine fluid_update_full
 
 !>

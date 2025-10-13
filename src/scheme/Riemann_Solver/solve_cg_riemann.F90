@@ -75,6 +75,10 @@ contains
       use global,           only: use_fargo
       use named_array_list, only: wna
       use sources,          only: prepare_sources
+#ifdef STREAM_CR
+      use scr_helpers,           only: update_interaction_term, update_rotation_matrix, update_vdfst
+      use constants,             only: xdim
+#endif /* STREAM_CR */
 
       implicit none
 
@@ -84,6 +88,16 @@ contains
       integer(kind=4), optional,     intent(in) :: fargo_vel
 
       integer :: nmag, i
+
+#ifdef STREAM_CR
+         if (.not. dom%has_dir(xdim)) then
+            call die("[solvecg_unsplit:solve_cg_unsplit] Domain must have more than 1 zone in the x-direction [n_d(x) > 1]&
+            & to be compatible with streaming module.")
+         end if
+         call update_interaction_term(cg, istep, .false.)
+         if (wna%exists(mag_n))  call update_rotation_matrix(cg, istep)
+         call update_vdfst(cg, istep)
+#endif /* STREAM_CR */
 
       if (.false.) write(0,*) present(fargo_vel) ! suppress compiler warning on unused argument
       if (use_fargo) call die("[solve_cg_riemann:solve_cg_riemann] Fargo is not yet enabled for Riemann")
@@ -126,6 +140,10 @@ contains
       use grid_cont,        only: grid_container
       use named_array_list, only: wna, qna
       use sources,          only: internal_sources, care_for_positives
+#ifdef STREAM_CR
+      use constants,        only: v_dfst
+      use diagnostics,      only: my_allocate, my_deallocate
+#endif /* STREAM_CR */
 
       implicit none
 
@@ -146,6 +164,10 @@ contains
       real, dimension(size(u,1), flind%fluids), target :: vx
       type(ext_fluxes)                           :: eflx
       integer                                    :: i_cs_iso2
+#ifdef STREAM_CR
+      real, dimension(:,:), allocatable          :: vdfst1d
+      real, dimension(:,:), pointer              :: vdfst
+#endif /* STREAM_CR */
 
       uhi = wna%ind(uh_n)
       bhi = wna%ind(magh_n)
@@ -166,7 +188,9 @@ contains
          i_cs_iso2 = -1
       endif
       cs2 => null()
-
+#ifdef STREAM_CR
+         call my_allocate(vdfst1d, [cg%n_(ddim) , flind%nscr])  ! interaction coefficient along one dimension for all species
+#endif /* STREAM_CR */
       do i2 = cg%ijkse(pdims(ddim, ORTHO2), LO), cg%ijkse(pdims(ddim, ORTHO2), HI)
          do i1 = cg%ijkse(pdims(ddim, ORTHO1), LO), cg%ijkse(pdims(ddim, ORTHO1), HI)
 
@@ -196,6 +220,11 @@ contains
                b(:, :) = interpolate_mag_field(ddim, cg, i1, i2, wna%bi)
             endif
 
+#ifdef STREAM_CR
+               vdfst => cg%w(wna%ind(v_dfst))%get_sweep(ddim, i1, i2)
+               vdfst1d(:,:) = transpose(vdfst(ddim : 3 * (flind%nscr - 1) + ddim : 3,:))
+#endif /* STREAM_CR */
+
             if (i_cs_iso2 > 0) cs2 => cg%q(i_cs_iso2)%get_sweep(ddim, i1, i2)
 
             call cg%set_fluxpointers(ddim, i1, i2, eflx)
@@ -209,11 +238,17 @@ contains
 
                b0(:, psidim) = ppsi0(:)
                b1(:, psidim) = ppsi(:)
-
+#ifdef STREAM_CR
+               call solve(u0, b0, u1, b1, cs2, rk_coef(istep) * dt/cg%dl(ddim), eflx, vdfst1d)
+#else /* !STREAM_CR */
                call solve(u0, b0, u1, b1, cs2, rk_coef(istep) * dt/cg%dl(ddim), eflx)
-
+#endif /* !STREAM_CR */
             else
+#ifdef STREAM_CR
+               call solve(u0, b0(:, xdim:zdim), u1, b1(:, xdim:zdim), cs2, rk_coef(istep) * dt/cg%dl(ddim), eflx, vdfst1d)
+#else /* !STREAM_CR */
                call solve(u0, b0(:, xdim:zdim), u1, b1(:, xdim:zdim), cs2, rk_coef(istep) * dt/cg%dl(ddim), eflx)
+#endif /* !STREAM_CR */
             endif
 
             call internal_sources(size(u, 1, kind=4), u, u1, b, cg, istep, ddim, i1, i2, rk_coef(istep) * dt, vx)
@@ -227,7 +262,9 @@ contains
             if (psii /= INVALID) ppsi = b1(:, psidim)
          enddo
       enddo
-
+#ifdef STREAM_CR
+         call my_deallocate(vdfst1d)
+#endif /* STREAM_CR */
       nullify(cs2)
 
    end subroutine solve_cg_ub
@@ -315,40 +352,83 @@ contains
 !! We don't calculate n-th interface because it is as incomplete as 0-th interface
 !<
 
-   subroutine solve(u0, b0, u1, b1, cs2, dtodx, eflx)
+   subroutine solve(u0, b0, u1, b1, cs2, dtodx, eflx, vdfst)
 
       use constants,      only: DIVB_HDC, xdim, ydim, zdim
       use fluxtypes,      only: ext_fluxes
       use global,         only: divB_0_method
       use hlld,           only: riemann_wrap
       use interpolations, only: interpol
+      use fluidindex,     only: flind
+#ifdef STREAM_CR
+      use streaming_cr_hlle,  only: riemann_hlle_scr
+      use fluidindex,         only: iarr_all_dn, iarr_all_mx
+      use initstreamingcr,    only: nscr
+      use interpolations,     only: interpol_generic
+#endif /* STREAM_CR */
 
       implicit none
 
-      real, dimension(:,:),        intent(in)    :: u0     !< cell-centered initial fluid states
-      real, dimension(:,:),        intent(in)    :: b0     !< cell-centered initial magnetic field states (including psi field when necessary)
-      real, dimension(:,:),        intent(inout) :: u1     !< cell-centered intermediate fluid states
-      real, dimension(:,:),        intent(inout) :: b1     !< cell-centered intermediate magnetic field states (including psi field when necessary)
-      real, dimension(:), pointer, intent(in)    :: cs2    !< square of local isothermal sound speed
-      real,                        intent(in)    :: dtodx  !< timestep advance: RK-factor * timestep / cell length
-      type(ext_fluxes),            intent(inout) :: eflx   !< external fluxes
+      real, dimension(:,:),        intent(in)     :: u0     !< cell-centered initial fluid states
+      real, dimension(:,:),        intent(in)     :: b0     !< cell-centered initial magnetic field states (including psi field when necessary)
+      real, dimension(:,:),        intent(inout)  :: u1     !< cell-centered intermediate fluid states
+      real, dimension(:,:),        intent(inout)  :: b1     !< cell-centered intermediate magnetic field states (including psi field when necessary)
+      real, dimension(:), pointer, intent(in)     :: cs2    !< square of local isothermal sound speed
+      real,                        intent(in)     :: dtodx  !< timestep advance: RK-factor * timestep / cell length
+      type(ext_fluxes),            intent(inout)  :: eflx   !< external fluxes
+      real, dimension(:,:), optional,  intent(in) :: vdfst  !< diffusive speed for transport corrected with effective optical depth
+
 
       ! left and right states at interfaces 1 .. n-1
-      real, dimension(size(u0, 1)-1, size(u0, 2)), target :: ql, qr
-      real, dimension(size(b0, 1)-1, size(b0, 2)), target :: bl, br
+      real, dimension(size(u0, 1) - 1, size(u0, 2) - 4 * flind%nscr), target :: qlf, qrf
+      real, dimension(size(b0, 1) - 1, size(b0, 2)), target                  :: bl, br
+      real, dimension(:,:), allocatable                                      :: uflux, scrflux
+      integer                                                                :: scr_beg_1
+#ifdef STREAM_CR
+      real, dimension(size(u0, 1) - 1, 4 * nscr + 1), target :: qls, qrs
+      real, dimension(size(u0, 1), 4 * nscr + 1 )            :: uu
+      integer                                                :: scr_beg
+#endif /* STREAM_CR*/
 
       ! fluxes through interfaces 1 .. n-1
       real, dimension(size(u0, 1)-1, size(u0, 2)), target :: flx
       real, dimension(size(b0, 1)-1, size(b0, 2)), target :: mag_flx
+      integer, parameter :: in = 1  ! index for cells
+
+
+      scr_beg_1 = flind%all              !> By default this points to the last fluid index when nscr = 0
+
+#ifdef STREAM_CR
+      scr_beg_1 = flind%scr(1)%beg - 1
+      scr_beg   = flind%scr(1)%beg
+      allocate(scrflux(lbound(flx, 1) : ubound(flx, 1), size(flx(:, scr_beg:), 2)))
+#endif /* STREAM_CR*/
+
+      ! updates required for higher order of integration will likely have shorter length
+      allocate(uflux(lbound(flx, 1) : ubound(flx, 1), size(flx(:,:scr_beg_1), 2)))
 
       ! updates required for higher order of integration will likely have shorter length
 
-      integer, parameter :: in = 1  ! index for cells
 
       mag_flx = huge(1.)
 
-      call interpol(u1, ql, qr, b1, bl, br)
-      call riemann_wrap(ql, qr, bl, br, cs2, flx, mag_flx) ! Now we advance the left and right states by a timestep.
+      call interpol(u0(:,:scr_beg_1), qlf, qrf, b0, bl, br)
+#ifdef STREAM_CR
+      uu(:,1 : size(qls, 2) - 1) = u0(:,scr_beg : flind%scr(nscr)%end)
+      uu(:, size(qls, 2)) = u0(:, iarr_all_mx(1))/u0(:, iarr_all_dn(1))
+      call interpol_generic(uu, qls, qrs)
+      call riemann_wrap(qlf, qrf, bl, br, cs2, uflux, mag_flx) ! Compute the fluxes for all fluids except streaming CR
+      call riemann_hlle_scr(qls, qrs, vdfst, scrflux) ! Compute the fluxes for streaming CR
+#else /* !STREAM_CR */
+      call riemann_wrap(qlf, qrf, bl, br, cs2, uflux, mag_flx) ! Now we advance the left and right states by a timestep.
+#endif /* !STREAM_CR */
+      !uflux(:,:) = 0.0             ! UNCOMMENT ME for wedge anisotropic diffusion along circular B test
+      !mag_flx(:,:) = 0.0
+      flx(:,:scr_beg_1) = uflux(:,:)
+
+#ifdef STREAM_CR
+      flx(:,scr_beg:) = scrflux(:,:)
+#endif /* !STREAM_CR */
 
       if (associated(eflx%li)) flx(eflx%li%index, :) = eflx%li%uflx
       if (associated(eflx%ri)) flx(eflx%ri%index, :) = eflx%ri%uflx

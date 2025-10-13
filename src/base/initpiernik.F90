@@ -119,6 +119,9 @@ contains
       use crhelpers,             only: init_div_v
 #endif /* COSM_RAYS */
 #endif /* __INTEL_COMPILER */
+#ifdef STREAM_CR
+      use scr_helpers,           only: scr_initial_tasks
+#endif /* STREAM_CR */
 
       implicit none
 
@@ -295,6 +298,9 @@ contains
 
          call ppp_main%start(prob_label)
          call problem_initial_conditions ! may depend on anything
+#ifdef STREAM_CR
+         call scr_initial_tasks               ! Need to scale Fc by vm : Fc-> Fc/vm
+#endif /* STREAM_CR */
          call ppp_main%stop(prob_label)
 
          call init_psi ! initialize the auxiliary field for divergence cleaning when needed

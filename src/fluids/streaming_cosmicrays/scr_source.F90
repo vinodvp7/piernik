@@ -177,7 +177,7 @@ contains
             call rotate_vec(v1, v2, v3, cp, sp, ct, st)
             call rotate_vec(vtot1, vtot2, vtot3, cp, sp, ct, st)
             call rotate_vec(gpcx, gpcy, gpcz, cp, sp, ct, st)
-            vtot2 = 0.0 ; vtot3 = 0.0
+            vtot1 = 0.0 ; vtot2 = 0.0
 #endif /* MAGNETIC */
 
             sgm_paral = cg%w(sgmd)%arr(xdim + 2 * (ns - 1), i, j, k)
@@ -187,25 +187,25 @@ contains
             &         - dt_relax * sgm_perp  * vtot2 * v2 * (1.0/vmax) * 4.0/3.0 &
             &         - dt_relax * sgm_perp  * vtot3 * v3 * (1.0/vmax) * 4.0/3.0
 
-            m12 = dt_relax * sgm_paral * vtot1
+            m12 = dt_relax * sgm_perp * vtot1
             m13 = dt_relax * sgm_perp * vtot2
-            m14 = dt_relax * sgm_perp * vtot3
+            m14 = dt_relax * sgm_paral * vtot3
 
-            m21 = - dt_relax * v1 * sgm_paral * 4.0/3.0
-            m22 = 1.0 + dt_relax * vmax *  sgm_paral
+            m21 = - dt_relax * v1 * sgm_perp * 4.0/3.0
+            m22 = 1.0 + dt_relax * vmax *  sgm_perp
 
             m31 = - dt_relax * v2 * sgm_perp * 4.0/3.0
             m33 = 1.0 + dt_relax * vmax *  sgm_perp
 
-            m41 = - dt_relax * v3 * sgm_perp * 4.0/3.0
-            m44 = 1.0 + dt_relax * vmax *  sgm_perp
+            m41 = - dt_relax * v3 * sgm_paral * 4.0/3.0
+            m44 = 1.0 + dt_relax * vmax *  sgm_paral
 
             newec  = (ec - m12 * fcx/m22 - m13 * fcy/m33 - m14 * fcz/m44)/(m11 - m12 * m21/m22 - m13 * m31/m33 - m14 * m41/m44)
             newfcx = (fcx - m21 * newec)/m22
             newfcy = (fcy - m31 * newec)/m33
             newfcz = (fcz - m41 * newec)/m44
 
-            newec = newec + dt_relax * (v2 * gpcy + v3 * gpcz)
+            newec = newec + dt_relax * (v1 * gpcx + v2 * gpcy)
 #ifdef MAGNETIC
             call inverse_rotate_vec(newfcx, newfcy, newfcz, cp, sp, ct, st)
             fcx = cg%w(uhi)%arr(iarr_all_xfscr(ns), i, j, k)        ! Original fcx,fcy,fcz

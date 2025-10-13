@@ -61,10 +61,10 @@ contains
       integer :: nmag, i
 
 #ifdef STREAM_CR
-         if (.not. dom%has_dir(xdim)) then
-            call die("[solvecg_unsplit:solve_cg_unsplit] Domain must have more than 1 zone in the x-direction [n_d(x) > 1]&
-            & to be compatible with streaming module.")
-         end if
+         !if (.not. dom%has_dir(xdim)) then
+         !   call die("[solvecg_unsplit:solve_cg_unsplit] Domain must have more than 1 zone in the x-direction [n_d(x) > 1]&
+         !   & to be compatible with streaming module.")
+         !end if
          call update_interaction_term(cg, istep, .false.)
          if (wna%exists(mag_n))  call update_rotation_matrix(cg, istep)
          call update_vdfst(cg,istep)

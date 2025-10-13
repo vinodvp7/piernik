@@ -208,9 +208,9 @@ def main() -> None:
 
     # Build x-coordinates from the first file grid
     first_data, cell_dims, origin, spacing = load_and_stitch_data(files[0])
-    nx = int(cell_dims[0])
-    dx = float(spacing[0])
-    x0 = float(origin[0])
+    nx = int(cell_dims[2])
+    dx = float(spacing[2])
+    x0 = float(origin[2])
     xe = x0 + np.arange(nx + 1) * dx
     x = 0.5 * (xe[:-1] + xe[1:])
 
@@ -236,7 +236,7 @@ def main() -> None:
             )
             continue
 
-        y = stitched[field][0, 0, :]
+        y = stitched[field][:, 0, 0]
         color = colors[idx % len(colors)]
         t_val = parse_time_from_name(fname, args.time_scale)
         label = f"t={t_val:g}" if t_val is not None else os.path.basename(fname)

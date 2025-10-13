@@ -1,5 +1,5 @@
 $BASE_DOMAIN
-  n_d = 256,1,1
+  n_d = 1,1,256
   nb  = 4
   bnd_xl = 'out'
   bnd_xr = 'out'
@@ -11,7 +11,7 @@ $BASE_DOMAIN
   xmax   =  1.0
   ymin   = -1.0
   ymax   =  1.0
-  zmin   =  0.0
+  zmin   = -1.0
   zmax   =  1.0
 /
 

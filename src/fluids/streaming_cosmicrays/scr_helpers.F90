@@ -236,40 +236,38 @@ contains
 
 
    pure elemental subroutine rotate_vec(vx, vy, vz, cp, sp, ct, st)
+   ! Map GLOBAL -> LOCAL with local z || B
+   implicit none
+   real, intent(inout) :: vx, vy, vz
+   real, intent(in)    :: cp, sp, ct, st
+   real                :: tmpx, tmpy, tmpz
 
-      implicit none
+   ! Rows = {e_theta^T, e_phi^T, bhat^T}
+   tmpx =  ct*cp*vx + ct*sp*vy - st*vz
+   tmpy =     -sp*vx +    cp*vy
+   tmpz =  st*cp*vx + st*sp*vy + ct*vz
 
-      real, intent(inout) :: vx, vy, vz
-      real, intent(in)    :: cp, sp, ct, st
-
-      real                :: tmpx, tmpy, tmpz
-
-      tmpx =   st * cp * vx + st * sp * vy + ct * vz
-      tmpy =      - sp * vx +      cp * vy
-      tmpz = - ct * cp * vx - ct * sp * vy + st * vz
-
-      vx = tmpx
-      vy = tmpy
-      vz = tmpz
+   vx = tmpx
+   vy = tmpy
+   vz = tmpz
    end subroutine rotate_vec
 
    pure elemental subroutine inverse_rotate_vec(vx, vy, vz, cp, sp, ct, st)
+   ! Map LOCAL -> GLOBAL (inverse = transpose)
+   implicit none
+   real, intent(inout) :: vx, vy, vz
+   real, intent(in)    :: cp, sp, ct, st
+   real                :: tmpx, tmpy, tmpz
 
-      implicit none
+   tmpx =  ct*cp*vx - sp*vy + st*cp*vz
+   tmpy =  ct*sp*vx + cp*vy + st*sp*vz
+   tmpz =        -st*vx     +       ct*vz
 
-      real, intent(inout)  :: vx, vy, vz
-      real, intent(in)     :: cp, sp, ct, st
-
-      real                 :: tmpx,tmpy,tmpz
-
-      tmpx =  cp * st * vx - sp * vy - cp * ct * vz
-      tmpy =  sp * st * vx + cp * vy - sp * ct * vz
-      tmpz =       ct * vx           +      st * vz
-
-      vx = tmpx
-      vy = tmpy
-      vz = tmpz
+   vx = tmpx
+   vy = tmpy
+   vz = tmpz
    end subroutine inverse_rotate_vec
+
 
 
    subroutine update_vdfst(cg, istep)
@@ -315,9 +313,9 @@ contains
                   if (dom%has_dir(cdim)) then
 
                      if (cdim == zdim) then 
-                        v(cdim + 3 * (ns - 1), i, j, k) = sd(ydim + 2 * (ns - 1), i, j, k) * cg%dl(cdim)
+                        v(cdim + 3 * (ns - 1), i, j, k) = sd(xdim + 2 * (ns - 1), i, j, k) * cg%dl(cdim)
                      else
-                        v(cdim + 3 * (ns - 1), i, j, k) = sd(cdim + 2 * (ns - 1), i, j, k) * cg%dl(cdim)
+                        v(cdim + 3 * (ns - 1), i, j, k) = sd(ydim + 2 * (ns - 1), i, j, k) * cg%dl(cdim)
                      endif
                      
                      v(cdim + 3 * (ns - 1), i, j, k) = v(cdim + 3 * (ns - 1), i, j, k)**2 * 1.5

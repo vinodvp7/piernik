@@ -183,9 +183,9 @@ contains
             sgm_paral = cg%w(sgmd)%arr(xdim + 2 * (ns - 1), i, j, k)
             sgm_perp  = cg%w(sgmd)%arr(ydim + 2 * (ns - 1), i, j, k)
 
-            m11 = 1.0 - dt_relax * sgm_paral * vtot1 * v1 * (1.0/vmax) * 4.0/3.0 &
+            m11 = 1.0 - dt_relax * sgm_perp * vtot1 * v1 * (1.0/vmax) * 4.0/3.0 &
             &         - dt_relax * sgm_perp  * vtot2 * v2 * (1.0/vmax) * 4.0/3.0 &
-            &         - dt_relax * sgm_perp  * vtot3 * v3 * (1.0/vmax) * 4.0/3.0
+            &         - dt_relax * sgm_paral  * vtot3 * v3 * (1.0/vmax) * 4.0/3.0
 
             m12 = dt_relax * sgm_perp * vtot1
             m13 = dt_relax * sgm_perp * vtot2

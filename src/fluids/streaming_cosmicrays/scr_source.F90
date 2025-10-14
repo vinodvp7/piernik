@@ -65,7 +65,7 @@ contains
 #ifndef ISO
       use fluidindex,       only: iarr_all_en
 #endif /* !ISO */
-      use initstreamingcr,  only: vmax, disable_streaming, disable_feedback, use_escr_floor, escr_floor, track_feedback
+      use initstreamingcr,  only: vmax, disable_streaming, disable_feedback, use_escr_floor, escr_floor, track_feedback, omega
       use scr_helpers,      only: update_interaction_term
       use func,             only: operator(.equals.)
 #ifdef MAGNETIC
@@ -83,7 +83,7 @@ contains
       real                                       :: sgm_paral, sgm_perp
       real                                       :: m11, m12, m13, m14, m21, m22, m31, m33, m41, m44
       real                                       :: fcx, fcy, fcz, ec, newfcx ,newfcy ,newfcz, newec
-      real                                       :: gpcx, gpcy, gpcz
+      real                                       :: gpcx, gpcy, gpcz, vi1, vi2, vi3
 #ifndef ISO
       real                                       :: e_feed
 #endif /* !ISO */
@@ -151,6 +151,106 @@ contains
             call rotate_vec(vtot1, vtot2, vtot3, cp, sp, ct, st)
             call rotate_vec(gpcx, gpcy, gpcz, cp, sp, ct, st)
             vtot2 = 0.0 ; vtot3 = 0.0
+            vtot1 = sign(1.0, vtot1) * min(abs(vtot1), vmax)
+#endif /* MAGNETIC */
+
+            sgm_paral = cg%w(sgmd)%arr(xdim + 2 * (ns - 1), i, j, k)
+            sgm_perp  = cg%w(sgmd)%arr(ydim + 2 * (ns - 1), i, j, k)
+
+            m11 = 1.0 - rk_coef(istep) * dt * sgm_paral * vtot1 * v1 * (1.0/vmax) * 4.0/3.0 &
+            &         - rk_coef(istep) * dt * sgm_perp  * vtot2 * v2 * (1.0/vmax) * 4.0/3.0 &
+            &         - rk_coef(istep) * dt * sgm_perp  * vtot3 * v3 * (1.0/vmax) * 4.0/3.0
+
+            m12 = rk_coef(istep) * dt * sgm_paral * vtot1
+            m13 = rk_coef(istep) * dt * sgm_perp * vtot2
+            m14 = rk_coef(istep) * dt * sgm_perp * vtot3
+
+            m21 = -rk_coef(istep) * dt * v1 * sgm_paral * 4.0/3.0
+            m22 = 1.0 + rk_coef(istep) * dt * vmax *  sgm_paral
+
+            m31 = -rk_coef(istep) * dt * v2 * sgm_perp * 4.0/3.0
+            m33 = 1.0 + rk_coef(istep) * dt * vmax *  sgm_perp
+
+            m41 = -rk_coef(istep) * dt * v3 * sgm_perp * 4.0/3.0
+            m44 = 1.0 + rk_coef(istep) * dt * vmax *  sgm_perp
+
+            newec  = (ec - m12 * fcx/m22 - m13 * fcy/m33 - m14 * fcz/m44)/(m11 - m12 * m21/m22 - m13 * m31/m33 - m14 * m41/m44)
+            newfcx = (fcx - m21 * newec)/m22
+            newfcy = (fcy - m31 * newec)/m33
+            newfcz = (fcz - m41 * newec)/m44
+
+            newec = newec + rk_coef(istep) * dt * (v2 * gpcy + v3 * gpcz)
+#ifdef MAGNETIC
+            call inverse_rotate_vec(newfcx, newfcy, newfcz, cp, sp, ct, st)
+            fcx = cg%w(uhi)%arr(iarr_all_xfscr(ns), i, j, k)        ! Original fcx,fcy,fcz
+            fcy = cg%w(uhi)%arr(iarr_all_yfscr(ns), i, j, k)
+            fcz = cg%w(uhi)%arr(iarr_all_zfscr(ns), i, j, k)
+#endif /* MAGNETIC */
+            if (use_escr_floor) then
+               if (newec < escr_floor) newec = escr_floor
+            else
+               if (newec < 0.0) newec = ec
+            endif
+            if (track_feedback) then
+               cg%w(fdbki)%arr(ns + 4*(ns-1), i, j, k) = 0.0
+            endif
+            if (.not. disable_feedback ) then  ! Energy feedback to the MHD gas . Only the first fluid
+               if (track_feedback) then
+                  cg%w(fdbki)%arr(ns + 1 + 4*(ns-1), i, j, k) = (newfcx - fcx)/vmax
+                  cg%w(fdbki)%arr(ns + 2 + 4*(ns-1), i, j, k) = (newfcy - fcy)/vmax
+                  cg%w(fdbki)%arr(ns + 3 + 4*(ns-1), i, j, k) = (newfcz - fcz)/vmax
+               else
+                  cg%w(fdbki)%arr(ns + 1 + 4*(ns-1), i, j, k) = 0.0
+                  cg%w(fdbki)%arr(ns + 2 + 4*(ns-1), i, j, k) = 0.0
+                  cg%w(fdbki)%arr(ns + 3 + 4*(ns-1), i, j, k) = 0.0
+               endif
+
+               vi1 = (cg%w(uhi)%arr(iarr_all_mx(1), i, j, k) - (newfcx - fcx)/vmax)/ cg%w(uhi)%arr(iarr_all_dn(1), i, j, k)
+               vi2 = (cg%w(uhi)%arr(iarr_all_my(1), i, j, k) - (newfcy - fcy)/vmax)/ cg%w(uhi)%arr(iarr_all_dn(1), i, j, k)
+               vi3 = (cg%w(uhi)%arr(iarr_all_mz(1), i, j, k) - (newfcz - fcz)/vmax)/ cg%w(uhi)%arr(iarr_all_dn(1), i, j, k)
+            endif
+
+#ifdef MAGNETIC
+            cp = cg%w(rtmi)%arr(cphi, i, j, k)
+            sp = cg%w(rtmi)%arr(sphi, i, j, k)
+            ct = cg%w(rtmi)%arr(ctheta, i, j, k)
+            st = cg%w(rtmi)%arr(stheta, i, j, k)
+#endif /* MAGNETIC */
+            v1 = (1.0 - omega) * cg%w(uhi)%arr(iarr_all_mx(1), i, j, k)/cg%w(uhi)%arr(iarr_all_dn(1), i, j, k) + omega * vi1
+            v2 = (1.0 - omega) * cg%w(uhi)%arr(iarr_all_my(1), i, j, k)/cg%w(uhi)%arr(iarr_all_dn(1), i, j, k) + omega * vi2
+            v3 = (1.0 - omega) * cg%w(uhi)%arr(iarr_all_mz(1), i, j, k)/cg%w(uhi)%arr(iarr_all_dn(1), i, j, k) + omega * vi3
+            vtot1 = v1
+            vtot2 = v2
+            vtot3 = v3
+            gpcx = cg%w(gpci)%arr(iarr_all_gpcx(ns), i, j, k)
+            gpcy = cg%w(gpci)%arr(iarr_all_gpcy(ns), i, j, k)
+            gpcz = cg%w(gpci)%arr(iarr_all_gpcz(ns), i, j, k)
+
+#ifdef MAGNETIC
+            bdotpc = gpcx * cg%w(magi)%arr(xdim, i, j, k) + gpcy * cg%w(magi)%arr(ydim, i, j, k) + &
+            &        gpcz * cg%w(magi)%arr(zdim, i, j, k)
+            sgn_bgpc = 0.0
+            if (bdotpc > 1e-10  )   sgn_bgpc = 1.0     ! Careful with the magic number
+            if (bdotpc < -1e-10 )   sgn_bgpc = -1.0    ! Careful with the magic number
+
+            ! Need to floor rho ?
+            if (.not. disable_streaming) then
+               vtot1 = vtot1 - sgn_bgpc * cg%w(magi)%arr(xdim, i, j, k)/sqrt(max(cg%w(uhi)%arr(iarr_all_dn(1), i, j, k), smalld)) ! vfluid + vs
+               vtot2 = vtot2 - sgn_bgpc * cg%w(magi)%arr(ydim, i, j, k)/sqrt(max(cg%w(uhi)%arr(iarr_all_dn(1), i, j, k), smalld)) ! vfluid + vs
+               vtot3 = vtot3 - sgn_bgpc * cg%w(magi)%arr(zdim, i, j, k)/sqrt(max(cg%w(uhi)%arr(iarr_all_dn(1), i, j, k), smalld)) ! vfluid + vs  .
+            endif
+#endif /* MAGNETIC */
+            ec = cg%w(uhi)%arr(iarr_all_escr(ns), i, j, k)
+            fcx = cg%w(uhi)%arr(iarr_all_xfscr(ns), i, j, k)
+            fcy = cg%w(uhi)%arr(iarr_all_yfscr(ns), i, j, k)
+            fcz = cg%w(uhi)%arr(iarr_all_zfscr(ns), i, j, k)
+#ifdef MAGNETIC
+            call rotate_vec(fcx, fcy, fcz, cp, sp, ct, st)
+            call rotate_vec(v1, v2, v3, cp, sp, ct, st)
+            call rotate_vec(vtot1, vtot2, vtot3, cp, sp, ct, st)
+            call rotate_vec(gpcx, gpcy, gpcz, cp, sp, ct, st)
+            vtot2 = 0.0 ; vtot3 = 0.0
+            vtot1 = sign(1.0, vtot1) * min(abs(vtot1), vmax)
 #endif /* MAGNETIC */
 
             sgm_paral = cg%w(sgmd)%arr(xdim + 2 * (ns - 1), i, j, k)
@@ -228,6 +328,7 @@ contains
                cg%w(uhi)%arr(iarr_all_my(1), i, j, k) = cg%w(uhi)%arr(iarr_all_my(1), i, j, k) - (newfcy - fcy)/vmax
                cg%w(uhi)%arr(iarr_all_mz(1), i, j, k) = cg%w(uhi)%arr(iarr_all_mz(1), i, j, k) - (newfcz - fcz)/vmax
             endif
+
 
             cg%w(uhi)%arr(iarr_all_escr(ns), i, j, k)  = newec         ! For test 1 and test 2 comment me
             cg%w(uhi)%arr(iarr_all_xfscr(ns), i, j, k) = newfcx

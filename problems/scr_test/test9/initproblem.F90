@@ -90,7 +90,7 @@ contains
       alpha   = 0.0
       amp_cr  = 0.0
       beta_cr = 0.0
-      tlim    = 25
+      tlim    = 10000
       fixedsn = .false.
 
       if (master) then

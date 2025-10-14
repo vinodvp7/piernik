@@ -37,10 +37,10 @@
     problem_name = 'scrwind'
     run_id       = 'tst'
     dt_hdf       = 1.0
-    dt_res       = 0.0
-    dt_log       = 1.0e-1
-    dt_tsl       = 1.0e-1
-    vars(1:) = 'escr', 'dens', 'magx', 'magy', 'magz', 'velx', 'vely', 'velz'
+    dt_res       = 1.0
+    dt_log       = 1.0e-20
+    dt_tsl       = 1.0e-20
+    vars(1:) = 'escr', 'xfscr', 'zfscr', 'dens', 'magx', 'magy', 'magz', 'velx', 'vely', 'velz'
  /
 
  $FLUID_IONIZED
@@ -50,8 +50,8 @@
 
 $NUMERICAL_SETUP
   cfl     = 0.3
-  smalld  = 1.e-2                   ! Default value of 1e-5 or < 1e-2 will lead to huge spikes in speed that crashes the code
-  smallei = 1.e-4
+  smalld  = 1.e-6                   ! Default value of 1e-5 or < 1e-2 will lead to huge spikes in speed that crashes the code
+  smallei = 1.e-8
   limiter = 'vanleer'
   solver_str = 'riemann_unsplit'
   integration_order = 2
@@ -74,12 +74,12 @@ $NUMERICAL_SETUP
 
 $STREAMING_CR
    nscr                    = 1
-   vmax                    = 1500.0       ! For accurate result this needs to be high
+   vmax                    = 5000.0       ! For accurate result this needs to be high
    sigma_paral             = 1e-4
    sigma_perp              = 1e10
    ord_pc_grad             = 2
    disable_feedback        = .false.      ! feedback to MHD gas
-   disable_streaming       = .true.       ! knob for streaming + diffusion or only diffusion
+   disable_streaming       = .false.       ! knob for streaming + diffusion or only diffusion
    cr_sound_speed          = .true.
    escr_floor              = 1e-6         ! floor value of 0.0 will blow up interaction coefficient calculation
 /
@@ -115,7 +115,7 @@ $STREAMING_CR
  $MULTIGRID_DIFFUSION
     diff_explicit = .false.
     diff_theta     = 0.6
-    diff_tstep_fac = 30
+    diff_tstep_fac = 20
     norm_tol = 1e-4
     nsmoob = 4
     max_cycles = 20

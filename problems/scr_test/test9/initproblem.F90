@@ -41,11 +41,11 @@ module initproblem
    public :: read_problem_par, problem_initial_conditions, problem_pointers
 
    real :: d0, alpha, bxn, byn, bzn, amp_cr, beta_cr                         !< galactic disk specific parameters
-   real :: x0, y0, z0, tlim                                                   !< parameters for a single supernova exploding at t=0
+   real :: x0, y0, z0, tlim, h0, g_a                                                   !< parameters for a single supernova exploding at t=0
    real, dimension(ndims) :: b_n, sn_pos
    logical :: fixedsn
 
-   namelist /PROBLEM_CONTROL/  d0, bxn, byn, bzn, x0, y0, z0, alpha, amp_cr, beta_cr, fixedsn, tlim
+   namelist /PROBLEM_CONTROL/  d0, bxn, byn, bzn, x0, y0, z0, alpha, amp_cr, beta_cr, fixedsn, tlim, h0, g_a
 
 contains
 
@@ -91,6 +91,8 @@ contains
       amp_cr  = 0.0
       beta_cr = 0.0
       tlim    = 10000
+      h0      = 0.8
+      g_a     = 3.7
       fixedsn = .false.
 
       if (master) then
@@ -122,6 +124,9 @@ contains
          rbuff(9)  = beta_cr
          rbuff(10) = alpha
          rbuff(11) = tlim
+         rbuff(12) = h0
+         rbuff(13) = g_a
+
          lbuff(1)  = fixedsn
 
       endif
@@ -142,6 +147,8 @@ contains
          beta_cr   = rbuff(9)
          alpha     = rbuff(10)
          tlim      = rbuff(11)
+         h0        = rbuff(12)
+         g_a       = rbuff(13)
 
          fixedsn  = lbuff(1)
 
@@ -379,19 +386,27 @@ contains
       integer                                             :: k
 
       real, parameter :: f1 = 3.23e8, f2 = -4.4e-9, f3 = 1.7e-9
-      real            :: r1, r22, r32, s4, s5
+      real            :: r1, r22, r32, s4, s5, h
 
       r1  = 4.9*kpc
       r22 = (0.2*kpc)**2
       r32 = (2.2*kpc)**2
       s4  = f2 * exp(-(r_gc-r_gc_sun)/(r1))
       s5  = f3 * (r_gc_sun**2 + r32)/(r_gc**2 + r32)
-
+      h   = h0*kpc
 !      grav = f1 * ((s4 * xsw/sqrt(xsw**2+r22)) - (s5 * xsw/kpc) )
 !!          -Om*(Om+G) * Z * (kpc ?) ! in the transition region between rigid and flat rotation F'98: eq.(36)
 
+      ! do k = lhn(zdim,LO), lhn(zdim,HI)
+      !    gp(:,:,k) = -f1 * (s4 * sqrt(ax%z(k)**2+r22) - s5 * half * ax%z(k)**2 / kpc)
+      ! enddo
+      ! return
+
       do k = lhn(zdim,LO), lhn(zdim,HI)
          gp(:,:,k) = -f1 * (s4 * sqrt(ax%z(k)**2+r22) - s5 * half * ax%z(k)**2 / kpc)
+         !if (k == 5) print *, 'ax%z(k): ', ax%z(k)
+         !if (k == 5) print *, 'abs(ax%z(k)): ', abs(ax%z(k))
+         if (abs(ax%z(k)) .gt. h) gp(:,:,k) = gp(:,:,k)/cosh(((abs(ax%z(k))-h)/h))**g_a !In mcrwind_cresp with multispecies: smoothing the gravitational potential outside of z = +-h = 3kpc
       enddo
       return
 

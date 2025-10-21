@@ -56,7 +56,7 @@ contains
    subroutine init_SF
 
      use bcast,        only: piernik_MPI_Bcast
-     use dataio_pub,   only: nh, printinfo, warn, die
+     use dataio_pub,   only: nh, printinfo, warn
      use mpisetup,     only: ibuff, lbuff, rbuff, master, slave
 
       implicit none
@@ -80,8 +80,8 @@ contains
       dt_violent_FB    = 0.002           ! Maximum timestep in case of violent kinetic feedback for timestep redo
       delayed          = .false.         ! Delayed energy injection in 7^3 cells
       kineticFB        = .false.         ! Kinetic feedback following TIGRESS
-      inject_mass      = .false.         ! Mass release during supernova
-      SF_redo_timestep = .false.         ! Timestep redo if dt > dt_violent_FB
+      inject_mass      = .false.         ! Mass released during supernova
+      SF_redo_timestep = .false.         ! Timestep redo if dt > dt_violent_FB. Currently not used.
 
       if (master) then
 
@@ -160,7 +160,7 @@ contains
       use cg_leaves,        only: leaves
       use cg_list,          only: cg_list_element
       use constants,        only: ndims, xdim, ydim, zdim, LO, HI, CENTER, pi, nbdn_n, pLOR, I_ONE
-      use dataio_pub,       only: warn, die
+      use dataio_pub,       only: warn
       use domain,           only: dom
       use fluidindex,       only: flind
       use fluidtypes,       only: component_fluid
@@ -187,11 +187,13 @@ contains
       class(component_fluid), pointer   :: pfl
       integer(kind=4)                   :: pid, ig, ir, irh, is, isn, ish, ifl, i, j, k, aijk1, i1, j1, k1, p
       integer(kind=4), dimension(ndims) :: ijk1, ijkp, ijkl, ijkr
+      real, dimension(ndims)            :: ijkl_coord
       real, dimension(ndims)            :: pos, vel, acc, v
       real, dimension(ndims,LO:HI)      :: sector
-      real                              :: sf_dens2dt, c_tau_ff, sfdf, frac, mass_SN_tot, mass, ener, tdyn, tbirth, padd, t1, tj, stage, en_SN, en_SN01, en_SN09, mfdv, tini, tinj, fpadd, dmax, e1, e2, e3, dens_amb, Ekin0, mp0cost, mp0sq, mp, padd2, frac1, mass1
+      real                              :: sf_dens2dt, c_tau_ff, sfdf, frac, mass_SN_tot, mass, ener, tdyn, tbirth, padd, t1, tj, stage, en_SN, en_SN01, en_SN09, mfdv, tini, tinj, fpadd, dens_amb, frac1, mass1, dist_max
       logical                           :: in, phy, out, fin, fed, tcond1, tcond2
       logical, dimension(FIRST:LAST)    :: send_data
+      logical, dimension(7,7,7)         :: ijk_check
       integer(kind=4), dimension(FIRST:LAST) :: nsend, ind
       real, dimension(:), allocatable   :: inj_send
 
@@ -200,7 +202,7 @@ contains
 
       tini     = 10.0
       tinj     = 6.5
-      fpadd    = 1.8e40 * gram * cm /sek * 2.**0.38 * 2 * dt / tinj / 26  ! see Agertz+2013
+      fpadd    = 1.8e40 * gram * cm /sek * 2.**0.38 * 2 * dt / tinj / 26  ! Kick: continuous momentum injection, see Agertz+2013
       mass_SN_tot = mass_SN * n_SN
       en_SN    = n_SN * SN_ener * erg
 #ifdef COSM_RAYS
@@ -219,7 +221,7 @@ contains
       if (sfrl_dump) ir = qna%ind(sfr_n)
       if (sfrh_dump) irh = qna%ind(sfrh_n)
       if (sne_dump)  isn = qna%ind(sne_n)
-      if (sne_dump)  is  = qna%ind(snel_n)
+      if (sne_dump)  is = qna%ind(snel_n)
       if (sne_dump)  ish = qna%ind(sneh_n)
 
       if (delayed) then                ! Prepare for MPI communications for energy injections
@@ -237,10 +239,6 @@ contains
          cg => cgl%cg
          if (sfrl_dump) cg%q(ir)%arr = 0.0
          if (sne_dump)  cg%q(is)%arr = 0.0
-         
-       !  cg%q(irh)%arr = 0.0
-       !  cg%q(ish)%arr = 0.0
-       !  cg%q(isn)%arr = 0.0
 
          do ifl = 1, flind%fluids
             pfl => flind%all_fluids(ifl)%fl
@@ -279,7 +277,7 @@ contains
 
                               call sf_fed(cg, pfl, dt, i, j, k, ir, irh, mass, 1 - frac, sfrl_dump, sfrh_dump)     ! Adding mass to the particle
                               if (aint(pset%pdata%mass / mass_SN_tot) > stage) then          ! Threshold mass reached, the sink particle will go supernova!
-                                 if ((.not. kick) .and. (.not. delayed)) then
+                                 if ((.not. kick) .and. (.not. delayed)) then                ! If not delayed feedback, instantaneous SN injection
                                     mfdv = (aint(pset%pdata%mass / mass_SN_tot) - stage) / cg%dvol
                                     if (sne_dump) cg%q(isn)%arr(i,j,k)   = cg%q(isn)%arr(i,j,k) + 1
                                     call sf_inject(cg, pfl%ien, pfl%idn, i, j, k, is, ish, mfdv * en_SN09, mfdv * en_SN01, dt, sne_dump)   ! SNe energy injection
@@ -305,7 +303,7 @@ contains
                         call sf_fed(cg, pfl, dt, i, j, k, ir, irh, mass, 1 - frac, sfrl_dump, sfrh_dump)
                         tbirth = -tini
                         if (mass > mass_SN_tot) then          ! Threshold mass instantaneously reached, the sink particle will go supernova!
-                           if ((.not. kick) .and. (.not. delayed)) then
+                           if ((.not. kick) .and. (.not. delayed)) then   ! If no delayed feedback, instantaneous SN injection
                               mfdv = aint(mass/mass_SN_tot) / cg%dvol
                               if (sne_dump) cg%q(isn)%arr(i,j,k)   = cg%q(isn)%arr(i,j,k) + 1
                               call sf_inject(cg, pfl%ien, pfl%idn, i, j, k, is, ish, mfdv * en_SN09, mfdv * en_SN01, dt, sne_dump)
@@ -327,7 +325,7 @@ contains
                t1 = t - pset%pdata%tform
                tj = t1 - tinj
                tcond1 = (tj < 0.0)
-               tcond2 = (abs(tj-dt) < dt) !(abs(tj) < dt)
+               tcond2 = (abs(tj-dt) < dt)
                send_data(:) = .false.
                if (t1 < tini .and. (tcond1 .or. tcond2)) then
 
@@ -341,13 +339,20 @@ contains
                      cycle
                   endif
 
-                  if (kick) then
+                  if (kick) then                ! For kick we continuously inject momentum during the delayed period
                      ijkl = l_neighb_part(ijkp, cg%ijkse(:,LO))
                      ijkr = r_neighb_part(ijkp, cg%ijkse(:,HI))
                   else if (delayed) then
+                     if (.not. tcond2) then     ! Still waiting to explode
+                        pset => pset%nxt
+                        cycle
+                     endif
                      ijkl = ijkp - 3
                      ijkr = ijkp + 3
-                     dens_amb = sum(cg%u(pfl%idn,ijkl(xdim):ijkr(xdim), ijkl(ydim):ijkr(ydim), ijkl(zdim):ijkr(zdim)) ) / 343.0 !27.0
+                     ijkl_coord = [cg%coord(CENTER,xdim)%r(ijkl(xdim)), cg%coord(CENTER,ydim)%r(ijkl(ydim)), cg%coord(CENTER,zdim)%r(ijkl(zdim))]
+                     dist_max = 3 * cg%dx
+                     call find_injection_region(pset%pdata%pos, ijkl, ijkr, ijkl_coord, cg%dx, dist_max, ijk_check, frac1)
+                     dens_amb = sum(cg%u(pfl%idn,ijkl(xdim):ijkr(xdim), ijkl(ydim):ijkr(ydim), ijkl(zdim):ijkr(zdim)) * merge(1.0, 0.0, ijk_check)) / sum(merge(1.0, 0.0, ijk_check)) + 10.0*frac1*merge(1,0,inject_mass)/cg%dvol
                   endif
 
                   do ifl = 1, flind%fluids
@@ -357,37 +362,41 @@ contains
                            do k = ijkl(zdim), ijkr(zdim)
 
                               if (mass_SN_tot .eq. max_part_mass) then
-                                 mfdv = aint(pset%pdata%mass / mass_SN_tot) / cg%dvol
-                              else
+                                 !mfdv = aint(pset%pdata%mass / mass_SN_tot) / cg%dvol
+                                 if (aint(pset%pdata%mass / mass_SN_tot) .gt. 1) print *, 'WARNING: More than 1 SNe for a given particle, but we will assume only 1 explosion'
+                              !else
                                  mfdv = 1 / cg%dvol                      !We assume only n_SN explosions are triggered at once (one supernova loadout)
                               endif
 
-                              ijk1 = nint((pset%pdata%pos - [cg%coord(CENTER,xdim)%r(i), cg%coord(CENTER,ydim)%r(j), cg%coord(CENTER,zdim)%r(k)]) * cg%idl, kind=4)
-                              aijk1 = sum(abs(ijk1))
+
+                              ijk1 = -nint((pset%pdata%pos - [cg%coord(CENTER,xdim)%r(i), cg%coord(CENTER,ydim)%r(j), cg%coord(CENTER,zdim)%r(k)]) * cg%idl, kind=4)
+                              aijk1 = sum(ijk1**2)
 
                               ! KICK
                               if (kick) then
-                                 if (aijk1 > 0.0 .and. tcond1) then
+                                 if (aijk1 > 0.0 .and. tcond1) then       ! Continuous Momentum injection during delayed period
                                     padd = pset%pdata%mass * fpadd / cg%dvol / sqrt(real(aijk1))
 
                                     ! Momentum kick
                                     cg%u(pfl%ien,i,j,k) = cg%u(pfl%ien,i,j,k) - ekin(cg%u(pfl%imx,i,j,k), cg%u(pfl%imy,i,j,k), cg%u(pfl%imz,i,j,k), cg%u(pfl%idn,i,j,k))  ! remove ekin
                                     cg%u(pfl%imx:pfl%imz,i,j,k) = cg%u(pfl%imx:pfl%imz,i,j,k) + ijk1 * padd
                                     cg%u(pfl%ien,i,j,k) = cg%u(pfl%ien,i,j,k) + ekin(cg%u(pfl%imx,i,j,k), cg%u(pfl%imy,i,j,k), cg%u(pfl%imz,i,j,k), cg%u(pfl%idn,i,j,k))  ! add new ekin
-                                 else if (aijk1 == 0 .and. tcond2) then    ! Instantaneous injection SNe Agertz
+                                 else if (aijk1 == 0 .and. tcond2) then    ! Instantaneous injection of SNe from Agertz+2013: delayed period over
                                     if (sne_dump) cg%q(isn)%arr(i,j,k)   = cg%q(isn)%arr(i,j,k) + 1
                                     call sf_inject(cg, pfl%ien, pfl%idn, i, j, k, is, ish, mfdv * en_SN09, mfdv * en_SN01, dt,sne_dump)
                                  endif
 
-                              ! Delayed FB in 7^3 cells
-                              else if (delayed .and. tcond2) then !Momentum Feedback
+                              ! Delayed FB following TIGRESS in a sphere of radius = 3 cells
+                              else if (delayed .and. tcond2) then
+
+                                 if (.not. ijk_check(i+1-ijkl(xdim),j+1-ijkl(ydim),k+1-ijkl(zdim))) cycle
 
                                  !If SNe is close to the cg boundaries, MPI communication is needed
                                  if (.not. particle_in_area((/cg%x(i), cg%y(j), cg%z(k) /), cg%fbnd) ) then
                                     do p = FIRST, LAST
                                        if (.not. send_data(p)) then
                                           if (attribute_to_proc(cg%x(i), cg%y(j), cg%z(k), p)) then
-                                             inj_send(ind(p):ind(p)+5) = (/ cg%x(ijkp(xdim)), cg%y(ijkp(ydim)), cg%z(ijkp(zdim)), mfdv, dens_amb, cg%dx /)
+                                             inj_send(ind(p):ind(p)+5) = (/ pset%pdata%pos(xdim), pset%pdata%pos(ydim), pset%pdata%pos(zdim), frac1, dens_amb, cg%dx /)
                                              ind(p) = ind(p)+6
                                              send_data(p)=.true.
                                           endif
@@ -397,11 +406,8 @@ contains
                                  endif
                                  if (.not. cg%leafmap(i,j,k)) cycle
 
-                                 if ((sne_dump) .and. (aijk1 == 0)) then
-                                    cg%q(isn)%arr(i,j,k)   = cg%q(isn)%arr(i,j,k) + 1
-                                 endif
-                                 call TIGRESS_injection(cg, pfl, dens_amb, cg%dx, mfdv, 1.0/343, ijk1, aijk1, i, j, k, is, ish, sne_dump)
-
+                                 if ((sne_dump) .and. (aijk1 == 0)) cg%q(isn)%arr(i,j,k)   = cg%q(isn)%arr(i,j,k) + 1
+                                 call TIGRESS_injection(cg, pfl, dens_amb, cg%dx, mfdv, frac1, ijk1, aijk1, i, j, k, is, ish, sne_dump)
                               endif
                            enddo
                         enddo
@@ -414,15 +420,16 @@ contains
          cgl => cgl%nxt
       enddo
 
-!MPI Communication for 7^3 cells SNe injection
+!MPI Communication for 3 cell radius SNe injection
       if (delayed) then
          call inject_from_other_cgs(nsend, inj_send, is, ish, sne_dump)  ! Inject energy & momentum from other cgs
          deallocate(inj_send)
-         call piernik_MPI_Allreduce(SF_redo_timestep, pLOR)
+         !call piernik_MPI_Allreduce(SF_redo_timestep, pLOR)     ! Currently not used
       endif
 
    end subroutine SF
 
+   ! Star formation: Adding gas mass to stellar particle and reducing gas quantities in the grid
    subroutine sf_fed(cg, pfl, dt, i, j, k, ir, irh, mass, frac1, sfrl_dump, sfrh_dump)
 
       use constants,  only: xdim, ydim, zdim
@@ -440,7 +447,7 @@ contains
 
       dmass_stars                 = dmass_stars         + mass
       cg%u(pfl%ien,i,j,k)         = cg%u(pfl%ien,i,j,k) - emag(cg%b(xdim,i,j,k), cg%b(ydim,i,j,k), cg%b(zdim,i,j,k))
-      cg%u(pfl%ien,i,j,k)         = frac1 * cg%u(pfl%ien,i,j,k) !- frac * ekin(cg%u(pfl%imx,i,j,k), cg%u(pfl%imy,i,j,k), cg%u(pfl%imz,i,j,k), cg%u(pfl%idn,i,j,k))
+      cg%u(pfl%ien,i,j,k)         = frac1 * cg%u(pfl%ien,i,j,k)
       cg%u(pfl%ien,i,j,k)         = cg%u(pfl%ien,i,j,k) + emag(cg%b(xdim,i,j,k), cg%b(ydim,i,j,k), cg%b(zdim,i,j,k))
       cg%u(pfl%idn,i,j,k)         = frac1 * cg%u(pfl%idn,i,j,k)
       cg%u(pfl%imx:pfl%imz,i,j,k) = frac1 * cg%u(pfl%imx:pfl%imz,i,j,k)
@@ -450,10 +457,10 @@ contains
 
    end subroutine sf_fed
 
-   ! Subroutine for Injection SN energy
+
+   ! Subroutine for Thermal injection SN energy
    subroutine sf_inject(cg, ien, idn, i, j, k, is, ish, mft, mfcr, dt, sne_dump)
 
-     use units,      only: cm
      use grid_cont,      only: grid_container
 #ifdef COSM_RAYS
       use cr_data,        only: icr_H1, cr_index
@@ -504,6 +511,7 @@ contains
 
    end subroutine sf_inject
 
+   ! Star formation threshold check
    logical function check_threshold(cg, idn, i, j, k) result(thres)
 
       use grid_cont, only: grid_container
@@ -521,7 +529,7 @@ contains
       thres = thres .and. (cg%q(itemp)%arr(i,j,k) < temp_thr)
 #endif /* THERM */
 
-end function check_threshold
+   end function check_threshold
 
    subroutine initialize_id()
 
@@ -588,7 +596,7 @@ end function check_threshold
     !if ((abs(cg%z(k)) > 7000) .or. ((cg%x(i)**2+cg%y(j)**2) > 20000**2)) return ! no SF in the stream
 
 #ifdef COSM_RAYS
-    if ((divv_crit) .and. (cg%q(divv_i)%arr(i,j,k) .ge. 0)) return                     ! convergent flow
+    if ((divv_crit) .and. (cg%q(divv_i)%arr(i,j,k) .ge. 0)) return    ! convergent flow
 #endif /* COSM_RAYS */
 
 #ifdef THERM
@@ -596,9 +604,6 @@ end function check_threshold
 
     if (Jeans_crit) then
        RJ = 2.8 * sqrt(temp/1000) * sqrt(3*pi/(32*G*cg%w(wna%fi)%arr(pfl%idn,i,j,k)))
-
-       !print *, 'Jeans mass', 4*pi/3 * RJ**3 * cg%w(wna%fi)%arr(pfl%idn,i,j,k), pi/6.0 * pfl%cs**3 / G**(3.0/2) / cg%w(wna%fi)%arr(pfl%idn,i,j,k)**0.5, 'mass', cg%w(wna%fi)%arr(pfl%idn,i,j,k) * cg%dvol, 'temp', temp, 'dens', cg%w(wna%fi)%arr(pfl%idn,i,j,k)
-       !print *, 'Jeans mass', 4*pi/3 * RJ**3 * cg%w(wna%fi)%arr(pfl%idn,i,j,k), pfl%cs, 2.8 * sqrt(temp/1000)!, pi/6.0 * pfl%cs**3 / G**(3.0/2) / cg%w(wna%fi)%arr(pfl%idn,i,j,k)**0.5
        if (cg%w(wna%fi)%arr(pfl%idn,i,j,k) * cg%dvol .lt. 4*pi/3 * RJ**3 * cg%w(wna%fi)%arr(pfl%idn,i,j,k)) return
     endif
 
@@ -613,6 +618,7 @@ end function check_threshold
 
   end function SF_crit
 
+  ! Check if a gas cell is within accretion distance from the particle
   logical function add_SFmass(pset, x, y, z, sector) result(add)
 
     use constants,        only: ndims, xdim, ydim, zdim, LO, HI
@@ -637,15 +643,16 @@ end function check_threshold
 
   end function add_SFmass
 
-  !    Count number of cells to be exchanged between cgs for energy and momentum injection
+  !  Count number of cells to be exchanged between cgs for energy and momentum injection
   subroutine count_mpi_injection_cells(tinj, nsend)
 
-    use cg_cost_data,          only: I_PARTICLE
+!    use cg_cost_data,          only: I_PARTICLE
     use cg_leaves,             only: leaves
     use cg_list,               only: cg_list_element
-    use cg_list_global,        only: all_cg
-    use constants,             only: ndims, I_ONE, base_level_id, LO, HI, xdim, ydim, zdim
+    use constants,             only: ndims, I_ONE, LO, HI, xdim, ydim, zdim, CENTER
     use domain,                only: dom
+    use fluidindex,            only: flind
+    use fluidtypes,            only: component_fluid
     use global,                only: t, dt
     use grid_cont,             only: grid_container
     use mpisetup,              only: proc, FIRST, LAST
@@ -659,69 +666,90 @@ end function check_threshold
     type(grid_container), pointer                       :: cg
     type(cg_list_element), pointer                      :: cgl
     type(particle), pointer                             :: pset
+    class(component_fluid), pointer                     :: pfl
     integer(kind=4), dimension(ndims)                   :: ijk1, ijkp, ijkl, ijkr
-    integer                                             :: i,j,k,p
-    real                                                :: t1, tj
-    logical                                             :: tcond2, send_data
+    integer                                             :: i,j,k,p, ifl, idn
+    real                                                :: t1, tj, dens_amb, frac1, dist_max
+    real, dimension(ndims)                              :: ijkl_coord
+    logical, dimension(7,7,7)                           :: ijk_check
+    logical                                             :: tcond2, send_data, SNe_lowdens_reg
 
+    SNe_lowdens_reg = .false.
     nsend = 0
     do p = FIRST, LAST
-       cgl => leaves%first  !all_cg%first
-       do while (associated(cgl))
-          !if (cgl%cg%l%id >= base_level_id) then
-           !  call cgl%cg%costs%start
-             cg => cgl%cg
+       do ifl = 1, flind%fluids
+         pfl => flind%all_fluids(ifl)%fl
+         cgl => leaves%first
+         do while (associated(cgl))
+         !  call cgl%cg%costs%start
+            cg => cgl%cg
 
-             pset => cg%pset%first
-             do while (associated(pset))
-                send_data = .false.
-                t1 = t - pset%pdata%tform
-                tj = t1 - tinj
-                tcond2 = (abs(tj-dt) < dt) !(abs(tj) < dt)
-                if ((t1 .lt. 10.0) .and. (tcond2)) then
-                   ijkp = ijk_of_particle(pset%pdata%pos, dom%edge(:,LO), cg%idl)
-                   if (.not. pset%pdata%phy) then
-                      pset => pset%nxt
-                      cycle
-                   endif
-                   if (.not. cg%leafmap(ijkp(xdim),ijkp(ydim),ijkp(zdim))) then
-                      pset => pset%nxt
-                      cycle
-                   endif
+            pset => cg%pset%first
+            do while (associated(pset))
+               send_data = .false.
+               t1 = t - pset%pdata%tform
+               tj = t1 - tinj
+               tcond2 = (abs(tj-dt) < dt)
+               if ((t1 .lt. 10.0) .and. (tcond2)) then
+                  ijkp = ijk_of_particle(pset%pdata%pos, dom%edge(:,LO), cg%idl)
+                  if (.not. pset%pdata%phy) then
+                     pset => pset%nxt
+                     cycle
+                  endif
+                  if (.not. cg%leafmap(ijkp(xdim),ijkp(ydim),ijkp(zdim))) then
+                     pset => pset%nxt
+                     cycle
+                  endif
 
-                   ijkl = ijkp - 3
-                   ijkr = ijkp + 3
-                   do i = ijkl(xdim), ijkr(xdim)
-                      do j = ijkl(ydim), ijkr(ydim)
-                         do k = ijkl(zdim), ijkr(zdim)
-                            if (send_data) cycle
-                            if (.not. particle_in_area((/cg%x(i), cg%y(j), cg%z(k) /), cg%fbnd) ) then
-                               if (attribute_to_proc(cg%x(i), cg%y(j), cg%z(k), p)) then
-                                  send_data = .true.
-                                  nsend(p) = nsend(p) + I_ONE
-                                  exit
-                               endif
+                  ijkl = ijkp - 3
+                  ijkr = ijkp + 3
+                  ijkl_coord = [cg%coord(CENTER,xdim)%r(ijkl(xdim)), cg%coord(CENTER,ydim)%r(ijkl(ydim)), cg%coord(CENTER,zdim)%r(ijkl(zdim))]
+                  dist_max = 3 * cg%dx
+                  call find_injection_region(pset%pdata%pos, ijkl, ijkr, ijkl_coord, cg%dx, dist_max, ijk_check, frac1)
+                  dens_amb = sum(cg%u(pfl%idn,ijkl(xdim):ijkr(xdim), ijkl(ydim):ijkr(ydim), ijkl(zdim):ijkr(zdim)) * merge(1.0, 0.0, ijk_check)) / sum(merge(1.0, 0.0, ijk_check))
 
-                            endif
-                         enddo
-                      enddo
-                   enddo
-                endif
-             pset => pset%nxt
-             enddo
-         !    call cgl%cg%costs%stop(I_PARTICLE)
-          !endif
-          cgl => cgl%nxt
+
+                  ! Option to delay SNe until reaching a low density region
+                  if ((SNe_lowdens_reg) .and. (dens_amb .gt. 10)) then
+                        print *, 'Delaying SNe until reaching a low density region; density = ', dens_amb
+                        pset%pdata%tform = pset%pdata%tform + 0.01
+                        pset => pset%nxt
+                        cycle
+                  endif
+
+                  do i = ijkl(xdim), ijkr(xdim)
+                     do j = ijkl(ydim), ijkr(ydim)
+                        do k = ijkl(zdim), ijkr(zdim)
+                           if (send_data) cycle
+                           if (.not. ijk_check(i+1-ijkl(xdim),j+1-ijkl(ydim),k+1-ijkl(zdim))) cycle
+                           if (.not. particle_in_area((/cg%x(i), cg%y(j), cg%z(k) /), cg%fbnd) ) then
+                              if (attribute_to_proc(cg%x(i), cg%y(j), cg%z(k), p)) then
+                                 send_data = .true.
+                                 nsend(p) = nsend(p) + I_ONE
+                                 exit
+                              endif
+
+                           endif
+                        enddo
+                     enddo
+                  enddo
+               endif
+            pset => pset%nxt
+            enddo
+      !    call cgl%cg%costs%stop(I_PARTICLE)
+            cgl => cgl%nxt
+         enddo
        enddo
     enddo
 
   end subroutine count_mpi_injection_cells
 
+  ! Determine where to MPI send a cell for SNe injection
   logical function attribute_to_proc(x,y,z, p) result(to_send)
 
     use cg_level_base,      only: base
     use cg_level_connected, only: cg_level_connected_t
-    use constants,          only: xdim, zdim, ndims, LO, HI, I_ONE
+    use constants,          only: ndims, LO, HI, I_ONE
     use domain,             only: dom
     use particle_func,      only: particle_in_area
 
@@ -760,20 +788,13 @@ end function check_threshold
 
     use cg_list,               only: cg_list_element
     use cg_list_global,        only: all_cg
-    use dataio_pub,             only: die
-    use domain,                only: dom
     use fluidindex,            only: flind
     use fluidtypes,            only: component_fluid
-    use func,                  only: ekin, emag
     use grid_cont,             only: grid_container
     use constants,             only: I_ONE, xdim, ydim, zdim, ndims, LO, HI, CENTER
     use MPIF,                  only: MPI_INTEGER, MPI_COMM_WORLD, MPI_DOUBLE_PRECISION
     use MPIFUN,                only: MPI_Alltoall, MPI_Alltoallv
     use mpisetup,              only: proc, FIRST, LAST, err_mpi
-    !use particle_func,         only: particle_in_area, ijk_of_particle
-#ifdef COSM_RAYS
-    use initcosmicrays,        only: cr_active, cr_eff
-#endif /* COSM_RAYS */
 
     implicit none
 
@@ -787,13 +808,13 @@ end function check_threshold
     integer(kind=4), dimension(FIRST:LAST)    :: nrecv, disps, dispr, counts, countr
     real, dimension(:), allocatable           :: inj_recv
     integer                                   :: p, part, ind, i, j, k, ncells, aijk1, ifl
-    real                                      :: x,y,z, mfdv, dens_amb, dx, frac, en_SN, en_SN01, en_SN09
+    real                                      :: x,y,z, mfdv, dens_amb, dx, frac, en_SN, en_SN01, en_SN09, frac1
     logical                                   :: in_cg
-    integer(kind=4), dimension(ndims)         :: ijk1
+    integer(kind=4), dimension(ndims)         :: ijk1, ijkp, ijkl, ijkr
+    real, dimension(ndims)                    :: ijkl_coord
+    logical, dimension(:,:,:), allocatable    :: ijk_check
 
     call MPI_Alltoall(nsend, I_ONE, MPI_INTEGER, nrecv, I_ONE, MPI_INTEGER, MPI_COMM_WORLD, err_mpi)
-    !print *, proc, 'nsend', nsend
-    !print *, proc, 'nrecv', nrecv
 
     allocate(inj_recv(sum(nrecv)*6))
     counts = 6 * nsend
@@ -816,38 +837,44 @@ end function check_threshold
           x        = inj_recv(ind)
           y        = inj_recv(ind+1)
           z        = inj_recv(ind+2)
-          mfdv     = inj_recv(ind+3)
+          frac     = inj_recv(ind+3)
           dens_amb = inj_recv(ind+4)
           dx       = inj_recv(ind+5)
           ind = ind+6
 
-          call is_FB_in_cg(cg,x,y,z,dx, in_cg,frac)
+          call is_FB_in_cg(cg,x,y,z,dx, in_cg, ijkl, ijkr, ijk_check)
           if (.not. in_cg) cycle
+
+         if (dx .eq. cg%dx) then
+             frac =  frac
+         else if (dx .eq. cg%dx/2) then
+            frac = frac * 8
+         else if (dx .eq. cg%dx*2) then
+            frac = frac / 8
+         else
+            print *, 'WARNING! Something weird happening in SN injection: ', dx, cg%dx
+            cycle
+         endif
+
+         if (frac .eq. 0.0) then
+            print *, 'WARNING! fraction 0 in SNe: ', dx, cg%dx, frac, dens_amb
+            cycle
+         endif
+
+         mfdv = 1.0 / cg%dx**3
 
           do ifl = 1, flind%fluids
              pfl => flind%all_fluids(ifl)%fl
-             do i = cg%ijkse(xdim, LO), cg%ijkse(xdim, HI)
-                if ((cg%coord(CENTER, xdim)%r(i) .gt. x) .and. (abs(x-cg%coord(LO, xdim)%r(i)) .gt. 3*dx)) cycle
-                if ((cg%coord(CENTER, xdim)%r(i) .lt. x) .and. (abs(x-cg%coord(HI, xdim)%r(i)) .gt. 3*dx)) cycle
-                do j = cg%ijkse(ydim, LO), cg%ijkse(ydim, HI)
-                   if ((cg%coord(CENTER, ydim)%r(j) .gt. y) .and. (abs(y-cg%coord(LO, ydim)%r(j)) .gt. 3*dx)) cycle
-                   if ((cg%coord(CENTER, ydim)%r(j) .lt. y) .and. (abs(y-cg%coord(HI, ydim)%r(j)) .gt. 3*dx)) cycle
-                   do k = cg%ijkse(zdim, LO), cg%ijkse(zdim, HI)
-                      if ((cg%coord(CENTER, zdim)%r(k) .gt. z) .and. (abs(z-cg%coord(LO, zdim)%r(k)) .gt. 3*dx)) cycle
-                      if ((cg%coord(CENTER, zdim)%r(k) .lt. z) .and. (abs(z-cg%coord(HI, zdim)%r(k)) .gt. 3*dx)) cycle
-
+             do i = ijkl(xdim), ijkr(xdim)
+                do j = ijkl(ydim), ijkr(ydim)
+                   do k = ijkl(zdim), ijkr(zdim)
+                      if (.not. ijk_check(i,j,k)) cycle
                       if (.not. cg%leafmap(i,j,k)) cycle
-                      if ((dx .gt. cg%dx*2) .or. (dx .lt. cg%dx/2.0) .or. (frac .eq. 0.0)) then
-                         print *, '[star_formation] ........ERROR..........', dx, cg%dx
-                         call die('[star_formation] Weird values in dx and cg%dx')
-                      endif
+                      ijk1 = -nint(([x,y,z] - [cg%coord(CENTER,xdim)%r(i), cg%coord(CENTER,ydim)%r(j), cg%coord(CENTER,zdim)%r(k)]) * cg%idl, kind=4)
+                      aijk1 = sum(ijk1**2)
+                      if (aijk1 .eq. 0) print *, proc, 'WARNING! SNe center cell should not be in a different cg!', x,y,z, cg%coord(CENTER,xdim)%r(i), cg%coord(CENTER,ydim)%r(j), cg%coord(CENTER,zdim)%r(k), dx, cg%dx, 'in cg:', cg%coord(LO, xdim)%r(cg%ijkse(xdim,LO)), cg%coord(HI, xdim)%r(cg%ijkse(xdim,HI)),  cg%coord(LO, ydim)%r(cg%ijkse(ydim,LO)), cg%coord(HI, ydim)%r(cg%ijkse(ydim,HI)), cg%coord(LO, zdim)%r(cg%ijkse(zdim,LO)), cg%coord(HI, zdim)%r(cg%ijkse(zdim,HI))
 
-
-                      ijk1 = nint(([x,y,z] - [cg%coord(CENTER,xdim)%r(i), cg%coord(CENTER,ydim)%r(j), cg%coord(CENTER,zdim)%r(k)]) * cg%idl, kind=4)
-                      aijk1 = sum(abs(ijk1))
-                      if (aijk1 .eq. 0) print *, proc, 'Hmm really???', x,y,z, cg%coord(CENTER,xdim)%r(i), cg%coord(CENTER,ydim)%r(j), cg%coord(CENTER,zdim)%r(k), dx, cg%dx, 'in cg:', cg%coord(LO, xdim)%r(cg%ijkse(xdim,LO)), cg%coord(HI, xdim)%r(cg%ijkse(xdim,HI)),  cg%coord(LO, ydim)%r(cg%ijkse(ydim,LO)), cg%coord(HI, ydim)%r(cg%ijkse(ydim,HI)), cg%coord(LO, zdim)%r(cg%ijkse(zdim,LO)), cg%coord(HI, zdim)%r(cg%ijkse(zdim,HI))
-
-                      call TIGRESS_injection(cg, pfl, dens_amb, dx, mfdv, frac, ijk1, aijk1, i, j, k, is, ish, sne_dump)
+                      call TIGRESS_injection(cg, pfl, dens_amb, dx, mfdv, frac, ijk1, aijk1, i, j, k, is, ish, sne_dump)   ! Injection scheme
 
                    enddo
                 enddo
@@ -861,11 +888,11 @@ end function check_threshold
 
   end subroutine inject_from_other_cgs
 
-  subroutine is_FB_in_cg(cg,x,y,z,dx, in_cg,frac)! result(in_cg)
+  ! Check if the received cell is within this cg for SNe injection
+  subroutine is_FB_in_cg(cg,x,y,z,dx, in_cg, ijkl, ijkr, ijk_check)
 
-    use constants,             only: xdim, ydim, zdim, LO, HI!, CENTER
+    use constants,             only: xdim, ydim, zdim, ndims, LO, HI, CENTER
     use grid_cont,             only: grid_container
-    use mpisetup, only: proc
     use particle_func,         only: particle_in_area
 
     implicit none
@@ -873,11 +900,15 @@ end function check_threshold
     type(grid_container), pointer             :: cg
     real, intent(in)                          :: x,y,z,dx
     logical, intent(out)                      :: in_cg
-    real, intent(out)                         :: frac
-    real                                      :: xmin, ymin, zmin, xmax, ymax, zmax
-    integer                                   :: nx,ny,nz
+    real                                      :: xmin, ymin, zmin, xmax, ymax, zmax, frac1
+    integer                                   :: nx,ny,nz, i
+    integer, dimension(ndims), intent(out)                 :: ijkl, ijkr
+    real, dimension(ndims)                    :: ijkl_coord
+    logical, dimension(:,:,:), allocatable, intent(out)    :: ijk_check
 
     in_cg = .false.
+
+    if (cg%dx .gt. 2.5 * dx) return
 
     xmin = x - 3*dx
     xmax = x + 3*dx
@@ -894,50 +925,87 @@ end function check_threshold
     if (ymax .lt. cg%coord(LO, ydim)%r(cg%ijkse(ydim,LO))) return
     if (zmax .lt. cg%coord(LO, zdim)%r(cg%ijkse(zdim,LO))) return
 
-    if ((particle_in_area((/ x,y,z /), cg%fbnd)) .and. (cg%dx .eq. dx)) return    ! Let's not inject the same FB twice
+    if ((particle_in_area((/ x,y,z /), cg%fbnd)) .and. (cg%dx .eq. dx)) return    ! Let's not inject the same FB twice in the same cg
 
-    in_cg = .true.
+    in_cg = .true. ! The cell is within this cg
 
+    ! Deal with different resolutions between cgs in AMR: volume weighted fraction for energy injection
     if (x .lt. cg%coord(LO, xdim)%r(cg%ijkse(xdim,LO))) then
-       nx =  ceiling(((x+3*dx) - cg%coord(LO, xdim)%r(cg%ijkse(xdim,LO))) / dx)
+      nx =  ceiling(((x+3*dx) - cg%coord(LO, xdim)%r(cg%ijkse(xdim,LO))) / dx)
+      ijkl(xdim) = cg%ijkse(xdim,LO)
+      ijkr(xdim) = min(cg%ijkse(xdim,LO) + nx, cg%ijkse(xdim,HI))
     else if (x .gt. cg%coord(HI, xdim)%r(cg%ijkse(xdim,HI))) then
-       nx =  ceiling((cg%coord(HI, xdim)%r(cg%ijkse(xdim,HI)) - (x-3*dx)) / dx)
+      nx =  ceiling((cg%coord(HI, xdim)%r(cg%ijkse(xdim,HI)) - (x-3*dx)) / dx)
+      ijkl(xdim) = max(cg%ijkse(xdim,HI) - nx, cg%ijkse(xdim,LO))
+      ijkr(xdim) = cg%ijkse(xdim,HI)
     else
-       nx = min(ceiling((x-dx - cg%coord(LO, xdim)%r(cg%ijkse(xdim,LO))) / dx), 3) + min(ceiling((cg%coord(HI, xdim)%r(cg%ijkse(xdim,HI)) - x) / dx), 4)
+      nx = min(ceiling((x-dx - cg%coord(LO, xdim)%r(cg%ijkse(xdim,LO))) / dx), 3) + min(ceiling((cg%coord(HI, xdim)%r(cg%ijkse(xdim,HI)) - x) / dx), 4)
+      ijkl(xdim) = cg%ijkse(xdim,LO)
+      do i = cg%ijkse(xdim, LO), cg%ijkse(xdim, HI)
+         if (cg%coord(CENTER, xdim)%r(i) <= xmin) ijkl(xdim) = i
+      enddo
+      ijkr(xdim) = cg%ijkse(xdim,HI)
+      do i = cg%ijkse(xdim, LO), cg%ijkse(xdim, HI)
+         if (cg%coord(CENTER, xdim)%r(i) >= xmax) then
+            ijkr(xdim) = i
+            exit
+         endif
+      enddo
     endif
     if (y .lt. cg%coord(LO, ydim)%r(cg%ijkse(ydim,LO))) then
        ny =  ceiling(((y+3*dx) - cg%coord(LO, ydim)%r(cg%ijkse(ydim,LO))) / dx)
+       ijkl(ydim) = cg%ijkse(ydim,LO)
+       ijkr(ydim) = min(cg%ijkse(ydim,LO) + ny,  cg%ijkse(ydim,HI))
     else if (y .gt. cg%coord(HI, ydim)%r(cg%ijkse(ydim,HI))) then
        ny =  ceiling((cg%coord(HI, ydim)%r(cg%ijkse(ydim,HI)) - (y-3*dx)) / dx)
+       ijkl(ydim) = max(cg%ijkse(ydim,HI) - ny, cg%ijkse(ydim,LO))
+       ijkr(ydim) = cg%ijkse(ydim,HI)
     else
-       ny = min(ceiling((y-dx - cg%coord(LO, ydim)%r(cg%ijkse(ydim,LO))) / dx), 3) + min(ceiling((cg%coord(HI, ydim)%r(cg%ijkse(ydim,HI)) - y) / dx), 4)
+      ny = min(ceiling((y-dx - cg%coord(LO, ydim)%r(cg%ijkse(ydim,LO))) / dx), 3) + min(ceiling((cg%coord(HI, ydim)%r(cg%ijkse(ydim,HI)) - y) / dx), 4)
+      ijkl(ydim) = cg%ijkse(ydim,LO)
+      do i = cg%ijkse(ydim, LO), cg%ijkse(ydim, HI)
+         if (cg%coord(CENTER, ydim)%r(i) <= ymin) ijkl(ydim) = i
+      enddo
+      ijkr(ydim) = cg%ijkse(ydim,HI)
+      do i = cg%ijkse(ydim, LO), cg%ijkse(ydim, HI)
+         if (cg%coord(CENTER, ydim)%r(i) >= ymax) then
+            ijkr(ydim) = i
+            exit
+         endif
+      enddo
     endif
     if (z .lt. cg%coord(LO, zdim)%r(cg%ijkse(zdim,LO))) then
-       nz =  ceiling(((z+3*dx) - cg%coord(LO, zdim)%r(cg%ijkse(zdim,LO))) / dx)
+      nz =  ceiling(((z+3*dx) - cg%coord(LO, zdim)%r(cg%ijkse(zdim,LO))) / dx)
+      ijkl(zdim) = cg%ijkse(zdim,LO)
+      ijkr(zdim) = min(cg%ijkse(zdim,LO) + nz, cg%ijkse(zdim,HI))
     else if (z .gt. cg%coord(HI, zdim)%r(cg%ijkse(zdim,HI))) then
-       nz =  ceiling((cg%coord(HI, zdim)%r(cg%ijkse(zdim,HI)) - (z-3*dx)) / dx)
+      nz =  ceiling((cg%coord(HI, zdim)%r(cg%ijkse(zdim,HI)) - (z-3*dx)) / dx)
+      ijkl(zdim) = max(cg%ijkse(zdim,HI) - nz, cg%ijkse(zdim,LO))
+      ijkr(zdim) = cg%ijkse(zdim,HI)
     else
-       nz = min(ceiling((z-dx - cg%coord(LO, zdim)%r(cg%ijkse(zdim,LO))) / dx), 3) + min(ceiling((cg%coord(HI, zdim)%r(cg%ijkse(zdim,HI)) - z) / dx), 4)
+      nz = min(ceiling((z-dx - cg%coord(LO, zdim)%r(cg%ijkse(zdim,LO))) / dx), 3) + min(ceiling((cg%coord(HI, zdim)%r(cg%ijkse(zdim,HI)) - z) / dx), 4)
+      ijkl(zdim) = cg%ijkse(zdim,LO)
+      do i = cg%ijkse(zdim, LO), cg%ijkse(zdim, HI)
+         if (cg%coord(CENTER, zdim)%r(i) <= zmin) ijkl(zdim) = i
+      enddo
+      ijkr(zdim) = cg%ijkse(zdim,HI)
+      do i = cg%ijkse(zdim, LO), cg%ijkse(zdim, HI)
+         if (cg%coord(CENTER, zdim)%r(i) >= zmax) then
+            ijkr(zdim) = i
+            exit
+         endif
+      enddo
     endif
 
+   ijkl_coord = [cg%coord(CENTER,xdim)%r(ijkl(xdim)), cg%coord(CENTER,ydim)%r(ijkl(ydim)), cg%coord(CENTER,zdim)%r(ijkl(zdim))]
+   allocate(ijk_check(ijkl(xdim):ijkr(xdim), ijkl(ydim):ijkr(ydim), ijkl(zdim):ijkr(zdim)))
+   call find_injection_region([x,y,z], ijkl, ijkr, ijkl_coord, cg%dx, 3*dx, ijk_check, frac1)
 
-    if (cg%dx .eq. dx) then
-       frac = 1.0 / 343
-    else if (cg%dx .eq. 2*dx) then
-       frac = nx*ny*nz/343.0
-       frac = frac / (ceiling(nx/2.0) * ceiling(ny/2.0) * ceiling(nz/2.0))
-    else if (cg%dx .eq. dx/2.0) then
-       frac = 1.0 / (343*8)
-    else
-       frac = 0.0                        ! Should not be injected on lower refinement levels
-    endif
-
-
- !   endif
-    return
+   return
 
   end subroutine is_FB_in_cg
 
+  ! TIGRESS SN injection scheme: thermal + kinetic energy injection, depending on whether the shell formation radius is resolved
   subroutine TIGRESS_injection(cg, pfl, dens_amb, dx, mfdv, frac, ijk1, aijk1, i, j, k, is, ish, sne_dump)
 
     use constants,             only: xdim, ydim, zdim
@@ -945,83 +1013,149 @@ end function check_threshold
     use func,                  only: ekin, emag
     use global,                only: dt
     use grid_cont,             only: grid_container
-    use units,                 only: sek, erg, km, Msun
+    use units,                 only: sek, erg, km
 #ifdef COSM_RAYS
     use initcosmicrays,        only: cr_active, cr_eff
 #endif /* COSM_RAYS */
 
-    implicit none
+   implicit none
 
-    type(grid_container), pointer             :: cg
-    class(component_fluid), pointer           :: pfl
-    real, intent(in)                          :: dens_amb, dx, mfdv, frac
-    integer(kind=4), dimension(:), intent(in) :: ijk1
-    integer, intent(in)                       :: is, ish, i,j,k, aijk1
-    logical, intent(in)                       :: sne_dump
-    real                                      :: padd, en_SN, en_SN01, en_SN09, maxvel, frac1, enclosed_mass
+   type(grid_container), pointer             :: cg
+   class(component_fluid), pointer           :: pfl
+   real, intent(in)                          :: dens_amb, dx, mfdv, frac
+   integer(kind=4), dimension(:), intent(in) :: ijk1
+   integer, intent(in)                       :: is, ish, i,j,k, aijk1
+   logical, intent(in)                       :: sne_dump
+   real                                      :: padd, en_SN, en_SN01, en_SN09, maxvel, frac1, enclosed_mass, new_dens, frac3, frac4, RM
+   real                                      :: Ekin0, mp0cost, mp0sq, mp
+   integer                                   :: dir_max, ndim
+   real, dimension(3)                        :: moms, frac2, v
+   logical                                   :: equalize_region
 
-    if (inject_mass) then
-       frac1 = 10.0*frac/cg%dvol / cg%u(pfl%idn,i,j,k)
-       cg%u(pfl%ien,i,j,k) = cg%u(pfl%ien,i,j,k) - emag(cg%b(xdim,i,j,k), cg%b(ydim,i,j,k), cg%b(zdim,i,j,k))
-       cg%u(pfl%ien,i,j,k) = (1+frac1) * cg%u(pfl%ien,i,j,k)
-       cg%u(pfl%ien,i,j,k) = cg%u(pfl%ien,i,j,k) + emag(cg%b(xdim,i,j,k), cg%b(ydim,i,j,k), cg%b(zdim,i,j,k))
-       cg%u(pfl%idn,i,j,k) = (1+frac1) * cg%u(pfl%idn,i,j,k)
-       cg%u(pfl%imx:pfl%imz,i,j,k)  = (1+frac1) * cg%u(pfl%imx:pfl%imz,i,j,k)
-    endif
+   ! 10 Msun deposited into SN injection region
+   if (inject_mass) then
+      frac1 = 10.0*frac/cg%dvol / cg%u(pfl%idn,i,j,k)
+      cg%u(pfl%ien,i,j,k) = cg%u(pfl%ien,i,j,k) - emag(cg%b(xdim,i,j,k), cg%b(ydim,i,j,k), cg%b(zdim,i,j,k))
+      cg%u(pfl%ien,i,j,k) = (1+frac1) * cg%u(pfl%ien,i,j,k)
+      cg%u(pfl%ien,i,j,k) = cg%u(pfl%ien,i,j,k) + emag(cg%b(xdim,i,j,k), cg%b(ydim,i,j,k), cg%b(zdim,i,j,k))
+      cg%u(pfl%idn,i,j,k) = (1+frac1) * cg%u(pfl%idn,i,j,k)
+      cg%u(pfl%imx:pfl%imz,i,j,k)  = (1+frac1) * cg%u(pfl%imx:pfl%imz,i,j,k)
+   endif
 
-    en_SN    = n_SN * SN_ener * erg
+   en_SN    = n_SN * SN_ener * erg
 #ifdef COSM_RAYS
-    en_SN01  = cr_eff * cr_active * en_SN
-    en_SN09  = (1 - cr_eff * cr_active) * en_SN
-    if (cr_active > 0) call sf_inject(cg, pfl%ien, pfl%idn, i, j, k, is, ish, 0.0, mfdv * en_SN01 *frac, dt, sne_dump)      ! Inject CRs
+   en_SN01  = cr_eff * cr_active * en_SN
+   en_SN09  = (1 - cr_eff * cr_active) * en_SN
+   if (cr_active > 0) call sf_inject(cg, pfl%ien, pfl%idn, i, j, k, is, ish, 0.0, mfdv * en_SN01 *frac, dt, sne_dump)      ! Inject CRs
 #else /* !COSM_RAYS */
-    en_SN01  = 0.0
-    en_SN09  = en_SN
+   en_SN01  = 0.0
+   en_SN09  = en_SN
 #endif /* !COSM_RAYS */
 
-    if ((.not. kineticFB) .or. (22.6 * (dens_amb*40.1)**(-0.42) .gt. 3*dx)) then
-       if (aijk1 .eq. 0) print *, 'Thermal FB', i,j,k, dens_amb
-       call sf_inject(cg, pfl%ien, pfl%idn, i, j, k, is, ish, mfdv * en_SN09 *frac, 0.0, dt, sne_dump)
-       return
-    endif
+   ! Option to inject only thermal energy (risking overcooling effects)
+   if ((.not. kineticFB)) then
+      if (aijk1 .eq. 0) print *, 'Thermal FB', i,j,k, dens_amb
+      call sf_inject(cg, pfl%ien, pfl%idn, i, j, k, is, ish, mfdv * en_SN09 *frac, 0.0, dt, sne_dump)
+      return
+   endif
 
-    padd = 2.8 * 10.0**5 * km / sek *(dens_amb * 40.77)**(-0.17) *frac  / dx**3 / sqrt(real(aijk1))
+   ! See Kim & Ostriker 2015
+   equalize_region = .true.                                     ! Put all cells of the injection region to same density and energy prior to SN injection
+   enclosed_mass = dens_amb / frac *dx**3 * (cg%dx/dx)**3       ! Total mass enclosed in the injection region
+   RM = enclosed_mass / (1679*(dens_amb*40.77/1.427)**(-0.26))  ! Parameter deciding whether the shell formation radius is resolved
 
-   ! enclosed_mass = dens_amb * 343 *dx**3
-   ! if (enclosed_mass .lt. 1679*(dens_amb*40.77)**(-0.26)) then
-   !    call sf_inject(cg, pfl%ien, pfl%idn, i, j, k, is, ish, mfdv * en_SN09 / 343.0 * 0.72, 0.0, dt, sne_dump)
-   !    padd = 0.28 * padd
-   !    if (aijk1 .eq. 0) print *, '28%'
-   ! endif
-    !print *, padd
-    if (aijk1 .eq. 0) return
+   if (RM > 1.0) then
+      if (aijk1 .eq. 0) print *, 'RM > 1', RM, enclosed_mass, dens_amb, dx, 'Completely unresolved: Final SN Momentum injection only'
+      padd = 2.8 * 10.0**5 * km / sek *(dens_amb * 40.77/1.427)**(-0.17) *frac  / dx**3 / sqrt(real(aijk1))
+      equalize_region = .false.
+   else if ((RM > 0.027) .and. (RM < 1.0)) then
+      Ekin0 = ekin(cg%u(pfl%imx,i,j,k), cg%u(pfl%imy,i,j,k), cg%u(pfl%imz,i,j,k), cg%u(pfl%idn,i,j,k))
+      v(:) = cg%u(pfl%imx:pfl%imz,i,j,k)/cg%u(pfl%idn,i,j,k) !- pset%pdata%vel
+      mp0cost = cg%u(pfl%idn,i,j,k) * (abs(ijk1(xdim)*v(xdim)) + abs(ijk1(ydim)*v(ydim)) + abs(ijk1(zdim)*v(zdim))) / sqrt(real(aijk1))
+      mp0sq   = cg%u(pfl%idn,i,j,k)**2 * (v(xdim)**2 + v(ydim)**2 + v(zdim)**2)
+      mp = sqrt(mp0cost**2 + 2*(Ekin0 + en_SN09 * mfdv * 0.28 *frac) * (cg%u(pfl%idn,i,j,k)+ 10.0 *frac / cg%dvol * merge(1,0, inject_mass)) - mp0sq) - mp0cost
+      padd = mp / sqrt(real(aijk1))
+      call sf_inject(cg, pfl%ien, pfl%idn, i, j, k, is, ish, mfdv * en_SN09 * frac * 0.72, 0.0, dt, sne_dump)
+      if (aijk1 .eq. 0) print *, '28% of SN energy injected as kinetic, 72% thermal'
+   else
+      if (aijk1 .eq. 0) print *, 'RM < 0.027', RM, enclosed_mass, dens_amb, dx, '; low density: SN injected fully as kinetic energy'
+      Ekin0 = ekin(cg%u(pfl%imx,i,j,k), cg%u(pfl%imy,i,j,k), cg%u(pfl%imz,i,j,k), cg%u(pfl%idn,i,j,k))
+      v(:) = cg%u(pfl%imx:pfl%imz,i,j,k)/cg%u(pfl%idn,i,j,k) !- pset%pdata%vel
+      mp0cost = cg%u(pfl%idn,i,j,k) * (abs(ijk1(xdim)*v(xdim)) + abs(ijk1(ydim)*v(ydim)) + abs(ijk1(zdim)*v(zdim))) / sqrt(real(aijk1))
+      mp0sq   = cg%u(pfl%idn,i,j,k)**2 * (v(xdim)**2 + v(ydim)**2 + v(zdim)**2)
+      mp = sqrt(mp0cost**2 + 2*(Ekin0 + en_SN09 * mfdv *frac) * (cg%u(pfl%idn,i,j,k)+ 10.0 *frac / cg%dvol * merge(1,0, inject_mass)) - mp0sq) - mp0cost
+      padd = mp / sqrt(real(aijk1))
+   endif
+   if (aijk1 .eq. 0) return
 
-    maxvel = maxval((cg%u(pfl%imx:pfl%imz,i,j,k) + padd*ijk1) / cg%u(pfl%idn,i,j,k))
-    if (maxvel .gt. 1000.0) then
-       if (dt .gt. dt_violent_FB) then
-          SF_redo_timestep = .true.
-       endif
-       if (maxvel .gt. 2000.0) return
-       !print *, 'Crazy acceleration: ', (cg%u(pfl%imx:pfl%imz,i,j,k) + padd*ijk1) / cg%u(pfl%idn,i,j,k), 'km/s,   Density:', cg%u(pfl%idn,i,j,k), ', padd:', padd , 'volume: ', cg%dvol
-    endif
+   cg%u(pfl%ien,i,j,k) = cg%u(pfl%ien,i,j,k) - ekin(cg%u(pfl%imx,i,j,k), cg%u(pfl%imy,i,j,k), cg%u(pfl%imz,i,j,k), cg%u(pfl%idn,i,j,k))  ! remove Ekin
 
-    cg%u(pfl%ien,i,j,k) = cg%u(pfl%ien,i,j,k) - ekin(cg%u(pfl%imx,i,j,k), cg%u(pfl%imy,i,j,k), cg%u(pfl%imz,i,j,k), cg%u(pfl%idn,i,j,k))  ! remove ekin
-    cg%u(pfl%imx:pfl%imz,i,j,k) = cg%u(pfl%imx:pfl%imz,i,j,k) + ijk1 * padd
-    cg%u(pfl%ien,i,j,k) = cg%u(pfl%ien,i,j,k) + ekin(cg%u(pfl%imx,i,j,k), cg%u(pfl%imy,i,j,k), cg%u(pfl%imz,i,j,k), cg%u(pfl%idn,i,j,k))  ! add new ekin
+   if (equalize_region) then
+      cg%u(pfl%ien,i,j,k) = cg%u(pfl%ien,i,j,k) - emag(cg%b(xdim,i,j,k), cg%b(ydim,i,j,k), cg%b(zdim,i,j,k))
+      frac4 = dens_amb / cg%u(pfl%idn,i,j,k)
+      cg%u(pfl%idn,i,j,k) = dens_amb
+      cg%u(pfl%ien,i,j,k) = frac4 * cg%u(pfl%ien,i,j,k)
+      cg%u(pfl%ien,i,j,k) = cg%u(pfl%ien,i,j,k) + emag(cg%b(xdim,i,j,k), cg%b(ydim,i,j,k), cg%b(zdim,i,j,k))
+      cg%u(pfl%imx:pfl%imz,i,j,k) = frac4 * cg%u(pfl%imx:pfl%imz,i,j,k)
+   endif
+
+   maxvel = maxval(abs((cg%u(pfl%imx:pfl%imz,i,j,k) + padd*ijk1) / cg%u(pfl%idn,i,j,k)))
+   ! Try to limit crazy velocities
+   if (maxvel .gt. 2000.0) then
+     frac3 = 2000.0/maxvel
+     padd = frac3 * padd
+   endif
+
+   cg%u(pfl%imx:pfl%imz,i,j,k) = cg%u(pfl%imx:pfl%imz,i,j,k) + ijk1 * padd       ! Adding SN momentum
+   cg%u(pfl%ien,i,j,k) = cg%u(pfl%ien,i,j,k) + ekin(cg%u(pfl%imx,i,j,k), cg%u(pfl%imy,i,j,k), cg%u(pfl%imz,i,j,k), cg%u(pfl%idn,i,j,k))  ! add new Ekin
 
   end subroutine TIGRESS_injection
 
-! Alternative for kinetic energy injections (TIGRESS)
-    !padd = 2.8 * 10.0**5 * km / sek *(dens_amb * 40.77)**(-0.17) / 342  / cg%dvol / sqrt(real(aijk1))if (i+j+k .eq. ijkl(xdim)+ijkl(ydim)+ijkl(zdim)) print *, 'Momentum FB', cg%coord(CENTER,xdim)%r(ijkp(xdim)), cg%coord(CENTER,ydim)%r(ijkp(ydim)), cg%coord(CENTER,zdim)%r(ijkp(zdim)), cg%u(pfl%idn,i,j,k) , dens_amb, 'padd = ', padd
-    !if (i+j+k .eq. ijkl(xdim)+ijkl(ydim)+ijkl(zdim)) print *, 'Enclosed mass', dens_amb*343*cg%dvol, 'Msf = ', 1679*(dens_amb*40.77)**(-0.26), 'R_M K&O = ', dens_amb*343*cg%dvol/(1679*(dens_amb *40.77)**(-0.26))
-    !if (i+j+k .eq. ijkl(xdim)+ijkl(ydim)+ijkl(zdim)) print *, 'Kim+2023  Msf = ', 1540*(dens_amb*40.77)**(-0.33), 'R_M = ', dens_amb*343*cg%dvol / (1540*(dens_amb*40.77)**(-0.33))
+! Find which cells should receive SN injection around exploding particle: 3 cell radius
+subroutine find_injection_region(ppos, ijkl, ijkr, ijkl_coord, dx, dist_max, ijk_check, frac)
 
-    !Ekin0 = ekin(cg%u(pfl%imx,i1,j1,k1), cg%u(pfl%imy,i1,j1,k1), cg%u(pfl%imz,i1,j1,k1), cg%u(pfl%idn,i1,j1,k1))
-    !v(:) = cg%u(pfl%imx:pfl%imz,i1,j1,k1)/cg%u(pfl%idn,i1,j1,k1) - pset%pdata%vel
-    !mp0cost = cg%u(pfl%idn,i1,j1,k1) * (abs(ijk1(xdim)*v(xdim)) + abs(ijk1(ydim)*v(ydim)) + abs(ijk1(zdim)*v(zdim))) / sqrt(real(aijk1))
-    !mp0sq   = cg%u(pfl%idn,i1,j1,k1)**2 * (v(xdim)**2 + v(ydim)**2 + v(zdim)**2)
-    !mp = sqrt(mp0cost**2 + 2*(Ekin0 + en_SN09 * mfdv * mom_FB_ratio /26) * (cg%u(pfl%idn,i1,j1,k1)+ 10.0 / 27.0 / cg%dvol * inject_mass) - mp0sq) - mp0cost
-    !padd = mp / sqrt(real(aijk1))
-    !if (mom_FB_ratio .eq. 1.0) padd = padd2
+use constants, only: ndims, xdim, ydim, zdim, LO, HI
+
+implicit none
+
+real, dimension(ndims), intent(in)        :: ppos
+integer, dimension(ndims), intent(in)     :: ijkl, ijkr
+real, dimension(ndims), intent(in)        :: ijkl_coord
+real, intent(in)                          :: dx, dist_max
+logical, dimension(ijkl(xdim):ijkr(xdim), ijkl(ydim):ijkr(ydim), ijkl(zdim):ijkr(zdim)), intent(out)    :: ijk_check
+real, intent(out)                         :: frac
+
+integer :: i,j,k, ncount
+real :: dist
+real, dimension(ndims,ijkl(xdim):ijkr(xdim), ijkl(ydim):ijkr(ydim), ijkl(zdim):ijkr(zdim)) :: ijk_coord
+
+ijk_check = .false.
+ncount = 0
+ijk_coord = 0.0
+
+do i = ijkl(xdim), ijkr(xdim)
+   do j = ijkl(ydim), ijkr(ydim)
+      do k = ijkl(zdim), ijkr(zdim)
+         ijk_coord(xdim,i,j,k) = ijkl_coord(xdim) + (i-ijkl(xdim)) * dx
+         ijk_coord(ydim,i,j,k) = ijkl_coord(ydim) + (j-ijkl(ydim)) * dx
+         ijk_coord(zdim,i,j,k) = ijkl_coord(zdim) + (k-ijkl(zdim)) * dx
+         dist = sqrt((ppos(xdim)-ijk_coord(xdim,i,j,k))**2 + (ppos(ydim)-ijk_coord(ydim,i,j,k))**2 + (ppos(zdim)-ijk_coord(zdim,i,j,k))**2)
+         if (dist <= dist_max) then
+            ijk_check(i,j,k) = .true.
+            ncount = ncount +1
+         endif
+      enddo
+   enddo
+enddo
+
+if (ncount == 0) then
+   print *, 'find_injection_region: No injection region found'
+   frac = 0.0
+   return
+endif
+frac = 1.0 / ncount
+
+end subroutine find_injection_region
+
 
 end module star_formation

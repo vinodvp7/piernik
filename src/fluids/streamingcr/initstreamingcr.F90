@@ -49,6 +49,7 @@ module initstreamingcr
    real                                    :: escr_floor          !< floor value of streaming CR energy density
    real                                    :: vmax                !< maximum speed in the simulation which controls the streaming CR timestepping
    real                                    :: scr_eff             !< conversion rate of SN explosion energy to streaming CR energy (default = 0.1)
+   real                                    :: omega               !< maximum speed in the simulation which controls the streaming CR timestepping
    logical                                 :: use_escr_floor      !< floor streaming CR energy density or not                               
    real, dimension(50)                     :: gamma_scr           !< adiabatic coefficient of streaming cosmic ray species 
    real, dimension(50)                     :: sigma_paral         !< diffusion coefficient in the direction parallel to B 
@@ -86,6 +87,7 @@ contains
       ord_pc_grad              = 2
       escr_floor               = 1e-6
       vmax                     = 100.0
+      omega                    = 0.5
       scr_eff                  = 0.1                      ! Maybe this should be an array for different conversion rate to different species ? 
       use_escr_floor           = .true.
       gamma_scr(:)             = gamma_def
@@ -120,7 +122,8 @@ contains
          ibuff(2) = ord_pc_grad
          rbuff(1) = escr_floor   
          rbuff(2) = vmax      
-         rbuff(3) = scr_eff      
+         rbuff(3) = scr_eff  
+         rbuff(4) = omega    
 
          lbuff(1) = use_escr_floor
          lbuff(2) = disable_feedback
@@ -155,8 +158,8 @@ contains
          escr_floor          = rbuff(1)   
          vmax                = rbuff(2)        
          scr_eff             = rbuff(3)        
-
-         use_escr_floor      = lbuff(1) 
+         omega               = rbuff(4)
+         
          disable_feedback    = lbuff(2)
          disable_streaming   = lbuff(3)          
          cr_sound_speed      = lbuff(4)  

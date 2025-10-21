@@ -33,26 +33,20 @@
 !! additions away from the main code and merger it later. We are not adding fargo support either. This will be the first update after this works
 !<
 
-module unsplit_sweeps
+module unsplit_scr_sweep
 
-! pulled by ANY
+! pulled by STREAM_CR
 
    implicit none
 
    private
-   public :: unsplit_sweep
+   public :: unsplit_scrsweep
 
 contains
    subroutine update_boundaries(istep)
-
-      use all_boundaries, only: all_fluid_boundaries
-!      use cg_leaves,      only: leaves
       use constants,      only: first_stage, DIVB_HDC,xdim,zdim
       use domain,         only: dom
       use global,         only: sweeps_mgu, integration_order, divB_0_method
-#ifdef MAGNETIC
-      use all_boundaries, only: all_mag_boundaries
-#endif /* MAGNETIC */
 #ifdef STREAM_CR
       use all_boundaries, only: all_scr_boundaries
 #endif /* STREAM_CR */
@@ -67,24 +61,24 @@ contains
          if (istep == first_stage(integration_order)) then
             do ub_i=xdim,zdim
                if (.not. dom%has_dir(ub_i)) cycle
-               call all_fluid_boundaries(nocorners = .true., dir = ub_i, istep=istep)
+#ifdef STREAM_CR
+               call all_scr_boundaries(nocorners = .true., dir = ub_i, istep=istep) 
+#endif /* STREAM_CR */
             enddo
          else
-            call all_fluid_boundaries(nocorners = .true.,istep=istep)
+#ifdef STREAM_CR
+            call all_scr_boundaries(nocorners = .true.,istep=istep) 
+#endif /* STREAM_CR */
          endif
       else
-            call all_fluid_boundaries(istep=istep)
-      endif
-      if (divB_0_method == DIVB_HDC) then
-#ifdef MAGNETIC
-            call all_mag_boundaries(istep) ! ToDo: take care of psi boundaries
-#endif /* MAGNETIC */
-
+#ifdef STREAM_CR
+            call all_scr_boundaries(istep=istep) 
+#endif /* STREAM_CR */
       endif
 
    end subroutine update_boundaries
 
-   subroutine unsplit_sweep()
+   subroutine unsplit_scrsweep()
 
       use cg_cost_data,      only: I_MHD, I_REFINE
       use cg_leaves,         only: leaves
@@ -101,7 +95,7 @@ contains
       use ppp,               only: ppp_main
       use pppmpi,            only: req_ppp
       use sources,           only: prepare_sources
-      use solvecg_unsplit,   only: solve_cg_unsplit
+      use streaming_cr_hlle, only: advance_cr
       use user_hooks,        only: problem_customize_solution
 
       implicit none
@@ -116,9 +110,9 @@ contains
       integer(kind=4)                  :: n_recv, g
       character(len=*), parameter :: solve_cgs_label = "solve_bunch_of_cg", cg_label = "solve_cg", init_src_label = "init_src"
 
-      call ppp_main%start("unsplit_sweep")
+      call ppp_main%start("unsplit_scrsweep")
 
-      if (which_solver_type /= UNSPLIT) call die("[unsplit_sweeps:unsplit_sweep] Only compatible with UNSPLIT solver")
+      if (which_solver_type /= UNSPLIT) call die("[unsplit_scr_sweep:unsplit_scrsweep] Only compatible with UNSPLIT solver")
 
       sl => leaves%prioritized_cg(INVALID, covered_too = .true.)
 
@@ -131,10 +125,6 @@ contains
       enddo
       call ppp_main%stop(init_src_label)
 
-      halfstep = .true.
-#ifdef RESISTIVE
-   call add_resistivity ! dt/2
-#endif /* RESISTIVE */
       ! This is the loop over Runge-Kutta stages
       do istep = first_stage(integration_order), last_stage(integration_order)
 
@@ -166,7 +156,7 @@ contains
                      call cg%cleanup_flux()      ! Seems unnecessary.This just sets the flux array to 0.0
 
                      call cg%costs%start
-                     call solve_cg_unsplit(cg, istep)
+                     call advance_cr(cg, istep)
                      call cg%costs%stop(I_MHD)
 
                      call ppp_main%stop(cg_label, PPP_CG)
@@ -192,67 +182,13 @@ contains
 
          call req%waitall("sweeps")
 
-         if (associated(problem_customize_solution)) call problem_customize_solution(halfstep)
-         halfstep = .false.
          call update_boundaries(istep)
       enddo
       call sl%delete
       deallocate(sl)
 
-#ifdef RESISTIVE
-   call add_resistivity ! dt/2
-#endif /* RESISTIVE */
+      call ppp_main%stop("unsplit_scrsweep")
 
-      call ppp_main%stop("unsplit_sweep")
-
-   end subroutine unsplit_sweep
+   end subroutine unsplit_scrsweep
    
-#ifdef RESISTIVE
-   subroutine add_resistivity
-      use resistivity, only: compute_resist, eta_n, eta_jn, jn
-      use cg_list, only: cg_list_element
-      use cg_leaves, only: leaves
-      use grid_cont, only: grid_container
-      use fluidindex, only: flind
-      use named_array_list, only: wna, qna
-      use global, only: dt, integration_order
-      use constants, only: first_stage, rk_coef, last_stage, xdim, ydim, zdim, magh_n
-      use resistance_helpers, only: update_j_and_curl_j
-
-      implicit none
-
-      type(cg_list_element), pointer    :: cgl
-      type(grid_container), pointer     :: cg
-      real, dimension(:,:,:,:), pointer :: cej
-      real, dimension(:,:,:,:), pointer :: pb, pbf
-      integer                           :: istep
-
-      do istep = first_stage(integration_order), last_stage(integration_order)
-         call compute_resist
-         cgl => leaves%first
-         do while (associated(cgl))
-            cg => cgl%cg
-            pb   => cg%w(wna%bi)%arr
-            pbf  => cg%w(wna%bi)%arr
-            if (istep == first_stage(integration_order) .or. integration_order < 2 ) then
-               pb   => cg%w(wna%bi)%arr
-               pbf  => cg%w(wna%ind(magh_n))%arr
-            endif
-            call update_j_and_curl_j(cg,istep)
-            cej => cg%w(wna%ind(eta_jn))%arr
-            pbf(:,:,:,:) = pb(:,:,:,:) - rk_coef(istep) * 0.5 * dt * cej(:,:,:,:)
-            cgl => cgl%nxt
-         enddo
-         call update_boundaries(istep) ! last_stage because that is the one that does ghost exchange on u and b instead of the half stage array uh_n and magh_n
-         call compute_resist
-         cgl => leaves%first
-         do while (associated(cgl))
-            cg => cgl%cg
-            call update_j_and_curl_j(cg,istep)
-            cgl => cgl%nxt
-         enddo
-      end do
-   end subroutine add_resistivity
-#endif /* RESISTIVE */
-
-end module unsplit_sweeps
+end module unsplit_scr_sweep

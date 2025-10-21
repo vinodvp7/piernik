@@ -252,6 +252,7 @@ contains
 
 #ifdef STREAM_CR
       Nsub = max(1,ceiling(dt/dt_scr))
+       if (mod(Nsub, 2) /= 0) Nsub = Nsub + 1 
       dt_scr = dt/real(Nsub)
 #endif /* STREAM_CR */
    end subroutine time_step

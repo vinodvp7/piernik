@@ -22,7 +22,7 @@
 !             http://www.cita.utoronto.ca/~pen/MHD
 !             for original source code "mhd.f90"
 !
-!    For full list of developers see $PIERNIK_HOME/license/pdt_scr.txt
+!    For full list of developers see $PIERNIK_HOME/license/pdt.txt
 !
 #include "piernik.h"
 
@@ -39,10 +39,26 @@ module streaming_cr_hlle
 
    private
 
-   public :: update_scr_fluid
+   public :: update_scr_fluid, advance_cr
 
 contains
 
+   subroutine advance_cr(cg,istep)
+
+      use scr_helpers,       only: update_rotation_matrix, update_interaction_term, update_vdiff
+      use grid_cont,         only: grid_container
+
+      implicit none
+
+      type(grid_container), pointer, intent(in) :: cg
+      integer,                       intent(in) :: istep
+
+      call update_interaction_term(cg, istep, .false.)
+      call update_rotation_matrix(cg, istep)
+      call update_vdiff(cg,istep)
+      call update_scr_fluid(cg,istep)
+
+   end subroutine advance_cr
 
    subroutine update_scr_fluid(cg,istep)
       use grid_cont,        only: grid_container
@@ -100,7 +116,7 @@ contains
 
                
                pu => cg%w(scri)%get_sweep(ddim,i1,i2)
-               if (istep == first_stage(integration_order) .or. integration_order < 2 .or. .not. is_substep ) then
+               if (istep == first_stage(integration_order) .or. integration_order < 2) then
                   pu => cg%w(wna%scr)%get_sweep(ddim,i1,i2)
                endif
 

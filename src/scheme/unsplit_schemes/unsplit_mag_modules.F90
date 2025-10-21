@@ -51,6 +51,7 @@ contains
 #ifdef STREAM_CR
       use streaming_cr_hlle, only: update_scr_fluid
       use scr_helpers,       only: update_rotation_matrix, update_interaction_term, update_vdiff
+      use initstreamingcr,   only: Nsub, is_substep, nsubcount
 #endif /* STREAM_CR */
 #ifdef RESISTIVE
       use resistivity,        only: eta_jbn
@@ -79,6 +80,9 @@ contains
       real, dimension(:,:),allocatable           :: tbflux                ! to temporarily store transpose of bflux
       type(ext_fluxes)                           :: eflx
       integer                                    :: i_cs_iso2
+#ifdef STREAM_CR
+      integer                                    :: nsubstep
+#endif /* STREAM_CR */
 #ifdef RESISTIVE
       real, dimension(:,:), pointer              :: resterm
       real ,dimension(:), pointer                :: resterm_e
@@ -174,14 +178,18 @@ contains
       call apply_flux(cg,istep,.false.)
       call update_psi(cg,istep)
 #ifdef STREAM_CR
-      call update_interaction_term(cg, istep, .false.)
-      call update_rotation_matrix(cg, istep)
-      call update_vdiff(cg,istep)
-      call update_scr_fluid(cg,istep)
+      do nsubstep = 1, Nsub
+         nsubcount = nsubstep
+         call update_interaction_term(cg, istep, .false.)
+         call update_rotation_matrix(cg, istep)
+         call update_vdiff(cg,istep)
+         call update_scr_fluid(cg,istep)
+         if (istep == first_stage(integration_order)) is_substep = .true.
+      end do
+      is_substep = .false.
 #endif /* STREAM_CR */
       call apply_source(cg,istep)
       nullify(cs2)
-
    end subroutine solve_cg_ub
 
    subroutine solve(ui, bi, cs2, eflx, flx, bflx, resterm_e)

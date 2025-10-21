@@ -88,7 +88,7 @@ subroutine timestep_scr(dt)
    ! global min over ranks, in place
    call piernik_MPI_Allreduce(dt_local_min, pMIN)
 
-   dt =  cfl * min(dt, dt_local_min)
+   dt =  cfl * dt_local_min
 end subroutine timestep_scr
 
 end module timestepscr

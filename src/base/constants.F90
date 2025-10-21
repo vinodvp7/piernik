@@ -300,6 +300,7 @@ module constants
    character(len=dsetnamelen), parameter :: rtmn      = "rtmn"      !< rotation matrix for frame transformation where B is along Bx
    character(len=dsetnamelen), parameter :: sgmn      = "sgmn"      !< interaction coefficient for streaming cosmic rays
    character(len=dsetnamelen), parameter :: v_diff    = "v_diff"    !< Diffusion + streaming speed 
+   character(len=dsetnamelen), parameter :: fdbck     = "fdbck" 
 #endif /* STREAM_CR */ 
    ! timer names
    character(len=*), parameter :: tmr_fu  = "fluid_update"       !< main timer used to measure fluid_update step

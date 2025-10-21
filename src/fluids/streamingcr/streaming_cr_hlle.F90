@@ -22,7 +22,7 @@
 !             http://www.cita.utoronto.ca/~pen/MHD
 !             for original source code "mhd.f90"
 !
-!    For full list of developers see $PIERNIK_HOME/license/pdt.txt
+!    For full list of developers see $PIERNIK_HOME/license/pdt_scr.txt
 !
 #include "piernik.h"
 
@@ -54,6 +54,8 @@ contains
       use fluidindex,       only: iarr_all_swp, scrind, iarr_all_dn, iarr_all_mx,iarr_all_scr_swp
       use diagnostics,      only: my_allocate, my_deallocate
       use fluxtypes,        only: ext_fluxes
+      use initstreamingcr,  only: is_substep
+      use scr_source,       only: apply_scr_source
 
       implicit none
 
@@ -96,8 +98,9 @@ contains
 
                vdiff1d(:,:) = transpose(vdiff(ddim : I_THREE*(scrind%nscr - I_ONE) + ddim : I_THREE,:) )
 
+               
                pu => cg%w(scri)%get_sweep(ddim,i1,i2)
-               if (istep == first_stage(integration_order) .or. integration_order < 2 ) then
+               if (istep == first_stage(integration_order) .or. integration_order < 2 .or. .not. is_substep ) then
                   pu => cg%w(wna%scr)%get_sweep(ddim,i1,i2)
                endif
 
@@ -127,7 +130,8 @@ contains
          call my_deallocate(tflux); call my_deallocate(vx)
          call my_deallocate(vdiff1d)
       enddo
-      call apply_flux(cg,istep)
+      call apply_flux(cg, istep)
+      call apply_scr_source(cg, istep)
    end subroutine update_scr_fluid
 
    subroutine solve_scr(ui, vdiff, eflx, flx, vx)
@@ -167,10 +171,11 @@ contains
   subroutine apply_flux(cg, istep)
       use domain,             only: dom
       use grid_cont,          only: grid_container
-      use global,             only: integration_order, dt
+      use global,             only: integration_order
       use named_array_list,   only: wna
       use constants,          only: xdim, ydim, zdim, last_stage, rk_coef, &
                                     scrh, I_ONE, ndims
+      use initstreamingcr,    only: dt_scr
 
       implicit none
 
@@ -211,7 +216,7 @@ contains
          call bounds_for_flux(L0,U0,active,afdim,L,U)
          shift = 0 ;  shift(afdim) = I_ONE
          T(:, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) = T(:, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) &
-            + dt / cg%dl(afdim) * rk_coef(istep) * ( &
+            + dt_scr / cg%dl(afdim) * rk_coef(istep) * ( &
                F(afdim)%flx(:, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) - &
                F(afdim)%flx(:, L(xdim)+shift(xdim):U(xdim)+shift(xdim), &
                            L(ydim)+shift(ydim):U(ydim)+shift(ydim), &

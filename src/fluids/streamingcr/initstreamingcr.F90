@@ -62,7 +62,9 @@ module initstreamingcr
    real, parameter                         :: tau_asym   = 1e-3   !< Used in the calculation of R in streaming_cr_hlle where below this value the function is taylor expanded in tau
    real, parameter                         :: sigma_huge = 1e10   !< Default huge value for interaction coefficient that essentially means diffusion is switched off
    real, parameter                         :: gamma_def  = 4./3.  !< Default huge value for interaction coefficient that essentially means diffusion is switched off
-
+   integer                                 :: Nsub, nsubcount
+   real                                    :: dt_scr
+   logical                                 :: is_substep = .false.      !< whether to add cr sound speed when calculating v_diff. Ideally keep it as false so that sound speed is added as it increases numerical stability.
 contains
 
    subroutine init_streamingcr

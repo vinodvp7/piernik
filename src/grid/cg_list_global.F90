@@ -244,7 +244,7 @@ contains
 #endif /* MAGNETIC */
 #ifdef STREAM_CR
       use constants,        only: scrn, scrh, xscrflx, yscrflx, zscrflx, rtmn, gpcn, &
-      &                           sgmn, v_diff
+      &                           sgmn, v_diff, fdbck
       use initstreamingcr,  only: nscr
 #endif /* STREAM_CR */
 
@@ -308,6 +308,7 @@ contains
       call this%reg_var(yscrflx, vital = .false., dim4 = 4 * nscr,     ord_prolong = ord_fluid_prolong, restart_mode = AT_NO_B )  !! Y Face-Streaming CR Fluid flux array
       call this%reg_var(zscrflx, vital = .false., dim4 = 4 * nscr,     ord_prolong = ord_fluid_prolong, restart_mode = AT_NO_B )  !! Z Face-Streaming CR Fluid flux array
       call this%reg_var(gpcn,    vital = .false., dim4 = ndims * nscr, ord_prolong = ord_fluid_prolong, restart_mode = AT_NO_B )  !! Array to store gradient of Pc for each streaming CR species
+      call this%reg_var(fdbck,  vital = .false., restart_mode = AT_NO_B, dim4 = 4, ord_prolong = ord_fluid_prolong) 
 #ifdef MAGNETIC
       call this%reg_var(rtmn,    vital = .false., dim4 = 4,            ord_prolong = ord_fluid_prolong, restart_mode = AT_NO_B )  !! Array to store rotation matirx component cos(phi) / sin(phi) / cos(theta) / sin(theta)
 #endif /* MAGNETIC */   

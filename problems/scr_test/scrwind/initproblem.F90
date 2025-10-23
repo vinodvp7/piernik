@@ -41,10 +41,11 @@ module initproblem
    public :: read_problem_par, problem_initial_conditions, problem_pointers
 
    real :: d0, alpha, bxn, byn, bzn, amp_cr, beta_cr                         !< galactic disk specific parameters
-   real :: x0, y0, z0                                                        !< parameters for a single supernova exploding at t=0
+   real :: x0, y0, z0, tlim, h0, g_a                                                   !< parameters for a single supernova exploding at t=0
    real, dimension(ndims) :: b_n, sn_pos
+   logical :: fixedsn
 
-   namelist /PROBLEM_CONTROL/  d0, bxn, byn, bzn, x0, y0, z0, alpha, amp_cr, beta_cr
+   namelist /PROBLEM_CONTROL/  d0, bxn, byn, bzn, x0, y0, z0, alpha, amp_cr, beta_cr, fixedsn, tlim, h0, g_a
 
 contains
 
@@ -72,7 +73,7 @@ contains
 
       use bcast,      only: piernik_MPI_Bcast
       use dataio_pub, only: nh
-      use mpisetup,   only: rbuff, master, slave
+      use mpisetup,   only: rbuff, master, slave, lbuff
 #if defined(STREAM_CR) && defined(SN_SRC)
       use snsources,  only: amp_escr_sn
 #endif /* STREAM_CR && SN_SRC */
@@ -89,6 +90,10 @@ contains
       alpha   = 0.0
       amp_cr  = 0.0
       beta_cr = 0.0
+      tlim    = 10000
+      h0      = 0.8
+      g_a     = 3.7
+      fixedsn = .false.
 
       if (master) then
 
@@ -118,10 +123,16 @@ contains
          rbuff(8)  = amp_cr
          rbuff(9)  = beta_cr
          rbuff(10) = alpha
+         rbuff(11) = tlim
+         rbuff(12) = h0
+         rbuff(13) = g_a
+
+         lbuff(1)  = fixedsn
 
       endif
 
       call piernik_MPI_Bcast(rbuff)
+      call piernik_MPI_Bcast(lbuff)
 
       if (slave) then
 
@@ -135,6 +146,11 @@ contains
          amp_cr    = rbuff(8)
          beta_cr   = rbuff(9)
          alpha     = rbuff(10)
+         tlim      = rbuff(11)
+         h0        = rbuff(12)
+         g_a       = rbuff(13)
+
+         fixedsn  = lbuff(1)
 
       endif
 
@@ -163,30 +179,25 @@ contains
 #ifdef SHEAR
       use shear,          only: qshear, omega
 #endif /* SHEAR */
-#ifdef STREAM_CR
-      use fluidindex,  only: iarr_all_escr
 #ifdef SN_SRC
       use snsources,      only: scr_sn
 #endif /* SN_SRC */
-#endif /* STREAM_CR */
 
       implicit none
 
       class(component_fluid), pointer :: fl
-      integer                         :: i, j, k
+      class(component_scr),allocatable:: scr_fluid
+      integer                         :: i, j, k, ns, p
       real                            :: b0, csim2
       type(cg_list_element),  pointer :: cgl
       type(grid_container),   pointer :: cg
-      class(component_scr), allocatable :: scr_fluid
-
-      integer :: p 
-      real :: xi, yj, zk
+      real                            :: xi, yj, zk
 
 !   Secondary parameters
       fl => flind%ion
 
       b0 = sqrt(2. * alpha * d0 * fl%cs2)
-      csim2 = fl%cs2 * (1.0 + alpha)
+      csim2 = fl%cs2 * (1.0 + alpha )
 
       cgl => leaves%first
       do while (associated(cgl))
@@ -213,12 +224,14 @@ contains
                   cg%u(fl%ien,i,j,k) = fl%cs2 / fl%gam_1 * cg%u(fl%idn,i,j,k) + ekin(cg%u(fl%imx,i,j,k), cg%u(fl%imy,i,j,k), cg%u(fl%imz,i,j,k), cg%u(fl%idn,i,j,k)) + &
                                      & emag(cg%b(xdim,i,j,k), cg%b(ydim,i,j,k), cg%b(zdim,i,j,k))
 #endif /* !ISO */
+
                enddo
             enddo
          enddo
+
          cgl => cgl%nxt
       enddo
-#ifdef STREAM_CR
+
       do p = 1, scrind%nscr
          scr_fluid = scrind%scr(p)
          cgl => leaves%first
@@ -230,7 +243,7 @@ contains
                   xi = cg%x(i)
                   do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
                      zk = cg%z(k)
-                     cg%scr(scr_fluid%iescr, i,j,k) = beta_cr * fl%cs2 * cg%u(fl%idn, i,j,k) / scr_fluid%gam_1
+                     cg%scr(scr_fluid%iescr,i,j,k) = beta_cr * fl%cs2 * cg%u(fl%idn,i,j,k) / scr_fluid%gam_1
                      cg%scr(scr_fluid%ixfscr,i,j,k) = 0.0
                      cg%scr(scr_fluid%iyfscr,i,j,k) = 0.0
                      cg%scr(scr_fluid%izfscr,i,j,k) = 0.0
@@ -240,7 +253,6 @@ contains
             cgl => cgl%nxt
          enddo
       enddo
-#endif /* STREAM_CR */
 #if defined(STREAM_CR) && defined(SN_SRC)
       call scr_sn(sn_pos, amp_cr)
 #endif /* STREAM_CR && SN_SRC */
@@ -248,14 +260,24 @@ contains
    end subroutine problem_initial_conditions
 
    subroutine supernovae_wrapper(forward)
+      use global,   only: t
 #ifdef SN_SRC
-      use snsources, only: random_sn
+      use snsources, only: random_sn, fixed_sn
 #endif /* SN_SRC */
+
       implicit none
 
       logical, intent(in) :: forward
 #ifdef SN_SRC
-      if (forward) call random_sn
+      if (t < tlim ) then
+         if (forward) then
+            if (fixedsn) then 
+               call fixed_sn(sn_pos)
+            else
+               call random_sn
+            endif
+         endif
+      endif
 #endif /* SN_SRC */
    end subroutine supernovae_wrapper
 
@@ -364,19 +386,27 @@ contains
       integer                                             :: k
 
       real, parameter :: f1 = 3.23e8, f2 = -4.4e-9, f3 = 1.7e-9
-      real            :: r1, r22, r32, s4, s5
+      real            :: r1, r22, r32, s4, s5, h
 
       r1  = 4.9*kpc
       r22 = (0.2*kpc)**2
       r32 = (2.2*kpc)**2
       s4  = f2 * exp(-(r_gc-r_gc_sun)/(r1))
       s5  = f3 * (r_gc_sun**2 + r32)/(r_gc**2 + r32)
-
+      h   = h0*kpc
 !      grav = f1 * ((s4 * xsw/sqrt(xsw**2+r22)) - (s5 * xsw/kpc) )
 !!          -Om*(Om+G) * Z * (kpc ?) ! in the transition region between rigid and flat rotation F'98: eq.(36)
 
+      ! do k = lhn(zdim,LO), lhn(zdim,HI)
+      !    gp(:,:,k) = -f1 * (s4 * sqrt(ax%z(k)**2+r22) - s5 * half * ax%z(k)**2 / kpc)
+      ! enddo
+      ! return
+
       do k = lhn(zdim,LO), lhn(zdim,HI)
          gp(:,:,k) = -f1 * (s4 * sqrt(ax%z(k)**2+r22) - s5 * half * ax%z(k)**2 / kpc)
+         !if (k == 5) print *, 'ax%z(k): ', ax%z(k)
+         !if (k == 5) print *, 'abs(ax%z(k)): ', abs(ax%z(k))
+         if (abs(ax%z(k)) .gt. h) gp(:,:,k) = gp(:,:,k)/cosh(((abs(ax%z(k))-h)/h))**g_a !In mcrwind_cresp with multispecies: smoothing the gravitational potential outside of z = +-h = 3kpc
       enddo
       return
 

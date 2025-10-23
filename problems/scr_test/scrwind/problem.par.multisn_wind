@@ -1,5 +1,5 @@
  $BASE_DOMAIN
-    n_d = 1, 48, 96
+    n_d = 48, 1, 96                          ! For streaming module need to rotate the problem
     nb           = 4
     bnd_xl       = 'per'
     bnd_xr       = 'per'
@@ -7,10 +7,10 @@
     bnd_yr       = 'per'
     bnd_zl       = 'outd'
     bnd_zr       = 'outd'
-    xmin         =-250.0
-    xmax         = 250.0
-    ymin         =-500.0
-    ymax         = 500.0
+    xmin         =-500.0
+    xmax         = 500.0
+    ymin         =-250.0
+    ymax         = 250.0
     zmin         =-1000.0
     zmax         = 1000.0
  /
@@ -34,13 +34,13 @@
  /
 
  $OUTPUT_CONTROL
-    problem_name = 'crwind'
+    problem_name = 'scrwind'
     run_id       = 'tst'
     dt_hdf       = 1.0
-    dt_res       = 0.0
-    dt_log       = 1.0e-1
-    dt_tsl       = 1.0e-1
-    vars(1:) = 'encr', 'dens', 'magx', 'magy', 'magz', 'velx', 'vely', 'velz'
+    dt_res       = 1.0
+    dt_log       = 1.0e-20
+    dt_tsl       = 1.0e-20
+    vars(1:) = 'escr', 'xfscr', 'zfscr', 'dens', 'magx', 'magy', 'magz', 'velx', 'vely', 'velz'
  /
 
  $FLUID_IONIZED
@@ -48,12 +48,17 @@
     cs_iso  =  7.0            ! sound speed
  /
 
- $NUMERICAL_SETUP
-    cfl          = 0.9
-    smalld       = 1.e-5
-    smallei      = 1.e-4
-    limiter      = 'vanleer'
-  /
+$NUMERICAL_SETUP
+  cfl     = 0.3
+  smalld  = 1.e-6                   ! Default value of 1e-5 or < 1e-2 will lead to huge spikes in speed that crashes the code
+  smallei = 1.e-8
+  limiter = 'vanleer'
+  print_divb = 1
+  solver_str = 'riemann'
+  solver_type = 'unsplit'
+  integration_order = 2
+  cfl_glm = 0.3
+/
 
  $GRAVITY
     user_grav    = .true.
@@ -69,24 +74,18 @@
     j_crit       = 1000.0   ! critical value of current
  /
 
-  $COSMIC_RAYS
-    cfl_cr        =   0.9
-    cr_active     =   1.0
-    K_cr_paral(1) = 10000.0
-    K_cr_paral(2) = 10000.0
-    K_cr_paral(3) = 10000.0
-    K_cr_paral(4) = 10000.0
-    K_cr_perp(1)  = 0.0
-    smallecr      = 0.e-2
-    use_CRdecay   = .true.
- /
+$STREAMING_CR
+   nscr                    = 1
+   vmax                    = 5000.0       ! For accurate result this needs to be high
+   sigma_paral             = 1e-4
+   sigma_perp              = 1e10
+   ord_pc_grad             = 2
+   disable_feedback        = .false.      ! feedback to MHD gas
+   disable_streaming       = .false.       ! knob for streaming + diffusion or only diffusion
+   cr_sound_speed          = .true.
+   escr_floor              = 1e-6         ! floor value of 0.0 will blow up interaction coefficient calculation
+/
 
- $CR_SPECIES
-    eH1   = .true., .true., .false.
-    eBe9  = .true., .false., .false.
-    eBe10 = .true., .false., .false.
-    eC12  = .true., .false., .false.
- /
 
  $SHEARING
     omega        = 0.0      ! angular freq.
@@ -101,8 +100,8 @@
 
  $PROBLEM_CONTROL
     d0           =  5.0     ! density in galactic plane
-    bxn          =  0.0     !
-    byn          =  1.0     ! __direction__ of B field
+    bxn          =  1.0     !
+    byn          =  0.0     ! __direction__ of B field
     bzn          =  0.0     !
     x0           =  0.0     ! coordinates of single expl with amplitude
     y0           =  0.0     ! that is set in problem_initial_conditions (testing purpose)
@@ -118,7 +117,7 @@
  $MULTIGRID_DIFFUSION
     diff_explicit = .false.
     diff_theta     = 0.6
-    diff_tstep_fac = 30
+    diff_tstep_fac = 20
     norm_tol = 1e-4
     nsmoob = 4
     max_cycles = 20

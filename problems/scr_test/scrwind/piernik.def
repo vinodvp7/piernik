@@ -9,11 +9,10 @@
 #define STREAM_CR
 
 #define MAGNETIC
-
-#define MULTIGRID
+#undef RESISTIVE
 
 #define SELF_GRAV
 
 #define SN_SRC
 #define RANDOMIZE
-
+#define MULTIGRID

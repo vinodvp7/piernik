@@ -357,8 +357,13 @@ contains
                & i = cg%lhn(xdim,LO):cg%lhn(xdim,HI))
 
                   if (dom%has_dir(cdim)) then
-                     v(cdim+3*(ns-1),i,j,k) = sd(cdim+2*(ns-1),i,j,k) * cg%dl(cdim)
-                     if (cdim == zdim) v(cdim+3*(ns-1),i,j,k) = sd(ydim+2*(ns-1),i,j,k) * cg%dl(cdim)
+                     
+                     if (cdim == zdim) then 
+                        v(cdim + 3 * (ns - 1), i, j, k) = sd(ydim + 2 * (ns - 1), i, j, k) * cg%dl(cdim)
+                     else
+                        v(cdim + 3 * (ns - 1), i, j, k) = sd(cdim + 2 * (ns - 1), i, j, k) * cg%dl(cdim)
+                     endif
+
                      v(cdim+3*(ns-1),i,j,k) = v(cdim+3*(ns-1),i,j,k)**2 * 1.5
 
                      if ( v(cdim+3*(ns-1),i,j,k) < tau_asym ) then

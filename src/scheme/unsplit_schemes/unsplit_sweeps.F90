@@ -125,7 +125,7 @@ contains
       integer(kind=4)                  :: n_recv, g
       character(len=*), parameter :: solve_cgs_label = "solve_bunch_of_cg", cg_label = "solve_cg", init_src_label = "init_src"
 
-      call ppp_main%start("unsplit_sweep")
+      !call ppp_main%start("unsplit_sweep")
 
       if (which_solver_type /= UNSPLIT) call die("[unsplit_sweeps:unsplit_sweep] Only compatible with UNSPLIT solver")
 
@@ -160,7 +160,7 @@ contains
             !call ppp_main%start(solve_cgs_label)
             do while (associated(cgl))
                cg => cgl%cg
-               call cg%costs%start
+               !call cg%costs%start
 
                if (.not. cg%processed) then
                   call recv_cg_finebnd(req, INVALID, cg, all_received)
@@ -209,7 +209,7 @@ contains
    call add_resistivity ! dt/2
 #endif /* RESISTIVE */
 
-      call ppp_main%stop("unsplit_sweep")
+      !call ppp_main%stop("unsplit_sweep")
 
    end subroutine unsplit_sweep
    

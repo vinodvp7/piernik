@@ -34,6 +34,9 @@
  /
 
  $OUTPUT_CONTROL
+    enable_compression = .false. 
+    nproc_io = 12 
+    use_v2_io = .true.
     problem_name = 'scrwind'
     run_id       = 'tst'
     dt_hdf       = 1.0

@@ -51,9 +51,8 @@ subroutine timestep_scr(dt)
    use cg_leaves,       only: leaves
    use cg_list,         only: cg_list_element
    use constants,       only: xdim, zdim, pMIN
-   use global,          only: cfl
    use grid_cont,       only: grid_container
-   use initstreamingcr, only: vmax
+   use initstreamingcr, only: vmax, cfl_scr
    use domain,          only: dom
 
    implicit none
@@ -77,7 +76,7 @@ subroutine timestep_scr(dt)
       do dir = xdim, zdim
          if (.not. dom%has_dir(dir)) cycle
          ! isotropic closure: sqrt(f_ii)=1/sqrt(3)
-         dt_patch = min(dt_patch, cg%dl(dir) / (vmax / sqrt(3.0)))
+         dt_patch = min(dt_patch, cg%dl(dir) / (vmax))
       end do
 
       dt_local_min = min(dt_local_min, dt_patch)
@@ -88,7 +87,7 @@ subroutine timestep_scr(dt)
    ! global min over ranks, in place
    call piernik_MPI_Allreduce(dt_local_min, pMIN)
 
-   dt =  cfl * dt_local_min
+   dt =  cfl_scr * dt_local_min
 end subroutine timestep_scr
 
 end module timestepscr

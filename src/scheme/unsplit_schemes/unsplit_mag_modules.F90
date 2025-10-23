@@ -232,7 +232,10 @@ contains
    subroutine apply_flux(cg, istep, mag)
       use domain,             only: dom
       use grid_cont,          only: grid_container
-      use global,             only: integration_order, dt
+      use global,             only: integration_order, dt, smalld
+      use fluidindex,         only: iarr_all_dn
+      use dataio_pub,         only: warn, msg
+      use mpisetup,           only: master
       use named_array_list,   only: wna
       use constants,          only: xdim, ydim, zdim, last_stage, rk_coef, &
                                      uh_n, I_ONE, ndims, magh_n
@@ -249,12 +252,12 @@ contains
 
       logical                     :: active(ndims)
       integer                     :: L0(ndims), U0(ndims), L(ndims), U(ndims), shift(ndims)
-      integer                     :: afdim, uhi, bhi
+      integer                     :: afdim, uhi, bhi, i, j ,k 
       real, pointer               :: T(:,:,:,:)
       type(fxptr)                 :: F(ndims)
 
       T => null()
-      active = [ dom%has_dir(xdim), dom%has_dir(ydim), dom%has_dir(zdim) ]
+      active = [ dom%has_dir(xdim), dom%has_dir(ydim), dom%has_dir(zdim)]
 
       if (mag) then
 
@@ -297,6 +300,24 @@ contains
                            L(ydim)+shift(ydim):U(ydim)+shift(ydim), &
                            L(zdim)+shift(zdim):U(zdim)+shift(zdim)) )
       enddo
+
+      ! if (.not. mag) then
+      !    do k = L(zdim),U(zdim)
+      !       do j = L(ydim),U(ydim)
+      !          do i = L(xdim),U(xdim)
+      !             if (T(iarr_all_dn(1),i,j,k) < smalld) then
+      !                if (master) then
+      !                   if (T(iarr_all_dn(1),i,j,k) < 0.0) then
+      !                      write(msg,'(A,1X,ES12.3)') "[unsplit_mag_modules:apply_flux] Negative density detected = ",T(iarr_all_dn,i,j,k)  
+      !                      call warn(msg)
+      !                   endif
+      !                end if 
+      !                T(iarr_all_dn(1),i,j,k) = smalld
+      !             end if
+      !          end do
+      !       end do
+      !    end do
+      ! endif
    end subroutine apply_flux
 
    subroutine update_psi(cg,istep)

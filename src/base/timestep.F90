@@ -147,7 +147,7 @@ contains
 #endif /* NBODY */
 #ifdef STREAM_CR
       use timestepscr,        only: timestep_scr
-      use initstreamingcr,    only: dt_scr, Nsub
+      use initstreamingcr,    only: dt_scr, Nsub, cfl_scr
 #endif /* STREAM_CR */
 
       implicit none
@@ -249,8 +249,10 @@ contains
       if (main_call) dt_full = dt
 
       call ppp_main%stop(ts_label)
-
 #ifdef STREAM_CR
+      !if (nstep > 5) then
+      !   if (dt < dt_scr) cfl_scr = cfl_scr * dt/(10 *  dt_scr)
+      !endif
       Nsub = max(1,ceiling(dt/dt_scr))
        if (mod(Nsub, 2) /= 0) Nsub = Nsub + 1 
       dt_scr = dt/real(Nsub)

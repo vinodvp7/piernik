@@ -49,6 +49,7 @@ module initstreamingcr
    real                                    :: escr_floor          !< floor value of streaming CR energy density
    real                                    :: vmax                !< maximum speed in the simulation which controls the streaming CR timestepping
    real                                    :: scr_eff             !< conversion rate of SN explosion energy to streaming CR energy (default = 0.1)
+   real                                    :: cfl_scr             !< CFL
    real                                    :: omega               !< maximum speed in the simulation which controls the streaming CR timestepping
    logical                                 :: use_escr_floor      !< floor streaming CR energy density or not                               
    real, dimension(50)                     :: gamma_scr           !< adiabatic coefficient of streaming cosmic ray species 
@@ -80,12 +81,13 @@ contains
       integer(kind=4) :: nl, nn
 
       namelist /STREAMING_CR/ nscr, escr_floor, use_escr_floor, sigma_paral, sigma_perp, vmax, ord_pc_grad, &
-      &                       disable_feedback, disable_streaming, gamma_scr, cr_sound_speed, scr_eff
+      &                       disable_feedback, disable_streaming, gamma_scr, cr_sound_speed, scr_eff, cfl_scr
                               
 
       nscr                     = 1
       ord_pc_grad              = 2
       escr_floor               = 1e-6
+      cfl_scr                  = 0.8
       vmax                     = 100.0
       omega                    = 0.5
       scr_eff                  = 0.1                      ! Maybe this should be an array for different conversion rate to different species ? 
@@ -124,6 +126,7 @@ contains
          rbuff(2) = vmax      
          rbuff(3) = scr_eff  
          rbuff(4) = omega    
+         rbuff(5) = cfl_scr
 
          lbuff(1) = use_escr_floor
          lbuff(2) = disable_feedback
@@ -159,6 +162,7 @@ contains
          vmax                = rbuff(2)        
          scr_eff             = rbuff(3)        
          omega               = rbuff(4)
+         cfl_scr             = rbuff(5)
          
          disable_feedback    = lbuff(2)
          disable_streaming   = lbuff(3)          

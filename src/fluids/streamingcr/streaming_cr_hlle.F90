@@ -47,11 +47,18 @@ contains
 
       use scr_helpers,       only: update_rotation_matrix, update_interaction_term, update_vdiff
       use grid_cont,         only: grid_container
+      use constants,         only: first_stage, uh_n
+      use named_array_list,  only: wna
+      use global,            only: integration_order
 
       implicit none
 
       type(grid_container), pointer, intent(in) :: cg
       integer,                       intent(in) :: istep
+
+      if (istep == first_stage(integration_order) .and. integration_order >1 )  then
+         cg%w(wna%ind(uh_n))%arr(:,:,:,:) = cg%u(:,:,:,:)
+      end if
 
       call update_interaction_term(cg, istep, .false.)
       call update_rotation_matrix(cg, istep)
@@ -120,9 +127,9 @@ contains
                   pu => cg%w(wna%scr)%get_sweep(ddim,i1,i2)
                endif
 
-               pf => cg%w(wna%fi)%get_sweep(ddim,i1,i2)
+               pf => cg%w(uhi)%get_sweep(ddim,i1,i2)
                if (istep == first_stage(integration_order) .and. integration_order > 1 ) then
-                  pf => cg%w(uhi)%get_sweep(ddim,i1,i2)
+                  pf => cg%w(wna%fi)%get_sweep(ddim,i1,i2)
                endif
 
                u(:, iarr_all_scr_swp(ddim,:)) = transpose(pu(:,:))

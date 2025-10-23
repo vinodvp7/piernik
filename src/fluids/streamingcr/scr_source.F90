@@ -61,7 +61,7 @@ contains
       integer,                       intent(in) :: istep
 
       integer                                    :: i, j, k, ns
-      integer(kind=4)                            :: scri, fldi, magi, sgmd, rtmi, gpci, fdbki
+      integer(kind=4)                            :: scri, fldi, magi, sgmd, rtmi, gpci, fdbki, uhi
       real                                       :: v1, v2, v3, vtot1, vtot2, vtot3, f1, f2, f3, ec
       real                                       :: sigma_parallel, sigma_perpendicular, m11, m12, m13, m14, m21, m22
       real                                       :: m31, m33, m41, m44, newf1 ,newf2 ,newf3, e_coef, new_ec
@@ -69,7 +69,8 @@ contains
 #ifdef MAGNETIC
       real                                       :: bdotpc, sgn_bgpc, st, ct, sp, cp
 #endif /* MAGNETIC */
-      fldi   = wna%fi
+      fldi   = wna%ind(uh_n)
+      uhi    = wna%fi
       scri   = wna%scr
 #ifdef MAGNETIC
       magi   = wna%bi
@@ -78,10 +79,11 @@ contains
       sgmd   = wna%ind(sgmn)
       gpci   = wna%ind(gpcn)
       if (istep == first_stage(integration_order) .and. integration_order > 1 )  then
-         fldi   = wna%ind(uh_n)
+         fldi   = wna%fi
+         uhi    = wna%ind(uh_n)
          scri   = wna%ind(scrh)
 #ifdef MAGNETIC
-         magi   = wna%ind(magh_n)
+         magi   = wna%bi
 #endif /* MAGNETIC */
       endif
 
@@ -201,9 +203,9 @@ contains
                if (new_eg < 0 ) new_eg = cg%w(fldi)%arr(iarr_all_en(1),i,j,k)
                cg%w(fldi)%arr(iarr_all_en(1),i,j,k) = new_eg
 #endif /* !ISO */
-               cg%w(fldi)%arr(iarr_all_mx(1),i,j,k) = cg%w(fldi)%arr(iarr_all_mx(1),i,j,k) - dFx
-               cg%w(fldi)%arr(iarr_all_my(1),i,j,k) = cg%w(fldi)%arr(iarr_all_my(1),i,j,k) - dFy
-               cg%w(fldi)%arr(iarr_all_mz(1),i,j,k) = cg%w(fldi)%arr(iarr_all_mz(1),i,j,k) - dFz
+               cg%w(uhi)%arr(iarr_all_mx(1),i,j,k) = cg%w(uhi)%arr(iarr_all_mx(1),i,j,k) - dFx
+               cg%w(uhi)%arr(iarr_all_my(1),i,j,k) = cg%w(uhi)%arr(iarr_all_my(1),i,j,k) - dFy
+               cg%w(uhi)%arr(iarr_all_mz(1),i,j,k) = cg%w(uhi)%arr(iarr_all_mz(1),i,j,k) - dFz
          endif
       enddo
 

@@ -73,7 +73,7 @@ contains
 
       use grid_cont,        only: grid_container
       use named_array_list, only: wna
-      use constants,        only: xdim, ydim, zdim, first_stage, mag_n, magh_n, rtmn, sphi, cphi, stheta, ctheta
+      use constants,        only: xdim, ydim, zdim, first_stage, rtmn, sphi, cphi, stheta, ctheta
       use global,           only: integration_order
 
       implicit none
@@ -89,9 +89,9 @@ contains
       real :: Bxy(cg%n_(xdim),cg%n_(ydim),cg%n_(zdim))
       real :: Bxyz(cg%n_(xdim),cg%n_(ydim),cg%n_(zdim))
 
-      bhi = wna%ind(magh_n)          
+      bhi = wna%bi         
       if (istep == first_stage(integration_order) .or. integration_order < 2) then
-         bhi = wna%ind(mag_n)       ! At first step or if integration order = 1 then we select half stage mag field initially
+         bhi = wna%bi      ! At first step or if integration order = 1 then we select half stage mag field initially
       endif
 
       bx => cg%w(bhi)%arr(xdim,:,:,:)
@@ -160,7 +160,7 @@ contains
       sgmd = wna%ind(sgmn)
       gpci = wna%ind(gpcn)
 #ifdef MAGNETIC
-      magi   = wna%ind(magh_n)
+      magi   = wna%bi
 #endif /* MAGNETIC */
       scri   = wna%ind(scrh)
       fldi   = wna%ind(uh_n)

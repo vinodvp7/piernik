@@ -44,6 +44,8 @@ module unsplit_scr_sweep
 
 contains
    subroutine update_boundaries(istep)
+
+      use all_boundaries, only: all_fluid_boundaries
       use constants,      only: first_stage, DIVB_HDC,xdim,zdim
       use domain,         only: dom
       use global,         only: sweeps_mgu, integration_order, divB_0_method
@@ -61,16 +63,19 @@ contains
          if (istep == first_stage(integration_order)) then
             do ub_i=xdim,zdim
                if (.not. dom%has_dir(ub_i)) cycle
+               call all_fluid_boundaries(nocorners = .true., dir = ub_i, istep=istep)
 #ifdef STREAM_CR
                call all_scr_boundaries(nocorners = .true., dir = ub_i, istep=istep) 
 #endif /* STREAM_CR */
             enddo
          else
+            call all_fluid_boundaries(nocorners = .true.,istep=istep)
 #ifdef STREAM_CR
             call all_scr_boundaries(nocorners = .true.,istep=istep) 
 #endif /* STREAM_CR */
          endif
       else
+            call all_fluid_boundaries(istep=istep)
 #ifdef STREAM_CR
             call all_scr_boundaries(istep=istep) 
 #endif /* STREAM_CR */

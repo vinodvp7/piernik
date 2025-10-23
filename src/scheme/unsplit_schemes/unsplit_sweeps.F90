@@ -140,7 +140,7 @@ contains
       enddo
       call ppp_main%stop(init_src_label)
 
-      halfstep = .true.
+
 #ifdef RESISTIVE
    call add_resistivity ! dt/2
 #endif /* RESISTIVE */
@@ -157,7 +157,7 @@ contains
             ! OPT this loop should probably go from finest to coarsest for better compute-communicate overlap.
             cgl => sl%first
 
-            call ppp_main%start(solve_cgs_label)
+            !call ppp_main%start(solve_cgs_label)
             do while (associated(cgl))
                cg => cgl%cg
                call cg%costs%start
@@ -166,21 +166,21 @@ contains
                   call recv_cg_finebnd(req, INVALID, cg, all_received)
 
                   if (all_received) then
-                     call ppp_main%start(cg_label, PPP_CG)
-                     call cg%costs%stop(I_REFINE)
+                     !call ppp_main%start(cg_label, PPP_CG)
+                     !call cg%costs%stop(I_REFINE)
                      ! The recv_cg_finebnd and send_cg_coarsebnd aren't MHD, so we should count them separately.
                      ! The tricky part is that we need to fit all the switching inside the conditional part
                      ! and don't mess pairing and don't let them to nest.
 
                      call cg%cleanup_flux()      ! Seems unnecessary.This just sets the flux array to 0.0
 
-                     call cg%costs%start
+                     !call cg%costs%start
                      call solve_cg_unsplit(cg, istep)
-                     call cg%costs%stop(I_MHD)
+                     !call cg%costs%stop(I_MHD)
 
-                     call ppp_main%stop(cg_label, PPP_CG)
+                     !call ppp_main%stop(cg_label, PPP_CG)
 
-                     call cg%costs%start
+                     !call cg%costs%start
                      call send_cg_coarsebnd(req, INVALID, cg)
                      blocks_done = blocks_done + 1
                   else
@@ -188,10 +188,10 @@ contains
                   endif
                endif
 
-               call cg%costs%stop(I_REFINE)
+              ! call cg%costs%stop(I_REFINE)
                cgl => cgl%nxt
             enddo
-            call ppp_main%stop(solve_cgs_label)
+            !call ppp_main%stop(solve_cgs_label)
 
             if (.not. all_processed .and. blocks_done == 0) then
                if (n_recv > 0) call MPI_Waitany(n_recv, req%r(:n_recv), g, MPI_STATUS_IGNORE, err_mpi)
@@ -200,9 +200,6 @@ contains
          enddo
 
          call req%waitall("sweeps")
-
-         if (associated(problem_customize_solution)) call problem_customize_solution(halfstep)
-         halfstep = .false.
          call update_boundaries(istep)
       enddo
       call sl%delete

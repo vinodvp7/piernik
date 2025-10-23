@@ -147,6 +147,7 @@ contains
 #endif /* NBODY */
 #ifdef STREAM_CR
       use timestepscr,        only: timestep_scr
+      use initstreamingcr,    only: dt_scr, Nsub
 #endif /* STREAM_CR */
 
       implicit none
@@ -195,7 +196,7 @@ contains
       call timestep_resist(dt)
 #endif /* RESIST */
 #ifdef STREAM_CR
-      call timestep_scr(dt)
+      call timestep_scr(dt_scr)
 #endif /* STREAM_CR */
 
       call timestep_sources(dt)
@@ -249,6 +250,11 @@ contains
 
       call ppp_main%stop(ts_label)
 
+#ifdef STREAM_CR
+      Nsub = max(1,ceiling(dt/dt_scr))
+       if (mod(Nsub, 2) /= 0) Nsub = Nsub + 1 
+      dt_scr = dt/real(Nsub)
+#endif /* STREAM_CR */
    end subroutine time_step
 
 !>

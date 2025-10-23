@@ -54,6 +54,8 @@ contains
       use fluidindex,       only: iarr_all_swp, scrind, iarr_all_dn, iarr_all_mx,iarr_all_scr_swp
       use diagnostics,      only: my_allocate, my_deallocate
       use fluxtypes,        only: ext_fluxes
+      use initstreamingcr,  only: substepping
+      use scr_source,       only: apply_scr_source
 
       implicit none
 
@@ -94,11 +96,18 @@ contains
 
                vdiff => cg%w(wna%ind(v_diff))%get_sweep(ddim, i1, i2)
 
-               vdiff1d(:,:) = transpose(vdiff(ddim : I_THREE*(scrind%nscr - I_ONE) + ddim : I_THREE,:) )
+               vdiff1d(:,:) = transpose(vdiff(ddim : I_THREE*(scrind%nscr - I_ONE) + ddim : I_THREE,:))
 
-               pu => cg%w(scri)%get_sweep(ddim,i1,i2)
-               if (istep == first_stage(integration_order) .or. integration_order < 2 ) then
+               if (.not. substepping) then
+                  pu => cg%w(scri)%get_sweep(ddim,i1,i2)
+                  if (istep == first_stage(integration_order) .or. integration_order < 2 ) then
+                     pu => cg%w(wna%scr)%get_sweep(ddim,i1,i2)
+                  endif
+               else
                   pu => cg%w(wna%scr)%get_sweep(ddim,i1,i2)
+                  if (istep == first_stage(integration_order) .or. integration_order < 2 ) then
+                     pu => cg%w(scri)%get_sweep(ddim,i1,i2)
+                  endif
                endif
 
                pf => cg%w(wna%fi)%get_sweep(ddim,i1,i2)
@@ -128,6 +137,7 @@ contains
          call my_deallocate(vdiff1d)
       enddo
       call apply_flux(cg,istep)
+      call apply_scr_source(cg, istep)
    end subroutine update_scr_fluid
 
    subroutine solve_scr(ui, vdiff, eflx, flx, vx)
@@ -167,8 +177,9 @@ contains
   subroutine apply_flux(cg, istep)
       use domain,             only: dom
       use grid_cont,          only: grid_container
-      use global,             only: integration_order, dt
+      use global,             only: integration_order
       use named_array_list,   only: wna
+      use initstreamingcr,    only: substepping, dt_scr
       use constants,          only: xdim, ydim, zdim, last_stage, rk_coef, &
                                     scrh, I_ONE, ndims
 
@@ -202,16 +213,17 @@ contains
       if (istep==last_stage(integration_order) .or. integration_order==I_ONE) then
          T => cg%scr
       else
-         cg%w(uhi)%arr(:,:,:,:) = cg%scr(:,:,:,:)
+         if (.not. substepping)  cg%w(uhi)%arr(:,:,:,:) = cg%scr(:,:,:,:)
          T => cg%w(uhi)%arr
       endif
+
       do afdim = xdim, zdim
          if (.not. active(afdim)) cycle
 
          call bounds_for_flux(L0,U0,active,afdim,L,U)
          shift = 0 ;  shift(afdim) = I_ONE
          T(:, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) = T(:, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) &
-            + dt / cg%dl(afdim) * rk_coef(istep) * ( &
+            + dt_scr / cg%dl(afdim) * rk_coef(istep) * ( &
                F(afdim)%flx(:, L(xdim):U(xdim), L(ydim):U(ydim), L(zdim):U(zdim)) - &
                F(afdim)%flx(:, L(xdim)+shift(xdim):U(xdim)+shift(xdim), &
                            L(ydim)+shift(ydim):U(ydim)+shift(ydim), &

@@ -42,12 +42,12 @@ contains
       use grid_cont,        only: grid_container
       use named_array_list, only: wna
       use constants,        only: LO, HI, scrh, first_stage, xdim, ydim, zdim,rk_coef, gpcn, uh_n
-      use global,           only: integration_order, dt
+      use global,           only: integration_order
       use fluidindex,       only: scrind
       use fluidindex,       only: iarr_all_xfscr, iarr_all_escr, iarr_all_dn, iarr_all_gpcx, &
       &                           iarr_all_gpcy, iarr_all_gpcz, iarr_all_mx, iarr_all_my, & 
       &                           iarr_all_mz, iarr_all_yfscr, iarr_all_zfscr, iarr_all_en
-      use initstreamingcr,  only: vmax, disable_streaming, disable_feedback, use_escr_floor, escr_floor
+      use initstreamingcr,  only: vmax, disable_streaming, disable_feedback, use_escr_floor, escr_floor, dt_scr
       use scr_helpers,      only: update_interaction_term 
       use func,             only: operator(.notequals.)
 #ifdef MAGNETIC  
@@ -77,6 +77,7 @@ contains
 #endif /* MAGNETIC */
       sgmd   = wna%ind(sgmn)
       gpci   = wna%ind(gpcn)
+
       if (istep == first_stage(integration_order) .and. integration_order > 1 )  then
          fldi   = wna%ind(uh_n)
          scri   = wna%ind(scrh)
@@ -84,6 +85,7 @@ contains
          magi   = wna%ind(magh_n)
 #endif /* MAGNETIC */
       endif
+
       call update_gradpc_here(cg)
       call update_interaction_term(cg, istep, .true.)
 
@@ -140,21 +142,21 @@ contains
             sigma_parallel      = cg%w(sgmd)%arr(xdim+2*(ns-1),i,j,k)
             sigma_perpendicular = cg%w(sgmd)%arr(ydim+2*(ns-1),i,j,k)
 
-            m11 = 1.0 - rk_coef(istep) * dt * sigma_parallel * vtot1 * v1 * (1.0/vmax) * 4.0/3.0 &
-            &         - rk_coef(istep) * dt * sigma_perpendicular * vtot2 * v2 * (1.0/vmax) * 4.0/3.0 &
-            &         - rk_coef(istep) * dt * sigma_perpendicular * vtot3 * v3 * (1.0/vmax) * 4.0/3.0
-            m12 = rk_coef(istep) * dt * sigma_parallel * vtot1
-            m13 = rk_coef(istep) * dt * sigma_perpendicular * vtot2
-            m14 = rk_coef(istep) * dt * sigma_perpendicular * vtot3
+            m11 = 1.0 - rk_coef(istep) * dt_scr * sigma_parallel * vtot1 * v1 * (1.0/vmax) * 4.0/3.0 &
+            &         - rk_coef(istep) * dt_scr * sigma_perpendicular * vtot2 * v2 * (1.0/vmax) * 4.0/3.0 &
+            &         - rk_coef(istep) * dt_scr * sigma_perpendicular * vtot3 * v3 * (1.0/vmax) * 4.0/3.0
+            m12 = rk_coef(istep) * dt_scr * sigma_parallel * vtot1
+            m13 = rk_coef(istep) * dt_scr * sigma_perpendicular * vtot2
+            m14 = rk_coef(istep) * dt_scr * sigma_perpendicular * vtot3
 
-            m21 = -rk_coef(istep) * dt * v1 * sigma_parallel * 4.0/3.0
-            m22 = 1.0 + rk_coef(istep) * dt * vmax *  sigma_parallel
+            m21 = -rk_coef(istep) * dt_scr * v1 * sigma_parallel * 4.0/3.0
+            m22 = 1.0 + rk_coef(istep) * dt_scr * vmax *  sigma_parallel
 
-            m31 = -rk_coef(istep) * dt * v2 * sigma_perpendicular * 4.0/3.0
-            m33 = 1.0 + rk_coef(istep) * dt * vmax *  sigma_perpendicular
+            m31 = -rk_coef(istep) * dt_scr * v2 * sigma_perpendicular * 4.0/3.0
+            m33 = 1.0 + rk_coef(istep) * dt_scr * vmax *  sigma_perpendicular
 
-            m41 = -rk_coef(istep) * dt * v3 * sigma_perpendicular * 4.0/3.0
-            m44 = 1.0 + rk_coef(istep) * dt * vmax *  sigma_perpendicular
+            m41 = -rk_coef(istep) * dt_scr * v3 * sigma_perpendicular * 4.0/3.0
+            m44 = 1.0 + rk_coef(istep) * dt_scr * vmax *  sigma_perpendicular
 
 
             e_coef = m11 - m12 * m21 / m22 - m13 * m31 / m33 - m14 * m41 / m44
@@ -164,7 +166,7 @@ contains
             newf2  = (f2 - m31 * new_ec) / m33
             newf3  = (f3 - m41 * new_ec) / m44
 
-            new_ec = new_ec + rk_coef(istep) * dt * ec_source_
+            new_ec = new_ec + rk_coef(istep) * dt_scr * ec_source_
 #ifdef MAGNETIC         
             call inverse_rotate_vec(newf1,newf2,newf3,cp,sp,ct,st)
             f1 = cg%w(scri)%arr(iarr_all_xfscr(ns),i,j,k)        ! Original f1,f2,f3
@@ -187,7 +189,7 @@ contains
                dFz = dFz + (newf3 - f3)/vmax
             endif
             
-            cg%w(scri)%arr(iarr_all_escr(ns),i,j,k)  = new_ec         ! For test 1 and test 2 comment me 
+            !cg%w(scri)%arr(iarr_all_escr(ns),i,j,k)  = new_ec         ! For test 1 and test 2 comment me 
             cg%w(scri)%arr(iarr_all_xfscr(ns),i,j,k) = newf1
             cg%w(scri)%arr(iarr_all_yfscr(ns),i,j,k) = newf2
             cg%w(scri)%arr(iarr_all_zfscr(ns),i,j,k) = newf3

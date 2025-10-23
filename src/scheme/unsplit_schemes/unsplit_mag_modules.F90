@@ -51,6 +51,7 @@ contains
 #ifdef STREAM_CR
       use streaming_cr_hlle, only: update_scr_fluid
       use scr_helpers,       only: update_rotation_matrix, update_interaction_term, update_vdiff
+      use initstreamingcr,   only: sub_count, Nsub, substepping
 #endif /* STREAM_CR */
 #ifdef RESISTIVE
       use resistivity,        only: eta_jbn
@@ -174,10 +175,15 @@ contains
       call apply_flux(cg,istep,.false.)
       call update_psi(cg,istep)
 #ifdef STREAM_CR
-      call update_interaction_term(cg, istep, .false.)
-      call update_rotation_matrix(cg, istep)
-      call update_vdiff(cg,istep)
-      call update_scr_fluid(cg,istep)
+      do sub_count = 1, Nsub
+         call update_interaction_term(cg, istep, .false.)
+         call update_rotation_matrix(cg, istep)
+         call update_vdiff(cg,istep)
+         call update_scr_fluid(cg,istep)
+         call update_boundaries(istep)
+         substepping = .true.
+      end do
+      substepping = .false.
 #endif /* STREAM_CR */
       call apply_source(cg,istep)
       nullify(cs2)
@@ -385,5 +391,55 @@ contains
          endif
       enddo
    end subroutine bounds_for_flux
+
+   subroutine update_boundaries(istep)
+
+      use all_boundaries, only: all_fluid_boundaries
+!      use cg_leaves,      only: leaves
+      use constants,      only: first_stage, DIVB_HDC,xdim,zdim
+      use domain,         only: dom
+      use global,         only: sweeps_mgu, integration_order, divB_0_method
+#ifdef MAGNETIC
+      use all_boundaries, only: all_mag_boundaries
+#endif /* MAGNETIC */
+#ifdef STREAM_CR
+      use all_boundaries, only: all_scr_boundaries
+#endif /* STREAM_CR */
+
+      implicit none
+
+      integer,                  intent(in) :: istep
+
+      integer(kind=4)                      :: ub_i
+
+      if (sweeps_mgu) then
+         if (istep == first_stage(integration_order)) then
+            do ub_i=xdim,zdim
+               if (.not. dom%has_dir(ub_i)) cycle
+               call all_fluid_boundaries(nocorners = .true., dir = ub_i, istep=istep)
+#ifdef STREAM_CR
+               call all_scr_boundaries(nocorners = .true., dir = ub_i, istep=istep) 
+#endif /* STREAM_CR */
+            enddo
+         else
+            call all_fluid_boundaries(nocorners = .true.,istep=istep)
+#ifdef STREAM_CR
+            call all_scr_boundaries(nocorners = .true.,istep=istep) 
+#endif /* STREAM_CR */
+         endif
+      else
+            call all_fluid_boundaries(istep=istep)
+#ifdef STREAM_CR
+            call all_scr_boundaries(istep=istep) 
+#endif /* STREAM_CR */
+      endif
+      if (divB_0_method == DIVB_HDC) then
+#ifdef MAGNETIC
+            call all_mag_boundaries(istep) ! ToDo: take care of psi boundaries
+#endif /* MAGNETIC */
+
+      endif
+
+   end subroutine update_boundaries
 
 end module unsplit_mag_modules

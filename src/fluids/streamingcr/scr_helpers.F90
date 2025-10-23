@@ -73,8 +73,9 @@ contains
 
       use grid_cont,        only: grid_container
       use named_array_list, only: wna
-      use constants,        only: xdim, ydim, zdim, first_stage, mag_n, magh_n, rtmn, sphi, cphi, stheta, ctheta
+      use constants,        only: xdim, ydim, zdim, first_stage, magh_n, rtmn, sphi, cphi, stheta, ctheta
       use global,           only: integration_order
+      use initstreamingcr,  only: substepping
 
       implicit none
 
@@ -89,9 +90,16 @@ contains
       real :: Bxy(cg%n_(xdim),cg%n_(ydim),cg%n_(zdim))
       real :: Bxyz(cg%n_(xdim),cg%n_(ydim),cg%n_(zdim))
 
-      bhi = wna%ind(magh_n)          
-      if (istep == first_stage(integration_order) .or. integration_order < 2) then
-         bhi = wna%ind(mag_n)       ! At first step or if integration order = 1 then we select half stage mag field initially
+      if (.not. substepping) then
+         bhi   = wna%bi
+         if (istep == first_stage(integration_order) .or. integration_order < 2 )  then
+            bhi   = wna%ind(magh_n)
+         endif
+      else 
+         bhi   = wna%bi
+         if (istep == first_stage(integration_order) .or. integration_order < 2 )  then
+            bhi   = wna%ind(magh_n)
+         endif
       endif
 
       bx => cg%w(bhi)%arr(xdim,:,:,:)
@@ -133,7 +141,7 @@ contains
       use named_array_list,   only: wna
       use constants,          only: xdim, ydim, zdim, first_stage, magh_n, uh_n, scrh, sgmn, gpcn
       use global,             only: integration_order
-      use initstreamingcr,    only: sigma_paral, sigma_perp, disable_streaming, vmax, ord_pc_grad
+      use initstreamingcr,    only: sigma_paral, sigma_perp, disable_streaming, vmax, ord_pc_grad, substepping
       use fluidindex,         only: scrind, iarr_all_dn, iarr_all_escr
 #ifdef MAGNETIC
       use constants,          only: magh_n
@@ -159,17 +167,33 @@ contains
 
       sgmd = wna%ind(sgmn)
       gpci = wna%ind(gpcn)
+
+      if (.not. substepping) then
+         fldi   = wna%fi
 #ifdef MAGNETIC
-      magi   = wna%ind(magh_n)
+         magi   = wna%bi
 #endif /* MAGNETIC */
-      scri   = wna%ind(scrh)
-      fldi   = wna%ind(uh_n)
-      if (istep == first_stage(integration_order) .or. integration_order < 2 )  then
+         scri   = wna%ind(scrh)
+         if (istep == first_stage(integration_order) .or. integration_order < 2 )  then
+            scri   = wna%scr
+            fldi   = wna%ind(uh_n)
+#ifdef MAGNETIC
+            magi   = wna%ind(magh_n)
+#endif /* MAGNETIC */
+         endif
+      else 
+         fldi   = wna%fi
 #ifdef MAGNETIC
          magi   = wna%bi
 #endif /* MAGNETIC */
          scri   = wna%scr
-         fldi   = wna%fi
+         if (istep == first_stage(integration_order) .or. integration_order < 2 )  then
+            scri   = wna%ind(scrh)
+            fldi   = wna%ind(uh_n)
+#ifdef MAGNETIC
+            magi   = wna%ind(magh_n)
+#endif /* MAGNETIC */
+         endif
       endif
 
 #ifdef MAGNETIC
@@ -286,7 +310,7 @@ contains
       use constants,          only: xdim, ydim, zdim, first_stage, sgmn, v_diff, scrh, uh_n, LO, HI
       use global,             only: integration_order
       use fluidindex,         only: scrind, iarr_all_escr, iarr_all_dn
-      use initstreamingcr,    only: disable_streaming, tau_asym, vmax, cr_sound_speed
+      use initstreamingcr,    only: disable_streaming, tau_asym, vmax, cr_sound_speed, substepping
       use domain,             only: dom
 #ifdef MAGNETIC
       use constants,          only: rtmn, cphi, sphi, ctheta, stheta
@@ -302,16 +326,25 @@ contains
       real    :: cp, sp, ct, st, vx, vy, vz
 #endif /* MAGNETIC */
 
-      scri   = wna%ind(scrh)
-      fldi   = wna%ind(uh_n)
 #ifdef MAGNETIC
       rtmi   = wna%ind(rtmn)
 #endif /* MAGNETIC */
       vdiffi = wna%ind(v_diff)
 
-      if (istep == first_stage(integration_order) .or. integration_order < 2 )  then
-         scri   = wna%scr
+      if (.not. substepping) then
          fldi   = wna%fi
+         scri   = wna%ind(scrh)
+         if (istep == first_stage(integration_order) .or. integration_order < 2 )  then
+            scri   = wna%scr
+            fldi   = wna%ind(uh_n)
+         endif
+      else 
+         fldi   = wna%fi
+         scri   = wna%scr
+         if (istep == first_stage(integration_order) .or. integration_order < 2 )  then
+            scri   = wna%ind(scrh)
+            fldi   = wna%ind(uh_n)
+         endif
       endif
 
 

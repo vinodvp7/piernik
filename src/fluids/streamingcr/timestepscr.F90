@@ -77,7 +77,7 @@ subroutine timestep_scr(dt)
       do dir = xdim, zdim
          if (.not. dom%has_dir(dir)) cycle
          ! isotropic closure: sqrt(f_ii)=1/sqrt(3)
-         dt_patch = min(dt_patch, cg%dl(dir) / (vmax / sqrt(3.0)))
+         dt_patch = min(dt_patch, cg%dl(dir) / (vmax))
       end do
 
       dt_local_min = min(dt_local_min, dt_patch)
@@ -88,7 +88,7 @@ subroutine timestep_scr(dt)
    ! global min over ranks, in place
    call piernik_MPI_Allreduce(dt_local_min, pMIN)
 
-   dt =  cfl * min(dt, dt_local_min)
+   dt =  cfl * dt_local_min
 end subroutine timestep_scr
 
 end module timestepscr

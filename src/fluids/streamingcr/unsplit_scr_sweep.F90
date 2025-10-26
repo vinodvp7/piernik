@@ -117,7 +117,6 @@ contains
 
       call ppp_main%start("unsplit_scrsweep")
 
-      if (which_solver_type /= UNSPLIT) call die("[unsplit_scr_sweep:unsplit_scrsweep] Only compatible with UNSPLIT solver")
 
       sl => leaves%prioritized_cg(INVALID, covered_too = .true.)
 
@@ -185,7 +184,7 @@ contains
             endif
          enddo
 
-         call req%waitall("sweeps")
+         call req%waitall("scrsweeps")
 
          call update_boundaries(istep)
       enddo

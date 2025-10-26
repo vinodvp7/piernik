@@ -254,8 +254,9 @@ contains
       !   if (dt < dt_scr) cfl_scr = cfl_scr * dt/(10 *  dt_scr)
       !endif
       Nsub = max(1,ceiling(dt/dt_scr))
-       if (mod(Nsub, 2) /= 0) Nsub = Nsub + 1 
+      if (mod(Nsub, 2) /= 0) Nsub = Nsub + 1 
       dt_scr = dt/real(Nsub)
+
 #endif /* STREAM_CR */
    end subroutine time_step
 

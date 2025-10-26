@@ -64,17 +64,16 @@ contains
 
       halfstep = .false.
 
-      t = t + dt
-
-      call make_unsplitsweep(.true.)  ! Here forward argument is not useful for the MHD sweeps but other legacy subroutines need it
-
-! Sources should be hooked to problem_customize_solution with forward argument
+      t = t + 0.5 * dt
 #ifdef STREAM_CR
       do nsubstep = 1, 2 * Nsub
          nsubcount = nsubstep
          call unsplit_scrsweep
       end do
 #endif /* STREAM_CR */
+
+      call make_unsplitsweep(.true.)  ! Here forward argument is not useful for the MHD sweeps but other legacy subroutines need it
+
       
 #ifdef CRESP
       call cresp_update_grid     ! updating number density and energy density of cosmic ray electrons via CRESP module

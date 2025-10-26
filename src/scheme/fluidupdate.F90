@@ -105,14 +105,25 @@ contains
 #ifdef CRESP
       use cresp_grid,     only: cresp_update_grid, cresp_clean_grid
 #endif /* CRESP */
+#ifdef STREAM_CR
+      use initstreamingcr,      only: Nsub
+      use unsplit_scr_sweep,    only: unsplit_scrsweep
+#endif /* STREAM_CR */
 
       implicit none
+      
+      integer :: nsubstep
 
       call repeat_fluidstep
       call update_chspeed
 
       halfstep = .false.
       t = t + dt
+#ifdef STREAM_CR
+      do nsubstep = 1, Nsub
+         call unsplit_scrsweep
+      end do
+#endif /* STREAM_CR */
 
       call make_3sweeps(.true.) ! X -> Y -> Z
 
@@ -127,6 +138,11 @@ contains
       dtm = dt
 
       call make_3sweeps(.false.) ! Z -> Y -> X
+#ifdef STREAM_CR
+      do nsubstep = 1, Nsub
+         call unsplit_scrsweep
+      end do
+#endif /* STREAM_CR */
       call update_magic_mass
 #ifdef CRESP
       call cresp_clean_grid ! BEWARE: due to diffusion some junk remains in the grid - this nullifies all inactive bins.

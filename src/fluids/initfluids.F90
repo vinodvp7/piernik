@@ -122,6 +122,9 @@ contains
 #ifdef CRESP
       use initcrspectrum, only: init_cresp
 #endif /* CRESP */
+#ifdef STREAM_CR
+      use initstreamingcr, only: init_streamingcr
+#endif /* STREAM_CR */
 #ifdef TRACER
       use inittracer,     only: init_tracer
 #endif /* TRACER */
@@ -151,6 +154,9 @@ contains
 #ifdef TRACER
       call init_tracer
 #endif /* TRACER */
+#ifdef STREAM_CR
+      call init_streamingcr                               ! 2.Added this line
+#endif /* STREAM */
 
       call fluid_index    ! flind has valid values afterwards
 
@@ -206,7 +212,7 @@ contains
    end subroutine cleanup_fluids
 
 !>
-!! \brief Find sane values for smalld and smallp
+!! \brief Find sane values for smalld and smallp and if streaming cosmic rays are present then smallescr
 !! \warning Use span(cg%ijkse) or guarantee that all boundaries with corners have all guardcells with proper values
 !<
 
@@ -225,7 +231,9 @@ contains
       use grid_cont,        only: grid_container
       use mpisetup,         only: master
       use named_array_list, only: qna, wna
-
+#ifdef STREAM_CR
+      use initstreamingcr,  only: smallescr
+#endif /* STREAM_CR */
       implicit none
 
       type(cg_list_element),  pointer :: cgl
@@ -236,7 +244,13 @@ contains
       real, parameter                 :: safety_factor = 1.e-4
       real, parameter                 :: max_dens_span = 5.0
       real                            :: maxdens, span, mindens, minpres
-
+#ifdef STREAM_CR
+      real, pointer, dimension(:,:,:) :: ecr
+      real, parameter                 :: max_escr_span = 8.0
+      real                            :: maxescr, minescr
+      maxescr = 0.0
+      minescr = smallescr
+#endif /* STREAM_CR */
       maxdens = 0.0
       mindens = smalld
       minpres = smallp
@@ -244,6 +258,16 @@ contains
       cgl => leaves%first
       do while (associated(cgl))
          cg => cgl%cg
+
+#ifdef STREAM_CR
+         if (smallescr >= big_float) then
+            do i = lbound(flind%scr,1), ubound(flind%scr,1)
+               ecr => cg%w(wna%fi)%span(flind%scr(i)%iescr,cg%ijkse)
+               maxdens = max( maxval(ecr), maxdens )
+               mindens = min( minval(ecr), mindens )
+            enddo
+         endif
+#endif /* STREAM_CR */
 
          if (wna%bi > INVALID) then
             bx => cg%w(wna%bi)%span(xdim,cg%ijkse)
@@ -314,6 +338,25 @@ contains
          endif
       endif
 
+#ifdef STREAM_CR
+      if (smallescr >= big_float) then
+         smallescr = minescr
+         call piernik_MPI_Allreduce(smallescr,  pMIN)
+         call piernik_MPI_Allreduce(maxescr, pMAX)
+         span = 0
+         if (maxescr > minescr) span = log10(maxescr/minescr)
+         minescr = minescr * safety_factor
+         if (master) then
+            write(msg,'(A,ES11.4)') "[initfluids:sanitize_smallx_checks] adjusted smallescr to ", smallescr
+            call warn(msg)
+            if (span > max_escr_span) then
+               write(msg,'(A,I3,A)') "[initfluids:sanitize_smallx_checks] CR energy spans over ", int(span), " orders of magnitude!"
+               call warn(msg)
+            endif
+         endif
+      endif
+#endif /* STREAM_CR */
+
       if (associated(dn)) nullify(dn)
       if (associated(mx)) nullify(mx)
       if (associated(my)) nullify(my)
@@ -323,7 +366,9 @@ contains
       if (associated(by)) nullify(by)
       if (associated(bz)) nullify(bz)
       if (associated(fl)) nullify(fl)
-
+#ifdef STREAM_CR
+      if (associated(ecr)) nullify(ecr)
+#endif /* STREAM_CR */
    end subroutine sanitize_smallx_checks
 
 end module initfluids

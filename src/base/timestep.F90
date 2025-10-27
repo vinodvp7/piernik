@@ -142,6 +142,12 @@ contains
 #ifdef NBODY
       use particle_timestep,  only: timestep_nbody
 #endif /* NBODY */
+#ifdef STREAM_CR
+      use timestepscr,        only: timestep_scr
+      use initstreamingcr,    only: dt_scr, nsub, nsub_scr, scr_violation
+      use constants,          only: I_ZERO, INVALID, I_ONE
+      use dataio_pub,         only: die
+#endif /* STREAM_CR */
 
       implicit none
 
@@ -185,6 +191,7 @@ contains
 #ifdef RESISTIVE
       call timestep_resist(dt)
 #endif /* RESISTIVE */
+
 
       call timestep_sources(dt)
       call timestep_fargo(dt)
@@ -234,6 +241,49 @@ contains
 #endif /* DEBUG */
       call compare_array1D([dt])  ! just in case
       if (main_call) dt_full = dt
+
+#ifdef STREAM_CR
+
+      call timestep_scr(dt_scr)                          ! Calculate the timestep for streaming CR
+
+      select case (nsub)
+         case (INVALID)                                  ! sub-cycling disabled
+            dt = dt_scr
+            nsub_scr = I_ONE
+         case (I_ZERO)                                   ! Adaptive sub-cycling 
+            if (dt < dt_scr) then
+               scr_violation = .true.
+               dt_scr = dt
+               nsub_scr = I_ONE
+            else
+               nsub_scr = max(I_ONE, ceiling(dt/dt_scr))
+               if (mod(nsub_scr, 2) /= 0) nsub_scr = nsub_scr + I_ONE 
+               dt_scr = dt/real(nsub_scr)
+            endif
+         case default                                   ! Fixed number of user provided sub-cycles 
+            if (nsub < INVALID) then
+               if (master) then
+                  write(msg,'(A)') "[timestep:time_step] Invalid value for the parameter nsub. Must be one of -1, 0 or some positive integer"
+                  call die(msg)
+               endif
+            endif
+            nsub_scr = nsub
+            do
+               if (nsub_scr <= I_ZERO) then
+                  scr_violation = .true.   
+                  exit
+               endif
+               if (dt >= nsub_scr * dt_scr) then
+                  dt = nsub_scr * dt_scr
+                  exit
+               else
+                  nsub_scr = nsub_scr - I_ONE
+               end if
+            end do
+      end select
+
+
+#endif /* STREAM_CR */
 
       call ppp_main%stop(ts_label)
 

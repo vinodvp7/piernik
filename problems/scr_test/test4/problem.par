@@ -28,18 +28,18 @@ $RESTART_CONTROL
 /
 
 $END_CONTROL
-  tend = 0.1
+  tend = 0.4
   nend = 1000000
 /
 
 $OUTPUT_CONTROL
    problem_name = 'scr'
    run_id = 'tst'
-   dt_hdf = 0.05
+   dt_hdf = 0.2
    dt_res = 0.0
    dt_log = 0.02
    dt_tsl = 0.02
-   vars(1:) = 'dens', 'ener', 'velx', 'pres', 'escr', 'xfscr', 'gradpcx', 'sigma_paral', 'magx'
+   vars(1:) = 'dens', 'ener', 'velx', 'pres', 'escr', 'xfscr', 'gradpcx', 'sigma_paral', 'magx', 'sigma_perp'
 /
 
 $FLUID_IONIZED
@@ -49,10 +49,10 @@ $STREAMING_CR
    nscr                    = 1
    cred_min                = 100.0
    nsub                    = -1
-   sigma_paral             = 1e8
+   sigma_paral             = 10
    ord_pc_grad             = 2
    disable_feedback        = .true.      ! feedback to MHD gas
-   disable_streaming       = .false.
+   disable_streaming       = .true.
    cr_sound_speed          = .true.
 /
 $NUMERICAL_SETUP
@@ -65,7 +65,7 @@ $NUMERICAL_SETUP
 /
 
 $PROBLEM_CONTROL
-   a  = 40.0
+   vx = 0.0 ! Gas velocity
 /
 
 $AMR

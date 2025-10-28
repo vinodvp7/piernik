@@ -86,7 +86,8 @@ contains
 #endif /* MAGNETIC */
       endif
 
-      call update_interaction_term(cg, istep, .false.)
+      call update_gradpc_here(cg)
+      call update_interaction_term(cg, istep, .true.)
 
       do concurrent (k = cg%lhn(zdim,LO):cg%lhn(zdim,HI), j = cg%lhn(ydim,LO):cg%lhn(ydim,HI), &
       & i = cg%lhn(xdim,LO):cg%lhn(xdim,HI))
@@ -122,9 +123,9 @@ contains
             endif
 #endif /* MAGNETIC */
             ec = cg%w(scri)%arr(iarr_all_escr(ns),i,j,k)
-            f1 = cg%w(scri)%arr(iarr_all_xfscr(ns),i,j,k)
-            f2 = cg%w(scri)%arr(iarr_all_yfscr(ns),i,j,k) 
-            f3 = cg%w(scri)%arr(iarr_all_zfscr(ns),i,j,k) 
+            f1 = cg%w(scri)%arr(iarr_all_xfscr(ns),i,j,k) / cred
+            f2 = cg%w(scri)%arr(iarr_all_yfscr(ns),i,j,k) / cred 
+            f3 = cg%w(scri)%arr(iarr_all_zfscr(ns),i,j,k) / cred 
 #ifdef MAGNETIC         
             call rotate_vec(f1, f2, f3, cp, sp, ct, st)
             call rotate_vec(v1, v2, v3, cp, sp, ct, st)
@@ -181,10 +182,10 @@ contains
                cg%w(uhi)%arr(iarr_all_en(1), i, j, k) = e_feed
 #endif /* !ISO */
             endif
-            !cg%w(uhi)%arr(iarr_all_escr(ns), i, j, k)  = newec         ! For test 1 and test 2 comment me
-            cg%w(scri)%arr(iarr_all_xfscr(ns), i, j, k) = newf1 
-            cg%w(scri)%arr(iarr_all_yfscr(ns), i, j, k) = newf2 
-            cg%w(scri)%arr(iarr_all_zfscr(ns), i, j, k) = newf3 
+            !cg%w(scri)%arr(iarr_all_escr(ns), i, j, k)  = newec         ! For test 1 and test 2 comment me
+            cg%w(scri)%arr(iarr_all_xfscr(ns), i, j, k) = newf1 * cred
+            cg%w(scri)%arr(iarr_all_yfscr(ns), i, j, k) = newf2 * cred
+            cg%w(scri)%arr(iarr_all_zfscr(ns), i, j, k) = newf3 * cred
          enddo
       end do
       if (.not. disable_feedback ) then  
@@ -196,5 +197,93 @@ contains
          end do
       endif
    end subroutine apply_scr_source
+   ! This function needs to be optimized. Currenlty causing a 0.02 second overhead for a 256 x256 run 
+   subroutine update_gradpc_here(cg)
+      use grid_cont,        only: grid_container
+      use named_array_list, only: wna
+      use constants,        only: I_ONE, xdim, ydim, zdim, ndims, gpcn
+      use domain,           only: dom
+      use fluidindex,       only: scrind                          
+      use initstreamingcr,  only: cred, nscr, iarr_all_xfscr, iarr_all_yfscr, iarr_all_zfscr
 
+      implicit none
+   
+      type :: fxptr
+         real, pointer :: flx(:,:,:,:)
+      end type fxptr
+
+      type(grid_container), pointer, intent(in)   :: cg
+
+      logical                     :: active(ndims)
+      integer                     :: L0(ndims), U0(ndims), L(ndims), U(ndims), shift(ndims)
+      integer                     :: afdim, ns, d, i, j , k
+      real, pointer               :: T(:,:,:,:)
+      type(fxptr)                 :: F(ndims)
+
+      integer, dimension(3,scrind%nscr) :: iarr_all_gpc,iarr_all_fscr
+
+      iarr_all_gpc(xdim,:) = [(xdim + 3*(i-1), i=1, nscr)]
+      iarr_all_gpc(ydim,:) = [(ydim + 3*(i-1), i=1, nscr)]
+      iarr_all_gpc(zdim,:) = [(zdim + 3*(i-1), i=1, nscr)]
+      iarr_all_fscr(xdim,:) = iarr_all_xfscr(:)
+      iarr_all_fscr(ydim,:) = iarr_all_yfscr(:)
+      iarr_all_fscr(zdim,:) = iarr_all_zfscr(:)
+
+      T=> null()
+
+      active = [ dom%has_dir(xdim), dom%has_dir(ydim), dom%has_dir(zdim) ]
+
+      F(xdim)%flx => cg%scrfx  ;  F(ydim)%flx => cg%scrgy   ;  F(zdim)%flx => cg%scrhz
+
+      L0 = [ lbound(cg%scr,2), lbound(cg%scr,3), lbound(cg%scr,4) ]
+      U0 = [ ubound(cg%scr,2), ubound(cg%scr,3), ubound(cg%scr,4) ]
+      
+      cg%w(wna%ind(gpcn))%arr = 0.0
+
+      T => cg%w(wna%ind(gpcn))%arr
+      
+      do ns = 1, scrind%nscr
+         do d = xdim, zdim                          ! component of grad Pc (x,y,z)
+            do afdim = xdim, zdim                    ! sweep direction
+               if (.not. active(afdim)) cycle
+               call bounds_for_flux(L0,U0,active,afdim,L,U)
+               shift = 0 ; shift(afdim) = I_ONE
+               do concurrent (k = L(zdim) : U(zdim) , j = L(ydim):U(ydim) , i = L(xdim):U(xdim))
+               T(iarr_all_gpc(d,ns), i, j, k) = T(iarr_all_gpc(d,ns), i, j, k) - &
+               ( F(afdim)%flx(iarr_all_fscr(d,ns), i, j, k) - &
+               F(afdim)%flx(iarr_all_fscr(d,ns), i+shift(xdim),j+shift(ydim),k+shift(zdim)) ) / (cg%dl(afdim) * cred * cred) 
+               end do
+            end do
+         end do
+      end do
+
+   end subroutine update_gradpc_here
+
+   subroutine bounds_for_flux(L0,U0,active,afdim,L,U)
+      use constants, only: xdim, zdim, I_ONE, ndims
+      use domain,    only: dom
+
+      implicit none
+
+      integer, intent(in)            :: L0(ndims), U0(ndims)   ! original bounds
+      logical, intent(in)            :: active(ndims)          ! dom%has_dir flags
+      integer, intent(in)            :: afdim                  ! direction we are updating (1,2,3)
+      integer, intent(out)           :: L(ndims), U(ndims)     ! returned bounds
+
+      integer :: d,nb_1
+
+      L = L0 ;  U = U0                     ! start from raw array bounds
+      nb_1 = dom%nb - I_ONE
+
+      do d = xdim, zdim
+         if (active(d)) then               ! remove outer 1-cell ghosts
+            L(d) = L(d) + I_ONE
+            U(d) = U(d) - I_ONE
+            if (d /= afdim) then           ! shrink transverse dirs by 3 extra
+               L(d) = L(d) + nb_1
+               U(d) = U(d) - nb_1
+            endif
+         endif
+      enddo
+   end subroutine bounds_for_flux
 end module streamingcr_source

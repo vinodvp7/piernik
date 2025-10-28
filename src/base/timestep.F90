@@ -144,7 +144,7 @@ contains
 #ifdef STREAM_CR
       use timestepscr,        only: timestep_scr
       use initstreamingcr,    only: dt_scr, nsub, nsub_scr, scr_violation
-      use constants,          only: I_ZERO, INVALID, I_ONE
+      use constants,          only: I_ZERO, INVALID, I_ONE, I_TWO
       use dataio_pub,         only: die
 #endif /* STREAM_CR */
 
@@ -257,7 +257,7 @@ contains
             else
                nsub_scr = max(I_ONE, ceiling(dt/dt_scr))
                if (mod(nsub_scr, 2) /= 0) nsub_scr = nsub_scr + I_ONE 
-               dt_scr = dt/real(nsub_scr)
+               dt_scr = dt/nsub_scr
             endif
          case default                                   ! Fixed number of user provided sub-cycles 
             if (nsub < INVALID) then
@@ -266,6 +266,13 @@ contains
                   call die(msg)
                endif
             endif
+            if (mod(nsub, 2) /= 0) then
+               nsub = nsub + I_ONE
+               if (master) then
+                  write(msg,'(A,I0)') "[timestep:time_step] Odd subcycling nsub chosen. Adjusted to the nearest even number, nsub=", nsub
+                  call warn(msg)
+               endif
+            endif 
             nsub_scr = nsub
             do
                if (nsub_scr <= I_ZERO) then
@@ -276,11 +283,10 @@ contains
                   dt = nsub_scr * dt_scr
                   exit
                else
-                  nsub_scr = nsub_scr - I_ONE
+                  nsub_scr = nsub_scr - I_TWO
                end if
             end do
       end select
-
 
 #endif /* STREAM_CR */
 

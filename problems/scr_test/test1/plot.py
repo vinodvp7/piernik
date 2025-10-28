@@ -245,7 +245,7 @@ def main() -> None:
     ax.set_xlabel(r"$\mathbf{x}$", fontweight="bold", labelpad=6)
     ax.set_ylabel(r"$\mathbf{E_c}$", fontweight="bold", labelpad=6)
     ax.set_xlim(x.min(), x.max())
-    ax.set_ylim(0, 1)
+
     ax.legend()
     plt.tight_layout()
 

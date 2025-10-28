@@ -1,164 +1,268 @@
+#!/usr/bin/env python3
+"""
+Stitch PIERNIK .h5 blocks in CWD and plot a 1D line-out with an analytical curve.
+
+By default:
+  - searches for 'scr_tst_*.h5' (or any '*.h5' if none) in the current directory,
+  - plots field 'escr_01' from z=0, y=0 at the first two times found,
+  - overlays an analytical curve at the second time,
+  - writes <field>.png unless --out is given.
+
+Examples
+--------
+# Use defaults (field escr_01, time-scale 0.06)
+python plot.py
+
+# Explicit field and time-scale, custom output file
+python plot.py --field escr_01 --time-scale 0.06 --out plot.png
+
+# Force analytical time if filenames don't encode it
+python plot.py --analytic-time 0.06
+"""
+
+from __future__ import annotations
+
+import argparse
+import glob
+import os
 import sys
+
 import h5py
 import numpy as np
-
-# --- VTK Imports ---
-# We wrap this in a try/except block to provide a helpful error message
-# if the user doesn't have VTK installed.
-
-
-def get_field_names(h5_file):
-    """
-    Scans the first data block in the HDF5 file to find all available
-    dataset names (e.g., 'density', 'pressure').
-
-    Args:
-        h5_file (h5py.File): An open H5py file object.
-
-    Returns:
-        list: A list of strings with the names of the data fields.
-    """
-    print("Scanning for available data fields...")
-    field_names = []
-    # Get the name of the first grid block (e.g., 'grid_0000000000')
-    first_block_name = list(h5_file["data"].keys())[0]
-    for name in h5_file["data"][first_block_name]:
-        field_names.append(name)
-    print(f"Found fields: {field_names}")
-    return field_names
-
-
-def load_and_stitch_data(fname):
-    """
-    Loads and stitches a 3D field from multiple blocks in an HDF5 file.
-    This function is based on the user-provided reference code and the
-    HDF5 inspection report.
-
-    Args:
-        fname (str): Path to the HDF5 file.
-        field_names (list): A list of all field names to extract.
-
-    Returns:
-        tuple: A tuple containing:
-            - dict: A dictionary of the stitched 3D data arrays for each field.
-            - np.ndarray: The global dimensions of the stitched cell grid (Nx, Ny, Nz).
-            - np.ndarray: The physical coordinates of the grid origin (x0, y0, z0).
-            - np.ndarray: The cell spacing in each direction (dx, dy, dz).
-    """
-    stitched_data = {}
-    with h5py.File(fname, "r") as f:
-        field_names = get_field_names(f)
-    with h5py.File(fname, "r") as f:
-        # --- 1. Read metadata from the HDF5 file ---
-        block_names = list(f["data"].keys())
-        all_offsets = np.array([f["data"][name].attrs["off"] for name in block_names], dtype=int)
-        all_dims = np.array([f["data"][name].attrs["n_b"] for name in block_names], dtype=int)
-
-        # Determine the full size of the stitched grid of cells
-        global_cell_dims = np.max(all_offsets + all_dims, axis=0)
-        print(f"Global cell grid dimensions determined to be: {global_cell_dims}")
-
-        # Get global grid physical properties from the root attributes
-        origin = f["simulation_parameters"].attrs["domain_left_edge"]
-        domain_size = f["simulation_parameters"].attrs["domain_right_edge"] - origin
-
-        # For cell-centered data, spacing is domain size / number of cells.
-        spacing = domain_size / np.maximum(1, global_cell_dims)
-
-        print(f"Global grid origin: {origin}")
-        print(f"Cell spacing: {spacing}")
-
-        # --- 2. Load and stitch each data field ---
-        for field in field_names:
-            print(f"  Processing field: {field}")
-            # Create an empty array to hold the full stitched data
-            # The data on disk is (z, y, x), so we create the numpy array in that order.
-            stitched_field = np.empty((global_cell_dims[2], global_cell_dims[1], global_cell_dims[0]), dtype=np.float32)
-
-            # Iterate over each block and place its data into the large array
-            for i, name in enumerate(block_names):
-                block_data = f["data"][name][field][:]  # This is already (z, y, x)
-                offset = all_offsets[i]
-                dims = all_dims[i]
-
-                # Define the slice where this block goes in the big array
-                slc = np.s_[
-                    offset[2]: offset[2] + dims[2],
-                    offset[1]: offset[1] + dims[1],
-                    offset[0]: offset[0] + dims[0],
-                ]
-                stitched_field[slc] = block_data
-
-            stitched_data[field] = stitched_field
-
-    return stitched_data, global_cell_dims.astype(int), origin, spacing
-#%%
 import matplotlib.pyplot as plt
 
-plt.rcParams.update({
-    'figure.dpi': 150, 'savefig.dpi': 720,
-    'axes.linewidth': 2.5,
-    'font.size': 12,
-    'xtick.major.size': 5, 'ytick.major.size': 5,
-    'xtick.major.width': 1.0, 'ytick.major.width': 1.0,
-    'xtick.direction': 'out', 'ytick.direction': 'out',
-    'legend.frameon': True, 'legend.edgecolor': 'black', 'legend.framealpha': 1.0,
-    'figure.figsize': (8, 6)
-})
+
+def get_field_names(h5_file: h5py.File) -> list[str]:
+    """Return dataset names from the first block under '/data'."""
+    if "data" not in h5_file:
+        raise ValueError("HDF5 file is missing group '/data'.")
+    try:
+        first_block = next(iter(h5_file["data"]))
+    except StopIteration as exc:
+        raise ValueError("HDF5 group '/data' is empty.") from exc
+    return list(h5_file["data"][first_block].keys())
 
 
-data_to_plot = 'escr_01'
+def load_and_stitch_data(fname: str):
+    """
+    Load and stitch 3D cell-centered fields from all blocks.
 
-file = '/home/vinodvp/simdir/piernik/runs/test2/scr_tst_0000.h5'
-data, cell_dims, origin, spacing = load_and_stitch_data(file)
-N, dx, x0 = cell_dims[0], spacing[0], origin[0]
-xe = x0 + np.arange(N+1)*dx                   # assume x0 is left edge
-x  = 0.5*(xe[:-1] + xe[1:])                   # centers
-y=data[data_to_plot][0,0,:]
-plt.plot(x,y,label='t=0.0',linewidth=1.5,color='k')
+    Returns
+    -------
+    stitched_data : dict[str, np.ndarray]
+        Field -> ndarray (Nz, Ny, Nx).
+    global_cell_dims : np.ndarray
+        Integer array [Nx, Ny, Nz].
+    origin : np.ndarray
+        Physical left edge [x0, y0, z0].
+    spacing : np.ndarray
+        Cell spacing [dx, dy, dz].
+    """
+    stitched_data: dict[str, np.ndarray] = {}
+    with h5py.File(fname, "r") as f:
+        field_names = get_field_names(f)
+        block_names = list(f["data"].keys())
 
-file = '/home/vinodvp/simdir/piernik/runs/test2/scr_tst_0001.h5'
-data, cell_dims, origin, spacing = load_and_stitch_data(file)
-y=data[data_to_plot][0,0,:]
-plt.plot(x,y,label='t=0.06',linewidth=1.5,color='r')
+        all_off = np.array([f["data"][n].attrs["off"] for n in block_names], dtype=int)
+        all_dims = np.array([f["data"][n].attrs["n_b"] for n in block_names], dtype=int)
 
-t = 0.06
+        global_cell_dims = np.max(all_off + all_dims, axis=0).astype(int)
 
-# xm calculation
-xm = np.sqrt((1+4/3*t)**2 + 8/3*t - 1)
+        origin = np.array(
+            f["simulation_parameters"].attrs["domain_left_edge"], dtype=float
+        )
+        domain_right = np.array(
+            f["simulation_parameters"].attrs["domain_right_edge"], dtype=float
+        )
+        spacing = (domain_right - origin) / np.maximum(
+            1.0, global_cell_dims.astype(float)
+        )
+
+        for field in field_names:
+            vol = np.empty(
+                (global_cell_dims[2], global_cell_dims[1], global_cell_dims[0]),
+                dtype=np.float32,
+            )
+            for i, name in enumerate(block_names):
+                block = f["data"][name][field][:]
+                off = all_off[i]
+                dims = all_dims[i]
+                slc = np.s_[off[2]: off[2] + dims[2], off[1]: off[1] + dims[1], off[0]: off[0] + dims[0]]
+                vol[slc] = block
+            stitched_data[field] = vol
+
+    return stitched_data, global_cell_dims, origin, spacing
 
 
-y_analytical = np.full_like(x, 2 + 4/3*t - xm)
+def pick_input_files() -> list[str]:
+    """Return at least two .h5 files: prefer 'scr_tst_*.h5', else any '*.h5'."""
+    files = sorted(glob.glob("scr_tst_*.h5"))
+    if not files:
+        files = sorted(glob.glob("*.h5"))
+    if len(files) < 2:
+        print("Need at least two HDF5 files in CWD.", file=sys.stderr)
+        sys.exit(1)
+    return files[:2]
 
-mask = (x < -xm) | (x > xm)
-y_analytical[mask] = 2 + 4/3*t - np.abs(x[mask])
-plt.plot(x,y_analytical,label='t=0.06 (Analytical)',linewidth=1.5,color='b', linestyle='dashed')
 
-L1 = np.mean(abs(y-y_analytical))
-L2 =np.sqrt( np.mean((y-y_analytical)**2))
+def parse_time_from_name(fname: str, time_scale: float) -> float | None:
+    """
+    Parse time from 'scr_tst_0001.h5' -> 1 * time_scale.
+    Returns None if pattern doesn't match.
+    """
+    base = os.path.basename(fname)
+    if base.startswith("scr_tst_") and base.endswith(".h5"):
+        num = base.replace("scr_tst_", "").replace(".h5", "")
+        try:
+            return int(num) * time_scale
+        except Exception:
+            return None
+    return None
 
-plt.xlabel(r'$\mathbf{x}$', fontweight='bold', labelpad=6)
-plt.ylabel(r'$\mathbf{E_c}$', fontweight='bold', labelpad=6)
-plt.xlim(-1.0,1.0)
-plt.ylim(1.0,2.0)
-plt.xticks([-1,-0.5,0,0.5,1])
-plt.tight_layout()
-plt.legend()
-ax = plt.gca()
 
-msg = (
-    rf"$L_1 = {L1:.3e}$"     "\n"
-    rf"$L_2 = {L2:.3e}$"
-)
+def analytic_profile(x: np.ndarray, t: float) -> np.ndarray:
+    """
+    Piecewise analytic: for |x| <= x_m use constant plateau,
+    else linear decay with |x|.
 
-ax.text(
-    0.02, 0.98, msg,
-    transform=ax.transAxes,
-    ha="left", va="top",
-    fontsize=11,
-    bbox=dict(boxstyle="round,pad=0.30",
-              facecolor="white", edgecolor="black",
-              lw=0.8, alpha=0.9),
-    zorder=5,
-)
-plt.savefig(r'{}.png'.format(data_to_plot),dpi=720)
+    x_m = sqrt((1 + 4/3 t)^2 + 8/3 t - 1)
+    y   = 2 + 4/3 t - x_m          for |x| <= x_m
+          2 + 4/3 t - |x|          for |x| >  x_m
+    """
+    xm = np.sqrt((1.0 + (4.0 / 3.0) * t) ** 2 + (8.0 / 3.0) * t - 1.0)
+    y = np.full_like(x, 2.0 + (4.0 / 3.0) * t - xm)
+    mask = (x < -xm) | (x > xm)
+    y[mask] = 2.0 + (4.0 / 3.0) * t - np.abs(x[mask])
+    return y
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Stitch PIERNIK .h5 outputs in CWD and plot 1D line-out vs. analytic."
+    )
+    parser.add_argument(
+        "--field", type=str, default="escr_01", help="Field name to plot (default: escr_01)."
+    )
+    parser.add_argument(
+        "--time-scale",
+        type=float,
+        default=0.06,
+        help="Multiply file index by this to interpret time (default: 0.06).",
+    )
+    parser.add_argument(
+        "--analytic-time",
+        type=float,
+        default=None,
+        help="Override time for analytic curve (default: parsed from second file).",
+    )
+    parser.add_argument(
+        "--out", type=str, default=None, help="Output PNG filename (default: <field>.png)."
+    )
+    args = parser.parse_args()
+
+    files = pick_input_files()
+
+    # Build x from the first file grid
+    first, cell_dims, origin, spacing = load_and_stitch_data(files[0])
+    nx = int(cell_dims[0])
+    dx = float(spacing[0])
+    x0 = float(origin[0])
+    xe = x0 + np.arange(nx + 1) * dx
+    x = 0.5 * (xe[:-1] + xe[1:])
+
+    field = args.field
+    if field not in first:
+        print(
+            f"Field '{field}' not found in {files[0]}. "
+            f"Available: {list(first.keys())}",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
+    # Plot configuration
+    plt.rcParams.update(
+        {
+            "figure.dpi": 150,
+            "savefig.dpi": 720,
+            "axes.linewidth": 2.5,
+            "font.size": 12,
+            "xtick.major.size": 5,
+            "ytick.major.size": 5,
+            "xtick.major.width": 1.0,
+            "ytick.major.width": 1.0,
+            "xtick.direction": "out",
+            "ytick.direction": "out",
+            "legend.frameon": True,
+            "legend.edgecolor": "black",
+            "legend.framealpha": 1.0,
+            "figure.figsize": (8, 6),
+        }
+    )
+
+    plt.clf()
+    ax = plt.gca()
+
+    # Numerical: t0 and t1 from first two files
+    colors = ["k", "r"]
+    labels = []
+    y_curves = []
+    for i, fname in enumerate(files[:2]):
+        stitched, _, _, _ = load_and_stitch_data(fname)
+        y = stitched[field][0, 0, :]
+        t_val = parse_time_from_name(fname, args.time_scale)
+        label = f"t={t_val:g}" if t_val is not None else os.path.basename(fname)
+        ax.plot(x, y, label=label, linewidth=1.8, color=colors[i % 2])
+        labels.append(label)
+        y_curves.append(y)
+
+    # Analytic at the second time
+    t_analytic = args.analytic_time
+    if t_analytic is None:
+        t_analytic = parse_time_from_name(files[1], args.time_scale) or 0.0
+    y_ana = analytic_profile(x, t_analytic)
+    ax.plot(
+        x,
+        y_ana,
+        label=f"t={t_analytic:g} (analytical)",
+        linewidth=1.8,
+        color="b",
+        linestyle="dashed",
+    )
+
+    # Error norms vs. the second numerical curve, if present
+    if len(y_curves) >= 2:
+        y_num = y_curves[1]
+        l1 = float(np.mean(np.abs(y_num - y_ana)))
+        l2 = float(np.sqrt(np.mean((y_num - y_ana) ** 2)))
+        msg = rf"$L_1 = {l1:.3e}$" + "\n" + rf"$L_2 = {l2:.3e}$"
+        ax.text(
+            0.02,
+            0.98,
+            msg,
+            transform=ax.transAxes,
+            ha="left",
+            va="top",
+            fontsize=11,
+            bbox=dict(
+                boxstyle="round,pad=0.30",
+                facecolor="white",
+                edgecolor="black",
+                lw=0.8,
+                alpha=0.9,
+            ),
+            zorder=5,
+        )
+
+    ax.set_xlabel(r"$\mathbf{x}$", fontweight="bold", labelpad=6)
+    ax.set_ylabel(r"$\mathbf{E_c}$", fontweight="bold", labelpad=6)
+    ax.set_xlim(x.min(), x.max())
+    ax.legend()
+    plt.tight_layout()
+
+    outname = args.out if args.out is not None else f"{field}.png"
+    plt.savefig(outname, dpi=720)
+    print(f"Saved plot to {outname}")
+
+
+if __name__ == "__main__":
+    main()

@@ -28,11 +28,11 @@
 #include "piernik.h"
 
 module initproblem
-! ----------------------------------------------- !
+! ------------------------------------------------!
 ! A New Numerical Scheme for Cosmic-Ray Transport !
 ! Yan-Fei Jiang and S. Peng Oh : ApJ 854 5        !
 ! DOI 10.3847/1538-4357/aaa6ce                    !
-! ----------------------------------------------- !
+! ------------------------------------------------!
 ! Initial condition                               !
 ! See section 4.1.1. CR Streaming in 1D           ! 
 ! ------------------------------------------------!
@@ -65,7 +65,7 @@ contains
 
       implicit none
 
-      a  = 40.0
+      a  = 2.0
 
 
       if (master) then
@@ -168,7 +168,7 @@ contains
                   xi = cg%x(i)
                   do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
                      zk = cg%z(k)
-                     cg%scr(scr_fluid%iescr, i,j,k) = exp(- a * xi * xi)
+                     cg%scr(scr_fluid%iescr, i,j,k) = a - abs(xi)
                      cg%scr(scr_fluid%ixfscr,i,j,k) = 0.0
                      cg%scr(scr_fluid%iyfscr,i,j,k) = 0.0
                      cg%scr(scr_fluid%izfscr,i,j,k) = 0.0

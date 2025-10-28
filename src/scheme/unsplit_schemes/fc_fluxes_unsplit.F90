@@ -56,42 +56,40 @@ contains
       use cg_leaves,    only: leaves
       use domain,       only: dom
       use cg_list,      only: cg_list_element
-      use constants,    only: LO, HI, base_level_id, xdim, zdim
+      use constants,    only: LO, HI, base_level_id,xdim,zdim
       use pppmpi,       only: req_ppp
       use MPIF,         only:  MPI_REQUEST_NULL
       implicit none
 
       type(req_ppp),             intent(inout) :: req
-      integer(kind=4), optional, intent(in)    :: cdim
+      integer(kind=4),optional,  intent(in)    :: cdim
       integer(kind=4), optional, intent(in)    :: max_level
 
       type(cg_list_element), pointer :: cgl
       integer :: g
       integer :: in_f_re_i
-
       call req%init(owncomm = .true., label = "fc_flx")
-
       do g = 1, size(req%r)
          req%r(g) = MPI_REQUEST_NULL
       enddo
-
       nullify(cgl)
       if (present(max_level)) then  ! exclude some finest levels (useful in crdiffusion)
          if (max_level >= base_level_id) cgl => leaves%up_to_level(max_level)%p
       else  ! operate on the whole structure
          cgl => leaves%first
       endif
-
       if (.not. present(cdim) .or. cdim==-1) then
          do while (associated(cgl))
             call cgl%cg%costs%start
-            do in_f_re_i = xdim, zdim
+            do in_f_re_i=xdim,zdim
                if (.not. dom%has_dir(in_f_re_i)) cycle
                cgl%cg%processed = .false.
                cgl%cg%finebnd(in_f_re_i, LO)%uflx(:, :, :) = 0. !> \warning overkill
                cgl%cg%finebnd(in_f_re_i, HI)%uflx(:, :, :) = 0.
                if (allocated(cgl%cg%finebnd(in_f_re_i, LO)%bflx)) cgl%cg%finebnd(in_f_re_i, LO)%bflx(:, :, :) = 0.
                if (allocated(cgl%cg%finebnd(in_f_re_i, HI)%bflx)) cgl%cg%finebnd(in_f_re_i, HI)%bflx(:, :, :) = 0.
+               if (allocated(cgl%cg%finebnd(in_f_re_i, LO)%sflx)) cgl%cg%finebnd(in_f_re_i, LO)%sflx(:, :, :) = 0.
+               if (allocated(cgl%cg%finebnd(in_f_re_i, HI)%sflx)) cgl%cg%finebnd(in_f_re_i, HI)%sflx(:, :, :) = 0.
                if (allocated(cgl%cg%rif_tgt%seg)) then
                   associate ( seg => cgl%cg%rif_tgt%seg )
                      do g = lbound(seg, dim=1), ubound(seg, dim=1)
@@ -111,6 +109,8 @@ contains
             cgl%cg%finebnd(cdim, HI)%uflx(:, :, :) = 0.
             if (allocated(cgl%cg%finebnd(cdim, LO)%bflx)) cgl%cg%finebnd(cdim, LO)%bflx(:, :, :) = 0.
             if (allocated(cgl%cg%finebnd(cdim, HI)%bflx)) cgl%cg%finebnd(cdim, HI)%bflx(:, :, :) = 0.
+            if (allocated(cgl%cg%finebnd(cdim, LO)%sflx)) cgl%cg%finebnd(cdim, LO)%sflx(:, :, :) = 0.0
+            if (allocated(cgl%cg%finebnd(cdim, HI)%sflx)) cgl%cg%finebnd(cdim, HI)%sflx(:, :, :) = 0.0
             if (allocated(cgl%cg%rif_tgt%seg)) then
                associate ( seg => cgl%cg%rif_tgt%seg )
                   do g = lbound(seg, dim=1), ubound(seg, dim=1)
@@ -122,17 +122,16 @@ contains
             cgl => cgl%nxt
          enddo
       endif
-
    end subroutine initiate_flx_recv
 
 !> \brief Test if expected fluxes from fine grids have already arrived.
 
    subroutine recv_cg_finebnd(req, cdim, cg, all_received)
 
-      use constants,  only: LO, HI, INVALID, ORTHO1, ORTHO2, pdims, PPP_MPI, xdim, zdim
+      use constants,  only: LO, HI, INVALID, ORTHO1, ORTHO2, pdims, PPP_MPI,xdim,zdim, psidim
       use dataio_pub, only: die
       use fluidindex, only: flind
-      use domain,     only: dom
+      use domain,         only: dom
       use grid_cont,  only: grid_container
       use MPIF,       only: MPI_STATUS_IGNORE, MPI_Test, MPI_Wait
       use mpisetup,   only: err_mpi
@@ -150,12 +149,13 @@ contains
       logical(kind=4) :: received
       integer(kind=8), dimension(LO:HI) :: j1, j2, jc
       character(len=*), parameter :: recv_label = "cg_recv_fine_bnd"
+      integer :: bff_end
 
       call ppp_main%start(recv_label, PPP_MPI)
 
       if (present(all_received)) all_received = .true.
       if (.not. present(cdim) .or. cdim==-1) then
-         do re_c_f_i = xdim, zdim
+         do re_c_f_i=xdim,zdim
             if (.not. dom%has_dir(re_c_f_i)) cycle
             if (allocated(cg%rif_tgt%seg)) then
                associate ( seg => cg%rif_tgt%seg )
@@ -181,7 +181,13 @@ contains
                               lh = INVALID
                            endif
                            cg%finebnd(re_c_f_i, lh)%uflx(:, j1(LO):j1(HI), j2(LO):j2(HI)) = seg(g)%buf(:flind%all, :, :)
-                           if (allocated(cg%finebnd(re_c_f_i, lh)%bflx)) cg%finebnd(re_c_f_i, lh)%bflx(:, j1(LO):j1(HI), j2(LO):j2(HI)) = seg(g)%buf(flind%all+1:, :, :)
+                           if (allocated(cg%finebnd(re_c_f_i, lh)%bflx)) then
+                              cg%finebnd(re_c_f_i, lh)%bflx(:, j1(LO):j1(HI), j2(LO):j2(HI)) = seg(g)%buf(flind%all+1:flind%all+psidim, :, :)
+                              bff_end = flind%all + psidim + 1
+                           else
+                              bff_end = flind%all +  1
+                           endif
+                           if (allocated(cg%finebnd(re_c_f_i, lh)%sflx)) cg%finebnd(re_c_f_i, lh)%sflx(:, j1(LO):j1(HI), j2(LO):j2(HI)) = seg(g)%buf(bff_end:, :, :)
                         else
                            if (present(all_received)) all_received = .false.
                         endif
@@ -214,7 +220,13 @@ contains
                         lh = INVALID
                      endif
                      cg%finebnd(cdim, lh)%uflx(:, j1(LO):j1(HI), j2(LO):j2(HI)) = seg(g)%buf(:flind%all, :, :)
-                     if (allocated(cg%finebnd(cdim, lh)%bflx)) cg%finebnd(cdim, lh)%bflx(:, j1(LO):j1(HI), j2(LO):j2(HI)) = seg(g)%buf(flind%all+1:, :, :)
+                     if (allocated(cg%finebnd(cdim, lh)%bflx)) then
+                        cg%finebnd(cdim, lh)%bflx(:, j1(LO):j1(HI), j2(LO):j2(HI)) = seg(g)%buf(flind%all+1:flind%all+psidim, :, :)
+                        bff_end = flind%all + psidim + 1
+                     else
+                        bff_end = flind%all + 1
+                     endif
+                     if (allocated(cg%finebnd(cdim, lh)%sflx)) cg%finebnd(cdim, lh)%sflx(:, j1(LO):j1(HI), j2(LO):j2(HI)) = seg(g)%buf(bff_end:, :, :)
                   else
                      if (present(all_received)) all_received = .false.
                   endif
@@ -223,16 +235,14 @@ contains
             end associate
          endif
       endif
-
       call ppp_main%stop(recv_label, PPP_MPI)
-
    end subroutine recv_cg_finebnd
 
 !> \brief Do a non-blocking MPI Send of fluxes for coarse neighbors.
 
    subroutine send_cg_coarsebnd(req, cdim, cg)
 
-      use constants,    only: pdims, LO, HI, ORTHO1, ORTHO2, INVALID, PPP_MPI, xdim, zdim
+      use constants,    only: pdims, LO, HI, ORTHO1, ORTHO2, INVALID, PPP_MPI,xdim,zdim
       use dataio_pub,   only: die
       use domain,       only: dom
       use grid_cont,    only: grid_container
@@ -252,9 +262,8 @@ contains
       character(len=*), parameter :: send_label = "cg_send_coarse_bnd"
 
       call ppp_main%start(send_label, PPP_MPI)
-
       if (.not. present(cdim) .or. cdim==-1) then
-         do se_c_c_i = xdim, zdim
+         do se_c_c_i=xdim,zdim
             if (.not. dom%has_dir(se_c_c_i)) cycle
             if (allocated(cg%rof_tgt%seg)) then
             associate ( seg => cg%rof_tgt%seg )
@@ -275,8 +284,12 @@ contains
                   seg(g)%buf(:, :, :) = 0.
                   do j = j1(LO), j1(HI)
                      do k = j2(LO), j2(HI)
-                        if (allocated(cg%coarsebnd(se_c_c_i, lh)%bflx)) then
+                        if (allocated(cg%coarsebnd(se_c_c_i, lh)%bflx) .and. .not. allocated(cg%coarsebnd(se_c_c_i, lh)%sflx)) then
                            seg(g)%buf(:, f2c_o(j), f2c_o(k)) = seg(g)%buf(:, f2c_o(j), f2c_o(k)) + [ cg%coarsebnd(se_c_c_i, lh)%uflx(:, j, k), cg%coarsebnd(se_c_c_i, lh)%bflx(:, j, k) ]
+                        else if (allocated(cg%coarsebnd(se_c_c_i, lh)%sflx) .and. allocated(cg%coarsebnd(se_c_c_i, lh)%bflx)) then
+                           seg(g)%buf(:, f2c_o(j), f2c_o(k)) = seg(g)%buf(:, f2c_o(j), f2c_o(k)) + [ cg%coarsebnd(se_c_c_i, lh)%uflx(:, j, k), cg%coarsebnd(se_c_c_i, lh)%bflx(:, j, k), cg%coarsebnd(se_c_c_i, lh)%sflx(:, j, k)]
+                        else if (allocated(cg%coarsebnd(se_c_c_i, lh)%sflx) .and. .not. allocated(cg%coarsebnd(se_c_c_i, lh)%bflx)) then
+                           seg(g)%buf(:, f2c_o(j), f2c_o(k)) = seg(g)%buf(:, f2c_o(j), f2c_o(k)) + [ cg%coarsebnd(se_c_c_i, lh)%uflx(:, j, k), cg%coarsebnd(se_c_c_i, lh)%sflx(:, j, k)]
                         else
                            seg(g)%buf(:, f2c_o(j), f2c_o(k)) = seg(g)%buf(:, f2c_o(j), f2c_o(k)) + cg%coarsebnd(se_c_c_i, lh)%uflx(:, j, k)
                         endif
@@ -309,8 +322,12 @@ contains
                   seg(g)%buf(:, :, :) = 0.
                   do j = j1(LO), j1(HI)
                      do k = j2(LO), j2(HI)
-                        if (allocated(cg%coarsebnd(cdim, lh)%bflx)) then
+                        if (allocated(cg%coarsebnd(cdim, lh)%bflx) .and. .not. allocated(cg%coarsebnd(cdim, lh)%sflx)) then
                            seg(g)%buf(:, f2c_o(j), f2c_o(k)) = seg(g)%buf(:, f2c_o(j), f2c_o(k)) + [ cg%coarsebnd(cdim, lh)%uflx(:, j, k), cg%coarsebnd(cdim, lh)%bflx(:, j, k) ]
+                        else if (allocated(cg%coarsebnd(cdim, lh)%sflx) .and. allocated(cg%coarsebnd(cdim, lh)%bflx)) then
+                           seg(g)%buf(:, f2c_o(j), f2c_o(k)) = seg(g)%buf(:, f2c_o(j), f2c_o(k)) + [ cg%coarsebnd(cdim, lh)%uflx(:, j, k), cg%coarsebnd(cdim, lh)%bflx(:, j, k), cg%coarsebnd(cdim, lh)%sflx(:, j, k)]
+                        else if (allocated(cg%coarsebnd(cdim, lh)%sflx) .and. .not. allocated(cg%coarsebnd(cdim, lh)%bflx)) then
+                           seg(g)%buf(:, f2c_o(j), f2c_o(k)) = seg(g)%buf(:, f2c_o(j), f2c_o(k)) + [ cg%coarsebnd(cdim, lh)%uflx(:, j, k), cg%coarsebnd(cdim, lh)%sflx(:, j, k)]
                         else
                            seg(g)%buf(:, f2c_o(j), f2c_o(k)) = seg(g)%buf(:, f2c_o(j), f2c_o(k)) + cg%coarsebnd(cdim, lh)%uflx(:, j, k)
                         endif

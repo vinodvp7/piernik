@@ -41,6 +41,7 @@ module flx_cell
    type :: fluxpoint
       real, dimension(:), allocatable :: uflx   !< u-flux
       real, dimension(:), allocatable :: bflx   !< (b,psi)-flux
+      real, dimension(:), allocatable :: sflx   !< scr-flux
       integer                         :: index  !< Index where the flux has to be applied
    contains
       procedure :: init     !< Allocate flux vector
@@ -56,7 +57,9 @@ contains
       use constants,  only: psidim, has_B
       use dataio_pub, only: die
       use fluidindex, only: flind
-
+#ifdef STREAM_CR
+      use initstreamingcr,    only: nscr
+#endif /* STREAM_CR */
       implicit none
 
       class(fluxpoint), intent(inout) :: this  !< object invoking type bound procedure
@@ -64,6 +67,9 @@ contains
       if (allocated(this%uflx)) call die("[flx_cell:init] uflx already allocated")
       allocate(this%uflx(flind%all))
       if (has_B) allocate(this%bflx(psidim))
+#ifdef STREAM_CR
+      allocate(this%sflx(4*nscr))
+#endif /* STREAM_CR */
 
    end subroutine init
 
@@ -77,6 +83,7 @@ contains
 
       if (allocated(this%uflx)) deallocate(this%uflx)
       if (allocated(this%bflx)) deallocate(this%bflx)
+      if (allocated(this%sflx)) deallocate(this%sflx)
 
    end subroutine cleanup
 

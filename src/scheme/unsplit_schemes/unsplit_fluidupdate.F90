@@ -27,8 +27,7 @@
 #include "piernik.h"
 
 !>
-!! The job this module is to update boundaries. This was previously inside the module sweeps . Moved here so that this can be called inside
-!! solver after each time step on the entire
+!! This subroutine is a copy of the split fluid update subroutine adapted for unsplit MHD solver. 
 !<
 
 module unsplit_fluidupdate
@@ -42,27 +41,88 @@ module unsplit_fluidupdate
 
 contains
 
-    subroutine fluid_update_unsplit
+   subroutine fluid_update_unsplit
+
+      use dataio_pub,     only: halfstep
+      use global,         only: dt, dtm, t
+      use hdc,            only: update_chspeed
+      use mass_defect,    only: update_magic_mass
+      use timestep_retry, only: repeat_fluidstep
+#ifdef CRESP
+      use cresp_grid,     only: cresp_update_grid, cresp_clean_grid
+#endif /* CRESP */
+#ifdef STREAM_CR
+      use initstreamingcr,      only: nsub_scr
+      use unsplit_scr_sweep,    only: unsplit_scrsweep
+#endif /* STREAM_CR */
+      implicit none
+
+      integer :: i
+
+      call repeat_fluidstep
+      call update_chspeed
+
+      halfstep = .false.
+
+      t = t + 0.5 * dt
+#ifdef STREAM_CR
+      do i = 1, nsub_scr/2
+         call unsplit_scrsweep
+      end do
+#endif /* STREAM_CR */
+
+      call make_unsplitsweep(.true.)  ! Here forward argument is not useful for the MHD sweeps but other legacy subroutines need it
+
+      
+#ifdef CRESP
+      call cresp_update_grid     ! updating number density and energy density of cosmic ray electrons via CRESP module
+#endif /* CRESP */
+
+#ifdef STREAM_CR
+      do i = 1, nsub_scr
+         call unsplit_scrsweep
+      end do
+#endif /* STREAM_CR */
+
+      halfstep = .true.
+      t = t + dt
+      dtm = dt
+
+      call make_unsplitsweep(.false.) 
+
+#ifdef STREAM_CR
+      do i = 1, nsub_scr/2
+         call unsplit_scrsweep
+      end do
+#endif /* STREAM_CR */
+
+      call update_magic_mass
+#ifdef CRESP
+      call cresp_clean_grid ! BEWARE: due to diffusion some junk remains in the grid - this nullifies all inactive bins.
+#endif /* CRESP */
+
+   end subroutine fluid_update_unsplit
+
+!>
+!! \brief Perform sweeps in all three directions plus sources that are calculated every timestep
+!<
+   subroutine make_unsplitsweep(forward)
 
       use cg_list_dataop,      only: expanded_domain
-      use dataio_pub,          only: halfstep
-      use global,              only: dt, t
-      use hdc,                 only: update_chspeed,glmdamping, eglm
-      use mass_defect,         only: update_magic_mass
-      use timestep_retry,      only: repeat_fluidstep
-      use unsplit_sweeps,      only: unsplit_sweep
+      use constants,           only: xdim, ydim, zdim, I_ONE
+      use global,              only: skip_sweep, use_fargo
+      use hdc,                 only: glmdamping, eglm
+      use ppp,                 only: ppp_main
       use sources,             only: external_sources
-
+      use unsplit_sweeps,      only: unsplit_sweep
+      use user_hooks,          only: problem_customize_solution
+      use dataio_pub,          only: die
 #ifdef GRAV
       use gravity,             only: source_terms_grav, compute_h_gpot, need_update
 #ifdef NBODY
       use particle_solvers,    only: psolver
 #endif /* NBODY */
 #endif /* GRAV */
-#ifdef CRESP
-      use cresp_grid,          only: cresp_update_grid, cresp_clean_grid
-#endif /* CRESP */
-      use user_hooks,          only: problem_customize_solution
 #ifdef COSM_RAYS
 #ifdef MULTIGRID
       use multigrid_diffusion, only: inworth_mg_diff
@@ -77,52 +137,55 @@ contains
 
       implicit none
 
-      call repeat_fluidstep
-      halfstep = .true.
-      call update_chspeed
+      logical, intent(in) :: forward  
+
+      character(len=*), parameter :: usw3_label = "usweeps"
+
 #ifdef SHEAR
       call shear_3sweeps
 #endif /* SHEAR */
+
 #ifdef GRAV
       call compute_h_gpot
 #endif /* GRAV */
+
 #ifdef COSM_RAYS
 #ifdef MULTIGRID
       if (inworth_mg_diff()) then
 #else /* !MULTIGRID */
       if (use_CRdiff) then
 #endif /* !MULTIGRID */
-         call make_diff_sweeps(.true.)
+         call make_diff_sweeps(forward)
       endif
 #endif /* COSM_RAYS */
 
       ! At this point everything should be initialized after domain expansion and we no longer need this list.
       call expanded_domain%delete
 
-      call eglm
-      call glmdamping(.true.)
-      t = t + dt
+      ! The following block of code may be treated as a 3D (M)HD solver.
+      ! Don't put anything inside unless you're sure it should belong to the (M)HD solver.
+      call ppp_main%start(usw3_label)
+      if (use_fargo) then
+         call die("[unsplit_fluidupdate:make_3sweeps] Fargo module not available for unsplit Riemann solver")
+      else
+         call unsplit_sweep
+      endif
+      call ppp_main%stop(usw3_label)
 
-      call unsplit_sweep
 #ifdef GRAV
       need_update = .true.
 #ifdef NBODY
-      if (associated(psolver)) call psolver(.true.)  ! this will clear need_update it it would call source_terms_grav
+      if (associated(psolver)) call psolver(forward)  ! this will clear need_update it it would call source_terms_grav
 #endif /* NBODY */
       if (need_update) call source_terms_grav
 #endif /* GRAV */
-      call external_sources(.true.)
-      if (associated(problem_customize_solution)) call problem_customize_solution(.true.)
-      call eglm
-      call glmdamping(.true.)
 
-#ifdef CRESP
-      call cresp_update_grid     ! updating number density and energy density of cosmic ray electrons via CRESP module
-#endif /* CRESP */
-      call update_magic_mass
-#ifdef CRESP
-      call cresp_clean_grid ! BEWARE: due to diffusion some junk remains in the grid - this nullifies all inactive bins.
-#endif /* CRESP */
-    end subroutine fluid_update_unsplit
+      call external_sources(forward)
+      if (associated(problem_customize_solution)) call problem_customize_solution(forward)
+
+      call eglm
+      call glmdamping
+
+   end subroutine make_unsplitsweep
 
 end module unsplit_fluidupdate

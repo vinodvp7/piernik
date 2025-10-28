@@ -390,10 +390,10 @@ contains
       use units,            only: kboltz, mH
 #endif /* !ISO */
 #ifdef STREAM_CR
-      use initstreamingcr,    only: nscr
+      use initstreamingcr,    only: nscr, cred
       use constants,          only: gpcn, sgmn, ndims
       use named_array_list,   only: wna
-      use fluidindex,         only: flind
+      use fluidindex,         only: scrind
 #endif /* STREAM_CR */
 
       implicit none
@@ -525,21 +525,22 @@ contains
             tab(:,:,:) = cg%w(wna%ind(dfpq%q_nam))%arr(i,RNG)  !flind%cre%fbeg+i-1, RNG)
 #endif /* CRESP */
 #ifdef STREAM_CR
-         case ('escr_01':'escr_99')
+         case ('escr_01':'escr_99')                                !>  Ec
             read(var, '(A5,I2)') aux, is     ! 'escr_' + nn
             if (is < 1 .or. is > nscr) stop 'escr_*: species out of range'
-            tab(:,:,:) = cg%u( flind%scr(is)%iescr, RNG )
-         case ('xfscr_01':'xfscr_99')
-            read(var, '(A6,I2)') aux, is     ! 'fxscr_' + nn
-            tab(:,:,:) = cg%u( flind%scr(is)%ixfscr, RNG )
+            tab(:,:,:) = cg%scr( scrind%scr(is)%iescr, RNG )
 
-         case ('yfscr_01':'yfscr_99')
-            read(var, '(A6,I2)') aux, is     ! 'fyscr_' + nn
-            tab(:,:,:) = cg%u( flind%scr(is)%iyfscr, RNG )
+         case ('xfscr_01':'xfscr_99')                                !> xth component of Fc
+            read(var, '(A6,I2)') aux, is     ! 'xfscr_' + nn
+            tab(:,:,:) = cg%scr( scrind%scr(is)%ixfscr, RNG )
 
-         case ('zfscr_01':'zfscr_99')
-            read(var, '(A6,I2)') aux, is     ! 'fzscr_' + nn
-            tab(:,:,:) = cg%u( flind%scr(is)%izfscr, RNG )
+         case ('yfscr_01':'yfscr_99')                                !> yth component of Fc
+            read(var, '(A6,I2)') aux, is     ! 'yfscr_' + nn
+            tab(:,:,:) = cg%scr( scrind%scr(is)%iyfscr, RNG )
+
+         case ('zfscr_01':'zfscr_99')                                !> zth component of Fc
+            read(var, '(A6,I2)') aux, is     ! 'zfscr_' + nn
+            tab(:,:,:) = cg%scr( scrind%scr(is)%izfscr, RNG )
 
          !< ∇Pc
          case ('gradpcx_01':'gradpcx_99')
@@ -555,7 +556,7 @@ contains
             tab(:,:,:) = cg%w(wna%ind(gpcn))%arr( (is-1)*ndims + zdim, RNG )
 #ifdef MAGNETIC
          !< |B·∇Pc|
-         case ('bdotgradpc_01':'bdotgradpc_50')
+         case ('bdotgradpc_01':'bdotgradpc_99')
             read(var, '(A11,I2)') aux, is
             tab(:,:,:) = cg%b(xdim, RNG) * cg%w(wna%ind(gpcn))%arr( (is-1)*ndims + xdim, RNG ) + &
             &            cg%b(ydim, RNG) * cg%w(wna%ind(gpcn))%arr( (is-1)*ndims + ydim, RNG ) + &
@@ -582,10 +583,10 @@ contains
          !< σ
          case ('sigma_paral_01':'sigma_paral_50')                    !> parallel component of σ
             read(var, '(A12,I2)') aux, is
-            tab(:,:,:) = cg%w(wna%ind(sgmn))%arr( 2 * (is-1) + 1, RNG )
+            tab(:,:,:) = cred * cg%w(wna%ind(sgmn))%arr( 2 * (is-1) + 1, RNG )
          case ('sigma_perp_01':'sigma_perp_50')                      !> perpendicular component of σ
             read(var, '(A12,I2)') aux, is
-            tab(:,:,:) = cg%w(wna%ind(sgmn))%arr( 2 * (is-1) + 2, RNG )
+            tab(:,:,:) = cred * cg%w(wna%ind(sgmn))%arr( 2 * (is-1) + 2, RNG )
 #endif /* STREAM_CR */
 #ifdef TRACER
          case ("trcr")

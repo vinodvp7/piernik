@@ -36,12 +36,14 @@
 !<
 module initstreamingcr
 
-
 ! pulled by STREAM_CR
 
-    implicit none
+   use constants, only: cbuff_len
+
+   implicit none
 
    public ! QA_WARN no secrets are kept here
+   private :: cbuff_len ! QA_WARN prevent reexport
 
    ! namelist parameters
    integer                                 :: nscr                !< number of non-spectral streaming CR components
@@ -61,22 +63,28 @@ module initstreamingcr
    logical                                 :: disable_streaming   !< whether cosmic rays stream along B
    logical                                 :: cr_sound_speed      !< whether to add cr sound speed when calculating v_diff. Ideally keep it as false so that sound speed is added as it increases numerical stability.
    logical                                 :: scr_causality_limit !< enforce |Fc| < cred * Ec 
+   character(len=cbuff_len)                :: transport_scheme    !< scheme used to calculate riemann flux for cosmic rays : HLLE / LF
 
    integer, parameter                      :: nscr_max   = 99     !< Maximum number of allowed streaming cr component
    real, parameter                         :: tau_asym   = 1e-3   !< Used in the calculation of R in streaming_cr_hlle where below this value the function is taylor expanded in tau
    real, parameter                         :: sigma_huge = 1e10   !< Default huge value for interaction coefficient that essentially means diffusion is switched off
    real, parameter                         :: gamma_def  = 4./3.  !< Default huge value for interaction coefficient that essentially means diffusion is switched off
 
-   integer(kind=4), allocatable, dimension(:)   :: iarr_all_escr          !< array of indexes pointing to energy density of streaming CR
-   integer(kind=4), allocatable, dimension(:)   :: iarr_all_xfscr         !< array of indexes pointing to x component of flux Fc of streaming CR
-   integer(kind=4), allocatable, dimension(:)   :: iarr_all_yfscr         !< array of indexes pointing to y component of flux Fc of streaming CR
-   integer(kind=4), allocatable, dimension(:)   :: iarr_all_zfscr         !< array of indexes pointing to z component of flux Fc of streaming CR
-   integer(kind=4), allocatable, dimension(:,:) :: iarr_all_scr_swp       !< array (size = flind%nscr) of all streaming cr fluid indexes in the order depending on sweeps direction
+   integer(kind=4), allocatable, dimension(:)   :: iarr_all_escr          !< array of indexes pointing to energy density of all streaming cosmic rays
+   integer(kind=4), allocatable, dimension(:)   :: iarr_all_xfscr         !< array of indexes pointing to Fcx of all streaming cosmic rays
+   integer(kind=4), allocatable, dimension(:)   :: iarr_all_yfscr         !< array of indexes pointing to Fcy of all streaming cosmic rays
+   integer(kind=4), allocatable, dimension(:)   :: iarr_all_zfscr         !< array of indexes pointing to Fcz of all streaming cosmic rays
+   integer(kind=4), allocatable, dimension(:,:) :: iarr_all_scr_swp       !< array (size = scrind) of all streaming cosmic rays indexes in the order depending on sweeps direction
    
    real                                         :: dt_scr
    real                                         :: cred
    integer                                      :: nsub_scr
    logical                                      :: scr_violation = .false.
+   integer                                      :: which_scr_transport
+
+   enum, bind(C)
+      enumerator :: SCR_HLLE, SCR_LF
+   end enum
 contains
 
    subroutine init_streamingcr
@@ -91,7 +99,7 @@ contains
 
       integer(kind=4) :: nl, nn
 
-      namelist /STREAMING_CR/ nscr, nsub, scr_verbosity, smallescr, cred_min, cred_growth_fac, &
+      namelist /STREAMING_CR/ nscr, nsub, scr_verbosity, smallescr, cred_min, cred_growth_fac, transport_scheme, &
       &                       cred_to_mhd_threshold, use_smallescr, sigma_paral, sigma_perp, ord_pc_grad, &
       &                       disable_feedback, disable_streaming, gamma_scr, cr_sound_speed, scr_eff, scr_causality_limit
 
@@ -100,12 +108,12 @@ contains
       nsub                     = 0        ! by default we let subcycling be adaptive
       scr_verbosity            = 0        
       ord_pc_grad              = 2
-      smallescr               = 1e-6
+      smallescr                = 1e-6
       cred_min                 = 100.0
       cred_growth_fac          = 2
       cred_to_mhd_threshold    = 10.0
       scr_eff                  = 0.1        ! Maybe this should be an array for different conversion rate to different species ?
-      use_smallescr           = .true.
+      use_smallescr            = .true.
       gamma_scr(:)             = gamma_def
       sigma_paral(:)           = sigma_huge
       sigma_perp(:)            = sigma_huge
@@ -113,6 +121,7 @@ contains
       disable_streaming        = .false.
       cr_sound_speed           = .true.
       scr_causality_limit      = .true.
+      transport_scheme         = "hlle"
 
       if (master) then
          if (.not.nh%initialized) call nh%init()
@@ -152,6 +161,8 @@ contains
          lbuff(4) = cr_sound_speed
          lbuff(5) = scr_causality_limit
 
+         cbuff(1) = transport_scheme
+
          nl       = 5                                     ! this must match the last lbuff() index above
          nn       = count(rbuff(:) < huge(1.), kind=4)    ! this must match the last rbuff() index above
          ibuff(ubound(ibuff, 1)    ) = nn
@@ -179,17 +190,19 @@ contains
          nsub                = ibuff(3)
          scr_verbosity       = ibuff(4)
 
-         smallescr              = rbuff(1)
+         smallescr               = rbuff(1)
          cred_min                = rbuff(2)
          scr_eff                 = rbuff(3)
          cred_growth_fac         = rbuff(4)
          cred_to_mhd_threshold   = rbuff(5)
 
-         use_smallescr      = lbuff(1)
+         use_smallescr       = lbuff(1)
          disable_feedback    = lbuff(2)
          disable_streaming   = lbuff(3)
          cr_sound_speed      = lbuff(4)
          scr_causality_limit = lbuff(5)
+
+         transport_scheme    = cbuff(1)
 
          nn                  = ibuff(ubound(ibuff, 1)    )    ! this must match the last rbuff() index above
          nl                  = ibuff(ubound(ibuff, 1) - 1)    ! this must match the last lbuff() index above
@@ -201,9 +214,17 @@ contains
          gamma_scr(1:nscr)   = rbuff(nn+1:nn+nscr)
       endif
 
+      select case (transport_scheme)
+         case ("hlle", "HLLE", "Hlle")
+            which_scr_transport = SCR_HLLE
+         case ("LF", "lf", "Lax-Friedrichs")
+            which_scr_transport = SCR_LF
+         case default
+            call die("[initstreamingcr:init_streamingcr] unrecognized streaming cosmic ray transport scheme: '" // trim(transport_scheme) // "'")
+      end select
+      
       cred = cred_min
-      call piernik_MPI_Bcast(cred)
-
+   
       if (master) then
          if (nscr > nscr_max) then
             write(msg,'(A,I0)') "[initstreamingcr:init_streamingcr] Number of streaming CR species greater than maximum allowed = ", nscr_max

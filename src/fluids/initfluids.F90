@@ -233,6 +233,7 @@ contains
       use named_array_list, only: qna, wna
 #ifdef STREAM_CR
       use initstreamingcr,  only: smallescr
+      use fluidindex,       only: scrind
 #endif /* STREAM_CR */
       implicit none
 
@@ -261,8 +262,8 @@ contains
 
 #ifdef STREAM_CR
          if (smallescr >= big_float) then
-            do i = lbound(flind%scr,1), ubound(flind%scr,1)
-               ecr => cg%w(wna%fi)%span(flind%scr(i)%iescr,cg%ijkse)
+            do i = lbound(scrind%scr,1), ubound(scrind%scr,1)
+               ecr => cg%w(wna%fi)%span(scrind%scr(i)%iescr,cg%ijkse)
                maxdens = max( maxval(ecr), maxdens )
                mindens = min( minval(ecr), mindens )
             enddo

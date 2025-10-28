@@ -278,10 +278,15 @@ module constants
    character(len=dsetnamelen), parameter :: prth_n  = "prth"    !< histogram of particles on the grid
 #endif /* NBODY */
 #ifdef STREAM_CR
+   character(len=dsetnamelen), parameter :: scrn      = "scrn"      !< main streaming cosmic ray (scr) fluid array
+   character(len=dsetnamelen), parameter :: scrh      = "scrh"      !< auxiliary array for half-step values of scr fluid array
+   character(len=dsetnamelen), parameter :: xscrflx   = "xscrflx"   !< main X face-flux array for scr fluid
+   character(len=dsetnamelen), parameter :: yscrflx   = "yscrflx"   !< main Y face-flux array for scr fluid
+   character(len=dsetnamelen), parameter :: zscrflx   = "zscrflx"   !< main Z face-flux array for scr fluid
    character(len=dsetnamelen), parameter :: gpcn      = "gpcn"      !< array of gradient of Pc
    character(len=dsetnamelen), parameter :: rtmn      = "rtmn"      !< rotation matrix for frame transformation where B is along Bx
    character(len=dsetnamelen), parameter :: sgmn      = "sgmn"      !< interaction coefficient for streaming cosmic rays
-   character(len=dsetnamelen), parameter :: v_dfst    = "v_dfst"    !< Diffusion + streaming speed
+   character(len=dsetnamelen), parameter :: v_dfst    = "v_dfst"    !< Diffusion + streaming speed 
 #endif /* STREAM_CR */
    ! misc
    character(len=dsetnamelen), parameter :: wcu_n   = "wcu"     !< (resistivity) COMMENT ME

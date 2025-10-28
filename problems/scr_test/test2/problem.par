@@ -28,18 +28,18 @@ $RESTART_CONTROL
 /
 
 $END_CONTROL
-  tend = 0.1
+  tend = 0.06
   nend = 1000000
 /
 
 $OUTPUT_CONTROL
    problem_name = 'scr'
    run_id = 'tst'
-   dt_hdf = 0.05
+   dt_hdf = 0.06
    dt_res = 0.0
    dt_log = 0.02
    dt_tsl = 0.02
-   vars(1:) = 'dens', 'ener', 'velx', 'pres', 'escr', 'xfscr', 'gradpcx', 'sigma_paral', 'magx'
+   vars(1:) = 'dens', 'ener', 'velx', 'pres', 'escr', 'xfscr', 'gradpcx', 'sigmax', 'magx'
 /
 
 $FLUID_IONIZED
@@ -65,7 +65,7 @@ $NUMERICAL_SETUP
 /
 
 $PROBLEM_CONTROL
-   a  = 40.0
+   a  = 2.0
 /
 
 $AMR

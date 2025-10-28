@@ -721,6 +721,9 @@ contains
       use fluidindex,       only: flind
       use grid_helpers,     only: c2f
       use named_array_list, only: wna
+#ifdef STREAM_CR
+      use initstreamingcr, only: nscr
+#endif /* STREAM_CR */
 
       implicit none
 
@@ -734,6 +737,9 @@ contains
 
       fc_fluxes = flind%all
       if (wna%exists(mag_n)) fc_fluxes = fc_fluxes + psidim
+#ifdef STREAM_CR
+      fc_fluxes = fc_fluxes + 4 * nscr
+#endif /* STREAM_CR */
 
       cgl => this%first
       do while (associated(cgl))

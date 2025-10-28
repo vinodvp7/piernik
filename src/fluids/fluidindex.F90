@@ -228,9 +228,6 @@ contains
 #ifdef STREAM_CR
       allocate(iarr_all_scr_swp(xdim:zdim, 4*nscr))
       allocate(iarr_all_escr(nscr),iarr_all_xfscr(nscr),iarr_all_yfscr(nscr),iarr_all_zfscr(nscr))
-#else /* !STREAM_CR */
-      allocate(iarr_all_scr_swp(0, 0))
-      allocate(iarr_all_escr(0),iarr_all_xfscr(0),iarr_all_yfscr(0),iarr_all_zfscr(0))
 #endif /* !STREAM_CR */
 
       ! Compute index arrays for magnetic field

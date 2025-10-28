@@ -51,25 +51,15 @@ contains
 #ifdef CRESP
       use cresp_grid,     only: cresp_update_grid, cresp_clean_grid
 #endif /* CRESP */
-#ifdef STREAM_CR
-      use initstreamingcr,      only: nsub_scr
-      use unsplit_scr_sweep,    only: unsplit_scrsweep
-#endif /* STREAM_CR */
-      implicit none
 
-      integer :: i
+      implicit none
 
       call repeat_fluidstep
       call update_chspeed
 
       halfstep = .false.
 
-      t = t + 0.5 * dt
-#ifdef STREAM_CR
-      do i = 1, nsub_scr/2
-         call unsplit_scrsweep
-      end do
-#endif /* STREAM_CR */
+      t = t +  dt
 
       call make_unsplitsweep(.true.)  ! Here forward argument is not useful for the MHD sweeps but other legacy subroutines need it
 
@@ -78,23 +68,11 @@ contains
       call cresp_update_grid     ! updating number density and energy density of cosmic ray electrons via CRESP module
 #endif /* CRESP */
 
-#ifdef STREAM_CR
-      do i = 1, nsub_scr
-         call unsplit_scrsweep
-      end do
-#endif /* STREAM_CR */
-
       halfstep = .true.
       t = t + dt
       dtm = dt
 
       call make_unsplitsweep(.false.) 
-
-#ifdef STREAM_CR
-      do i = 1, nsub_scr/2
-         call unsplit_scrsweep
-      end do
-#endif /* STREAM_CR */
 
       call update_magic_mass
 #ifdef CRESP
@@ -134,13 +112,17 @@ contains
 #ifdef SHEAR
       use shear,               only: shear_3sweeps
 #endif /* SHEAR */
+#ifdef STREAM_CR
+      use initstreamingcr,      only: nsub_scr
+      use unsplit_scr_sweep,    only: unsplit_scrsweep
+#endif /* STREAM_CR */
 
       implicit none
 
       logical, intent(in) :: forward  
 
       character(len=*), parameter :: usw3_label = "usweeps"
-
+      integer :: i
 #ifdef SHEAR
       call shear_3sweeps
 #endif /* SHEAR */
@@ -158,6 +140,14 @@ contains
          call make_diff_sweeps(forward)
       endif
 #endif /* COSM_RAYS */
+
+#ifdef STREAM_CR
+      if (.not. forward) then
+         do i = 1, nsub_scr
+            call unsplit_scrsweep
+         end do
+      endif
+#endif /* STREAM_CR */
 
       ! At this point everything should be initialized after domain expansion and we no longer need this list.
       call expanded_domain%delete
@@ -179,6 +169,14 @@ contains
 #endif /* NBODY */
       if (need_update) call source_terms_grav
 #endif /* GRAV */
+
+#ifdef STREAM_CR
+      if (forward) then
+         do i = 1, nsub_scr
+            call unsplit_scrsweep
+         end do
+      endif
+#endif /* STREAM_CR */
 
       call external_sources(forward)
       if (associated(problem_customize_solution)) call problem_customize_solution(forward)

@@ -70,7 +70,9 @@ program piernik
 #ifdef MAGNETIC
    use all_boundaries,    only: all_mag_boundaries
 #endif /* MAGNETIC */
-
+#ifdef STREAM_CR
+   use scr_io,            only: io_scr
+#endif /* STREAM_CR */
    implicit none
 
    logical              :: end_sim             !< Used in main loop, to test whether to stop simulation or not
@@ -165,6 +167,10 @@ program piernik
       nstep = nstep + I_ONE
       call print_progress(nstep)
       call check_cfl_violation(flind)
+
+#ifdef STREAM_CR
+      call io_scr
+#endif /* STREAM_CR */
 
       rs = repeat_step()  ! enforce function call
       if ((t - tlast < tiny(1.0)) .and. .not. first_step .and. .not. rs) call die("[piernik] timestep is too small: t == t + 2 * dt")

@@ -182,7 +182,7 @@ contains
                cg%w(uhi)%arr(iarr_all_en(1), i, j, k) = e_feed
 #endif /* !ISO */
             endif
-            !cg%w(scri)%arr(iarr_all_escr(ns), i, j, k)  = newec         ! For test 1 and test 2 comment me
+            cg%w(scri)%arr(iarr_all_escr(ns), i, j, k)  = newec         ! For test 1 and test 2 comment me
             cg%w(scri)%arr(iarr_all_xfscr(ns), i, j, k) = newf1 * cred
             cg%w(scri)%arr(iarr_all_yfscr(ns), i, j, k) = newf2 * cred
             cg%w(scri)%arr(iarr_all_zfscr(ns), i, j, k) = newf3 * cred

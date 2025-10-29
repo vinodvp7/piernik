@@ -48,7 +48,6 @@ module initstreamingcr
    ! namelist parameters
    integer                                 :: nscr                !< number of non-spectral streaming CR components
    integer                                 :: nsub                !< number of CR subcycle per MHD timestep. -1: Disable substepping 0: Adaptive substepping N : Fixed N substep
-   integer                                 :: scr_verbosity       !< verbosity level 
    real                                    :: smallescr           !< floor value of streaming CR energy density
    real                                    :: cred_min            !< reduced speed of light.maximum speed in the simulation which controls the streaming CR timestepping
    real                                    :: cred_growth_fac     !< maximum speed in the simulation which controls the streaming CR timestepping
@@ -63,6 +62,7 @@ module initstreamingcr
    logical                                 :: disable_streaming   !< whether cosmic rays stream along B
    logical                                 :: cr_sound_speed      !< whether to add cr sound speed when calculating v_diff. Ideally keep it as false so that sound speed is added as it increases numerical stability.
    logical                                 :: scr_causality_limit !< enforce |Fc| < cred * Ec 
+   logical                                 :: scr_verbose         !< verbosity level 
    character(len=cbuff_len)                :: transport_scheme    !< scheme used to calculate riemann flux for cosmic rays : HLLE / LF
 
    integer, parameter                      :: nscr_max   = 99     !< Maximum number of allowed streaming cr component
@@ -99,14 +99,13 @@ contains
 
       integer(kind=4) :: nl, nn
 
-      namelist /STREAMING_CR/ nscr, nsub, scr_verbosity, smallescr, cred_min, cred_growth_fac, transport_scheme, &
+      namelist /STREAMING_CR/ nscr, nsub, scr_verbose, smallescr, cred_min, cred_growth_fac, transport_scheme, &
       &                       cred_to_mhd_threshold, use_smallescr, sigma_paral, sigma_perp, ord_pc_grad, &
       &                       disable_feedback, disable_streaming, gamma_scr, cr_sound_speed, scr_eff, scr_causality_limit
 
 
       nscr                     = 1
       nsub                     = 0        ! by default we let subcycling be adaptive
-      scr_verbosity            = 0        
       ord_pc_grad              = 2
       smallescr                = 1e-6
       cred_min                 = 100.0
@@ -121,6 +120,7 @@ contains
       disable_streaming        = .false.
       cr_sound_speed           = .true.
       scr_causality_limit      = .true.
+      scr_verbose              = .false.        
       transport_scheme         = "hlle"
 
       if (master) then
@@ -147,7 +147,6 @@ contains
          ibuff(1) = nscr
          ibuff(2) = ord_pc_grad
          ibuff(3) = nsub
-         ibuff(4) = scr_verbosity
 
          rbuff(1) = smallescr
          rbuff(2) = cred_min
@@ -160,10 +159,11 @@ contains
          lbuff(3) = disable_streaming
          lbuff(4) = cr_sound_speed
          lbuff(5) = scr_causality_limit
+         lbuff(6) = scr_verbose
 
          cbuff(1) = transport_scheme
 
-         nl       = 5                                     ! this must match the last lbuff() index above
+         nl       = 6                                    ! this must match the last lbuff() index above
          nn       = count(rbuff(:) < huge(1.), kind=4)    ! this must match the last rbuff() index above
          ibuff(ubound(ibuff, 1)    ) = nn
          ibuff(ubound(ibuff, 1) - 1) = nl
@@ -188,7 +188,6 @@ contains
          nscr                = ibuff(1)
          ord_pc_grad         = ibuff(2)
          nsub                = ibuff(3)
-         scr_verbosity       = ibuff(4)
 
          smallescr               = rbuff(1)
          cred_min                = rbuff(2)
@@ -201,6 +200,7 @@ contains
          disable_streaming   = lbuff(3)
          cr_sound_speed      = lbuff(4)
          scr_causality_limit = lbuff(5)
+         scr_verbose         = lbuff(5)
 
          transport_scheme    = cbuff(1)
 

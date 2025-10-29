@@ -78,6 +78,8 @@ contains
       call update_scr_fluid(cg, istep)
       call apply_scr_source(cg, istep)
 
+      cg%processed = .true.
+      
    end subroutine advance_scr
 
    subroutine update_scr_fluid(cg,istep)

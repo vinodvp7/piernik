@@ -271,7 +271,7 @@ contains
 #ifdef SN_SRC
       if (t < tlim ) then
          if (forward) then
-            if (fixedsn) then 
+            if (fixedsn) then
                call fixed_sn(sn_pos)
             else
                call random_sn

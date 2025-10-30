@@ -46,9 +46,9 @@ contains
    subroutine update_boundaries(istep)
 
       use all_boundaries, only: all_fluid_boundaries, all_scr_boundaries
-      use constants,      only: first_stage, DIVB_HDC,xdim,zdim
+      use constants,      only: first_stage, xdim, zdim
       use domain,         only: dom
-      use global,         only: sweeps_mgu, integration_order, divB_0_method
+      use global,         only: sweeps_mgu, integration_order
 
       implicit none
 
@@ -76,12 +76,12 @@ contains
 
    subroutine unsplit_scrsweep()
 
-      use cg_cost_data,                only: I_MHD, I_REFINE
+      use cg_cost_data,                only: I_SCR, I_REFINE
       use cg_leaves,                   only: leaves
       use cg_list,                     only: cg_list_element
       use cg_list_dataop,              only: cg_list_dataop_t
       use constants,                   only: first_stage, last_stage, INVALID, PPP_CG
-      use dataio_pub,                  only: die, halfstep
+      use dataio_pub,                  only: die
       use fc_fluxes_unsplit,           only: initiate_flx_recv, recv_cg_finebnd, send_cg_coarsebnd
       use global,                      only: integration_order
       use grid_cont,                   only: grid_container
@@ -92,7 +92,8 @@ contains
       use pppmpi,                      only: req_ppp
       use sources,                     only: prepare_sources
       use streamingcr_transport,       only: advance_scr
-
+      use streamingcr_violations,      only: check_scr_violations
+      
       implicit none
 
       integer                          :: istep
@@ -103,7 +104,7 @@ contains
       logical                          :: all_processed, all_received
       integer                          :: blocks_done
       integer(kind=4)                  :: n_recv, g
-      character(len=*), parameter :: solve_cgs_label = "solve_bunch_of_cg", cg_label = "solve_cg", init_src_label = "init_src"
+      character(len=*), parameter :: solve_cgs_label = "solve_bunch_of_cg_scr", cg_label = "solve_cg_scr", init_src_label = "init_src_scr"
 
       call ppp_main%start("unsplit_scrsweep")
 
@@ -135,15 +136,13 @@ contains
                   if (all_received) then
                      call ppp_main%start(cg_label, PPP_CG)
                      call cg%costs%stop(I_REFINE)
-                     ! The recv_cg_finebnd and send_cg_coarsebnd aren't MHD, so we should count them separately.
-                     ! The tricky part is that we need to fit all the switching inside the conditional part
-                     ! and don't mess pairing and don't let them to nest.
-
                      call cg%cleanup_flux()      ! Seems unnecessary.This just sets the flux array to 0.0
 
                      call cg%costs%start
                      call advance_scr(cg, istep)
-                     call cg%costs%stop(I_MHD)
+
+
+                     call cg%costs%stop(I_SCR)
 
                      call ppp_main%stop(cg_label, PPP_CG)
 
@@ -167,7 +166,7 @@ contains
          enddo
 
          call req%waitall("scrsweeps")
-
+         call check_scr_violations(istep)
          call update_boundaries(istep)
       enddo
       call sl%delete

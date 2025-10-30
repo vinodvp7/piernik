@@ -163,7 +163,7 @@ contains
             cgl => cgl%nxt
          enddo
       enddo
-      
+
       do p = 1, scrind%nscr
          scr_fluid = scrind%scr(p)
          cgl => leaves%first

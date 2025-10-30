@@ -52,6 +52,7 @@ contains
       use cg_cost_data,       only: I_OTHER
       use cg_list,            only: cg_list_element
       use types,              only: value
+      use global,             only: nstep
       use constants,          only: V_INFO, MAXL
       use dataio_pub,         only: msg, printinfo
       use mpisetup,           only: master
@@ -64,17 +65,17 @@ contains
       type(cg_list_element), pointer  :: cgl
       type(value)                     :: fc_ovr_cescr
 
-      cgl => leaves%first
-      do while (associated(cgl))
-         call cgl%cg%costs%start
-         cgl%cg%wa = sqrt(cgl%cg%scr(iarr_all_xfscr(1), :, :, :)**2 + cgl%cg%scr(iarr_all_yfscr(1), :, :, :)**2 &
-         &           + cgl%cg%scr(iarr_all_zfscr(1), :, :, :)**2) / (cred * max(cgl%cg%scr(iarr_all_escr(1), :, :, :), smallescr))
-         call cgl%cg%costs%stop(I_OTHER)
-         cgl => cgl%nxt 
-      end do
-      call leaves%get_extremum(qna%wai, MAXL, fc_ovr_cescr)
+      if (mod(nstep, scr_verbose) == 0 .and. nstep > 0) then
+         cgl => leaves%first
+         do while (associated(cgl))
+            call cgl%cg%costs%start
+            cgl%cg%wa = sqrt(cgl%cg%scr(iarr_all_xfscr(1), :, :, :)**2 + cgl%cg%scr(iarr_all_yfscr(1), :, :, :)**2 &
+            &           + cgl%cg%scr(iarr_all_zfscr(1), :, :, :)**2) / (cred * max(cgl%cg%scr(iarr_all_escr(1), :, :, :), smallescr))
+            call cgl%cg%costs%stop(I_OTHER)
+            cgl => cgl%nxt
+         enddo
+         call leaves%get_extremum(qna%wai, MAXL, fc_ovr_cescr)
 
-      if (scr_verbose) then
          write(msg,'(a)')"[STREAMING COSMIC RAYS]"
          write(msg(len_trim(msg)+1:), '(a,a,i0)') "      Nsub ", "= ", nsub_scr
          write(msg(len_trim(msg)+1:), '(a,a,es0.7e2)') "      dt_scr ", "= ", dt_scr

@@ -1778,24 +1778,7 @@ contains
       if (has_ion) call get_common_vars(flind%ion)
       if (has_neu) call get_common_vars(flind%neu)
       if (has_dst) call get_common_vars(flind%dst)
-
-#ifdef MAGNETIC
-      cgl => leaves%first
-      do while (associated(cgl))
-         call cgl%cg%costs%start
-
-         cgl%cg%wa(:,:,:) = sqrt(sq_sum3(cgl%cg%b(xdim,:,:,:), cgl%cg%b(ydim,:,:,:), cgl%cg%b(zdim,:,:,:)))
-
-         call cgl%cg%costs%stop(I_OTHER)
-         cgl => cgl%nxt
-      enddo
-      call leaves%get_extremum(qna%wai, MAXL, b_max)
-      call leaves%get_extremum(qna%wai, MINL, b_min)
-#ifdef CRESP
-      b_max%assoc = dt_cre_synch
-      call piernik_MPI_Allreduce(b_max%assoc, pMIN)
-#endif /* CRESP */
-#ifdef STREAM_CR 
+#ifdef STREAM_CR
 ! Only adding for first scr component for now
       cgl => leaves%first
       do while (associated(cgl))
@@ -1803,7 +1786,7 @@ contains
          cgl%cg%wa(:,:,:) = cgl%cg%scr(iarr_all_escr(1),:,:,:)
          call cgl%cg%costs%stop(I_OTHER)
          cgl => cgl%nxt
-      end do
+      enddo
 
       call leaves%get_extremum(qna%wai, MAXL, escr_max)
       call leaves%get_extremum(qna%wai, MINL, escr_min)
@@ -1814,8 +1797,8 @@ contains
          cgl%cg%wa(:,:,:) = sqrt(cgl%cg%scr(iarr_all_xfscr(1), :, :, :)**2 + cgl%cg%scr(iarr_all_yfscr(1), :, :, :)**2 &
          &           + cgl%cg%scr(iarr_all_zfscr(1), :, :, :)**2)
          call cgl%cg%costs%stop(I_OTHER)
-         cgl => cgl%nxt 
-      end do
+         cgl => cgl%nxt
+      enddo
       call leaves%get_extremum(qna%wai, MAXL, fcmag_max)
       call leaves%get_extremum(qna%wai, MINL, fcmag_min)
 
@@ -1825,8 +1808,8 @@ contains
          cgl%cg%wa = sqrt(cgl%cg%scr(iarr_all_xfscr(1), :, :, :)**2 + cgl%cg%scr(iarr_all_yfscr(1), :, :, :)**2 &
          &           + cgl%cg%scr(iarr_all_zfscr(1), :, :, :)**2) / (cred * max(cgl%cg%scr(iarr_all_escr(1), :, :, :), smallescr))
          call cgl%cg%costs%stop(I_OTHER)
-         cgl => cgl%nxt 
-      end do
+         cgl => cgl%nxt
+      enddo
       call leaves%get_extremum(qna%wai, MAXL, fc_ovr_cescr)
 
       c_reduced_v%val      = cred
@@ -1845,7 +1828,22 @@ contains
       nsubv%loc            = 0
       nsubv%coords         = 0.0
 #endif /* STREAM_CR */
+#ifdef MAGNETIC
+      cgl => leaves%first
+      do while (associated(cgl))
+         call cgl%cg%costs%start
 
+         cgl%cg%wa(:,:,:) = sqrt(sq_sum3(cgl%cg%b(xdim,:,:,:), cgl%cg%b(ydim,:,:,:), cgl%cg%b(zdim,:,:,:)))
+
+         call cgl%cg%costs%stop(I_OTHER)
+         cgl => cgl%nxt
+      enddo
+      call leaves%get_extremum(qna%wai, MAXL, b_max)
+      call leaves%get_extremum(qna%wai, MINL, b_min)
+#ifdef CRESP
+      b_max%assoc = dt_cre_synch
+      call piernik_MPI_Allreduce(b_max%assoc, pMIN)
+#endif /* CRESP */
       if (has_ion) then
          cgl => leaves%first
          do while (associated(cgl))

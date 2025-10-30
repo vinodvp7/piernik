@@ -71,7 +71,7 @@ contains
       if (istep == first_stage(integration_order) .and. integration_order > 1 )  then
          cg%w(wna%ind(uh_n))%arr(:,:,:,:) = cg%u(:,:,:,:)
          call update_rotation_matrix(cg, istep)
-      end if
+      endif
 
       call update_interaction_term(cg, istep, .false.)
       call update_vdfst(cg, istep)
@@ -79,7 +79,7 @@ contains
       call apply_scr_source(cg, istep)
 
       cg%processed = .true.
-      
+
    end subroutine advance_scr
 
    subroutine update_scr_fluid(cg,istep)
@@ -135,7 +135,7 @@ contains
 
                vdiff1d(:,:) = transpose(vdiff(ddim : I_THREE*(scrind%nscr - I_ONE) + ddim : I_THREE,:) )
 
-               
+
                pu => cg%w(scri)%get_sweep(ddim,i1,i2)
                if (istep == first_stage(integration_order) .or. integration_order < 2) then
                   pu => cg%w(wna%scr)%get_sweep(ddim,i1,i2)
@@ -163,7 +163,7 @@ contains
             enddo
          enddo
          call my_deallocate(u);  call my_deallocate(uf)
-         call my_deallocate(flux) 
+         call my_deallocate(flux)
          call my_deallocate(tflux); call my_deallocate(vx)
          call my_deallocate(vdiff1d)
       enddo
@@ -182,20 +182,20 @@ contains
       real, dimension(:,:),        intent(in)    :: vdiff   !< diffussive speed for transport corrected with effective optical depth
       type(ext_fluxes),            intent(inout) :: eflx    !< external fluxes
       real, dimension(:,:),        intent(inout) :: flx     !< Output flux of a 1D chain of a domain at a fixed ortho location of that dimension
-      real, dimension(:),          intent(in)    :: vx      ! fluid velocity 
+      real, dimension(:),          intent(in)    :: vx      ! fluid velocity
 
       ! left and right states at interfaces 1 .. n-1
       real, dimension(size(ui, 1)-1, size(ui, 2) + 1), target :: ql, qr   ! +1 to include  vx as well
       real, dimension(size(ui,1),size(ui,2) +1 ) :: uu
       ! updates required for higher order of integration will likely have shorter length
       if (size(flx,dim=1) /= size(ui, 1)-1 .or. size(flx,dim=2) /= size(ui, 2)  ) then
-         call die("[streaming_cr_hlle:solve_scr] flux array dimension does not match the expected dimensions")
+         call die("[streamingcr_transport:solve_scr] flux array dimension does not match the expected dimensions")
       endif
       uu(:,1:size(ui, 2)) = ui(:,:)
       uu(:,size(ui, 2)+1) = vx(:)
       call interpol_scr(uu, ql, qr)
 
-      call scr_transport(ql, qr, vdiff, flx) 
+      call scr_transport(ql, qr, vdiff, flx)
 
       if (associated(eflx%li)) flx(eflx%li%index, :) = eflx%li%sflx
       if (associated(eflx%ri)) flx(eflx%ri%index, :) = eflx%ri%sflx
@@ -310,7 +310,7 @@ contains
       call scr_riemann_solve(ql, qr, vdiff, flx)
 
    end subroutine scr_transport
-   
+
    subroutine riemann_hlle_scr(ql, qr, vdiff, flx)
 
          use initstreamingcr, only: cred
@@ -383,7 +383,7 @@ contains
             real, dimension(4)               :: fl, fr
             real, dimension(size(ql, 1))     :: vl, vr
             real, dimension(size(flx, 1))    :: vdiff_l, vdiff_r
-            real                             :: mean_adv, mean_diff, al, ar, bp, bm, tmp, b
+            real                             :: mean_adv, mean_diff, al, ar, b
             integer                          :: nvar, nx, i, j, off
 
             nx = size(ql,1)
@@ -425,4 +425,4 @@ contains
          end subroutine riemann_lf_scr
 
 end module streamingcr_transport
-                   
+

@@ -134,31 +134,70 @@ contains
       if (present(bcc)) call interp(bcc, bccl, bccr, blimiter)
 
    end subroutine interpol
-
+   
 #ifdef STREAM_CR
    subroutine interpol_scr(u, ql, qr)
 
-      use fluxlimiters,       only: flimiter
-      use fluidindex,         only: scrind
+   use fluxlimiters,    only: flimiter
+   use fluidindex,      only: scrind
+   use initstreamingcr, only: cred
+   use mpisetup,        only: master
+   use dataio_pub,      only: msg, warn
+   use constants,       only: xdim, ydim, zdim
 
-      implicit none
+   implicit none
 
-      real, dimension(:,:), intent(in)     :: u
-      real, dimension(:,:), intent(out)    :: ql
-      real, dimension(:,:), intent(out)    :: qr
+   real, dimension(:,:), intent(in)  :: u
+   real, dimension(:,:), intent(out) :: ql, qr
 
-      integer                                 :: p
-      real, dimension(size(u, 1), size(u, 2)) :: q
-       
-      do p = 1, scrind%nscr
-         q(:,1 + 4 * (p-1)) = u(:,1 + 4 * (p-1))
-         q(:,2 + 4 * (p-1)) = u(:,2 + 4 * (p-1))       
-         q(:,3 + 4 * (p-1)) = u(:,3 + 4 * (p-1))
-         q(:,4 + 4 * (p-1)) = u(:,4 + 4 * (p-1))
-      enddo
-         q(:,size(u,2))   = u(:,size(u,2))             ! last component is fluid velocity
+   call interp(u, ql, qr, flimiter)  !> Interpolate from cell-centered 'u' to face states (ql, qr). Ec, Fc, vx are all same as q
 
-      call interp(q,   ql,   qr,   flimiter)       ! We interpolate Ec , Fc
+
+   ! 2) Enforce |F| <= cred * E_c on each face state (no redundancy)
+   call limit_face(ql, 'ql')
+   call limit_face(qr, 'qr')
+
+   contains
+
+      subroutine limit_face(qface, label)
+
+         real,           intent(inout) :: qface(:,:)
+         character(*),   intent(in)    :: label
+
+         integer :: j, i, b
+         real    :: ec, fcx, fcy, fcz, fc2, cap, scale
+
+         do j = 1, scrind%nscr
+
+            b = 4 * (j - 1) + 1  
+
+            do i = 1, size(qface,1)
+
+               ec  = qface(i, b)
+               fcx = qface(i, b + xdim); fcy = qface(i, b + ydim); fcz = qface(i, b + zdim)
+
+               fc2 = fcx * fcx + fcy * fcy + fcz * fcz
+
+               if (fc2 <= 1e-20) cycle                      !< careful with this magic number
+
+               cap   = max(0.0, cred * ec)
+
+               if (fc2 > cap * cap) then
+                  scale = cap / sqrt(fc2)
+                  qface(i, b+xdim) = fcx * scale
+                  qface(i, b+ydim) = fcy * scale
+                  qface(i, b+zdim) = fcz * scale
+
+                  if (master) then
+                     write(msg,'(*(g0))') '[interpolations:interpol_scr] streaming CR causality violated for ', trim(label), '. Rescaling Fc'
+                     call warn(msg)
+                  end if
+               end if
+
+            end do
+         end do
+
+      end subroutine limit_face
 
    end subroutine interpol_scr
 #endif /* STREAM_CR */

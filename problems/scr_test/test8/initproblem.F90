@@ -192,7 +192,7 @@ contains
                         cg%scr(scr_fluid%iescr, i,j,k) = ecin
                      else
                         cg%scr(scr_fluid%iescr, i,j,k) = ecout
-                     endif                     
+                     endif
                      cg%scr(scr_fluid%ixfscr,i,j,k) = 0.0
                      cg%scr(scr_fluid%iyfscr,i,j,k) = 0.0
                      cg%scr(scr_fluid%izfscr,i,j,k) = 0.0

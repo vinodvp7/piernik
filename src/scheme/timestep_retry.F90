@@ -107,6 +107,9 @@ contains
 #ifdef RANDOMIZE
       use randomization,    only: randoms_redostep
 #endif /* RANDOMIZE */
+#ifdef STREAM_CR
+      use timestepscr,      only: scr_on_success, scr_on_violation
+#endif /* STREAM_CR */
 
       implicit none
 
@@ -137,12 +140,18 @@ contains
          nstep = nstep_saved
          dt = dt_full * dt_cur_shrink
          call reset_freezing_speed
+#ifdef STREAM_CR
+         call scr_on_violation  
+#endif /* STREAM_CR */
          call downgrade_magic_mass
          if (associated(user_reaction_to_redo_step)) call user_reaction_to_redo_step
       else
          tstep_attempt = I_ZERO
          nstep_saved = nstep
          t_saved = t
+#ifdef STREAM_CR
+         call scr_on_success()
+#endif /* STREAM_CR */
       endif
 #ifdef RANDOMIZE
       call randoms_redostep(repeat_step())

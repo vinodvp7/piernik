@@ -118,13 +118,10 @@ contains
 
       use grid_cont,          only: grid_container
       use named_array_list,   only: wna
-      use constants,          only: xdim, ydim, zdim, first_stage, magh_n, uh_n, scrh, sgmn, gpcn
+      use constants,          only: xdim, ydim, zdim, first_stage, uh_n, scrh, sgmn, gpcn
       use global,             only: integration_order
       use initstreamingcr,    only: sigma_paral, sigma_perp, disable_streaming, cred, ord_pc_grad, iarr_all_escr
       use fluidindex,         only: scrind, iarr_all_dn
-#ifdef MAGNETIC
-      use constants,          only: magh_n
-#endif /* MAGNETIC */
 
       implicit none
 
@@ -157,36 +154,36 @@ contains
 #ifdef MAGNETIC
       Bxyz = 0.0                 ! Bx^2 + By^2 + Bz^2
       do ddim = xdim, zdim
-         Bxyz(:,:,:) = Bxyz(:,:,:) + cg%w(magi)%arr(ddim,:,:,:) * cg%w(magi)%arr(ddim,:,:,:) 
-      end do
+         Bxyz(:,:,:) = Bxyz(:,:,:) + cg%w(magi)%arr(ddim,:,:,:) * cg%w(magi)%arr(ddim,:,:,:)
+      enddo
 #endif /* MAGNETIC */
 
       if (.not. at_source) then
          cg%w(gpci)%arr(:,:,:,:) = cg%get_gradient(ord = ord_pc_grad, iw = scri, vec = iarr_all_escr)
          do ns = 1, scrind%nscr
             cg%w(gpci)%arr(xdim + 3 * (ns - 1) : 3 * ns,:,:,:) = cg%w(gpci)%arr(xdim + 3 * (ns - 1) : 3 * ns,:,:,:) * scrind%scr(ns)%gam_1
-         end do
-      end if  
+         enddo
+      endif
 
       do ns = 1, scrind%nscr
-         cg%w(sgmd)%arr(2*(ns - 1) + xdim ,:,:,:) = sigma_paral(ns) * cred 
+         cg%w(sgmd)%arr(2*(ns - 1) + xdim ,:,:,:) = sigma_paral(ns) * cred
          cg%w(sgmd)%arr(2*(ns - 1) + ydim ,:,:,:) = sigma_perp(ns) * cred    ! z and y are equivalent
-      end do
+      enddo
 
 #ifdef MAGNETIC
       if (.not. disable_streaming) then
-         do ns = 1, scrind%nscr 
+         do ns = 1, scrind%nscr
 
-            bdotpc(:,:,:) = 0.0 
+            bdotpc(:,:,:) = 0.0
             do ddim = xdim, zdim
                bdotpc(:,:,:) = bdotpc(:,:,:) + cg%w(magi)%arr(ddim,:,:,:) * cg%w(gpci)%arr(3 * (ns-1) + ddim,:,:,:)
-            end do
+            enddo
             cg%w(sgmd)%arr(2*(ns - 1) + xdim ,:,:,:) = (cg%w(sgmd)%arr(2*(ns - 1) + xdim ,:,:,:) * &
             & ( abs(bdotpc) * sqrt(cg%w(fldi)%arr(iarr_all_dn(1) ,:,:,:)) * cred / &
             &  (scrind%scr(ns)%gam * Bxyz * cg%w(scri)%arr(iarr_all_escr(ns),:,:,:))))/(cg%w(sgmd)%arr(2*(ns - 1) + xdim ,:,:,:) + &
             & ( abs(bdotpc) * sqrt(cg%w(fldi)%arr(iarr_all_dn(1) ,:,:,:)) * cred / &
-            &  (scrind%scr(ns)%gam * Bxyz * cg%w(scri)%arr(iarr_all_escr(ns),:,:,:))))  
-         end do
+            &  (scrind%scr(ns)%gam * Bxyz * cg%w(scri)%arr(iarr_all_escr(ns),:,:,:))))
+         enddo
       endif
 #endif /* MAGNETIC */
 
@@ -248,7 +245,7 @@ contains
 
       integer :: i, j, k, cdim, scri, fldi, ns, vdiffi
 #ifdef MAGNETIC
-      integer :: rtmi 
+      integer :: rtmi
       real    :: cp, sp, ct, st, vx, vy, vz
 #endif /* MAGNETIC */
 
@@ -275,12 +272,12 @@ contains
 
                   if (dom%has_dir(cdim)) then
 
-                     if (cdim == zdim) then 
+                     if (cdim == zdim) then
                         v(cdim + 3 * (ns - 1), i, j, k) = sd(ydim + 2 * (ns - 1), i, j, k) * cg%dl(cdim)
                      else
                         v(cdim + 3 * (ns - 1), i, j, k) = sd(cdim + 2 * (ns - 1), i, j, k) * cg%dl(cdim)
                      endif
-                     
+
                      v(cdim + 3 * (ns - 1), i, j, k) = v(cdim + 3 * (ns - 1), i, j, k)**2 * 1.5
 
                      if ( v(cdim + 3 * (ns - 1), i, j, k) < tau_asym ) then
@@ -314,8 +311,8 @@ contains
             cg%w(vdiffi)%arr(3*(ns-1)+xdim,i,j,k) = abs(vx)
             cg%w(vdiffi)%arr(3*(ns-1)+ydim,i,j,k) = abs(vy)
             cg%w(vdiffi)%arr(3*(ns-1)+zdim,i,j,k) = abs(vz)
-         end do
-      end do
+         enddo
+      enddo
 #endif /* MAGNETIC */
 
       if (cr_sound_speed) then
@@ -326,9 +323,9 @@ contains
                   cg%w(vdiffi)%arr(3*(ns-1) + cdim,i,j,k)  = cg%w(vdiffi)%arr(3*(ns-1) + cdim,i,j,k) +&
                   & sqrt(scrind%scr(ns)%gam * scrind%scr(ns)%gam_1 * cg%w(scri)%arr(iarr_all_escr(ns),i,j,k)/&
                   & cg%w(fldi)%arr(iarr_all_dn(1),i,j,k))            ! We consider the density of the first fluid
-               end do
-            end do
-         end do
+               enddo
+            enddo
+         enddo
       endif
    end subroutine update_vdfst
 
@@ -336,7 +333,7 @@ contains
 
       use grid_cont,        only: grid_container
       use named_array_list, only: wna
-      use constants,        only: first_stage, rk_coef, gpcn, uh_n
+      use constants,        only: first_stage, uh_n
       use global,           only: integration_order
       use initstreamingcr,  only: smallescr, iarr_all_escr
 

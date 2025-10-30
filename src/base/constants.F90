@@ -286,7 +286,7 @@ module constants
    character(len=dsetnamelen), parameter :: gpcn      = "gpcn"      !< array of gradient of Pc
    character(len=dsetnamelen), parameter :: rtmn      = "rtmn"      !< rotation matrix for frame transformation where B is along Bx
    character(len=dsetnamelen), parameter :: sgmn      = "sgmn"      !< interaction coefficient for streaming cosmic rays
-   character(len=dsetnamelen), parameter :: v_dfst    = "v_dfst"    !< Diffusion + streaming speed 
+   character(len=dsetnamelen), parameter :: v_dfst    = "v_dfst"    !< Diffusion + streaming speed
 #endif /* STREAM_CR */
    ! misc
    character(len=dsetnamelen), parameter :: wcu_n   = "wcu"     !< (resistivity) COMMENT ME

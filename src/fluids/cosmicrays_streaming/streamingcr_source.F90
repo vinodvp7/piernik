@@ -22,7 +22,7 @@
 !             http://www.cita.utoronto.ca/~pen/MHD
 !             for original source code "mhd.f90"
 !
-!    For full list of developers see $PIERNIK_HOME/license/pdt_scr.txt
+!    For full list of developers see $PIERNIK_HOME/license/pdt.txt
 !
 #include "piernik.h"
 
@@ -38,20 +38,20 @@ module streamingcr_source
 contains
 
 
-   subroutine apply_scr_source(cg,istep)
+   subroutine apply_scr_source(cg, istep)
       use grid_cont,        only: grid_container
       use named_array_list, only: wna
-      use constants,        only: LO, HI, scrh, first_stage, xdim, ydim, zdim,rk_coef, gpcn, uh_n
+      use constants,        only: LO, HI, scrh, first_stage, xdim, ydim, zdim, rk_coef, gpcn, uh_n
       use global,           only: integration_order, smalld
       use fluidindex,       only: scrind
       use fluidindex,       only: iarr_all_dn, iarr_all_mx, iarr_all_my, iarr_all_mz, iarr_all_en
       use initstreamingcr,  only: cred, disable_streaming, disable_feedback, use_smallescr, smallescr, dt_scr, &
-      &                           iarr_all_yfscr, iarr_all_zfscr, iarr_all_xfscr, iarr_all_escr, ord_pc_grad
-      use scr_helpers,      only: update_interaction_term 
+      &                           iarr_all_yfscr, iarr_all_zfscr, iarr_all_xfscr, iarr_all_escr, ord_pc_grad, scr_negative
+      use scr_helpers,      only: update_interaction_term
       use func,             only: operator(.equals.)
-#ifdef MAGNETIC  
-      use constants,        only: rtmn, magh_n, cphi, ctheta, sphi, stheta, sgmn   
-      use scr_helpers,      only: rotate_vec, inverse_rotate_vec    
+#ifdef MAGNETIC
+      use constants,        only: rtmn, cphi, ctheta, sphi, stheta, sgmn
+      use scr_helpers,      only: rotate_vec, inverse_rotate_vec
 #endif /* MAGNETIC */
 
       implicit none
@@ -108,14 +108,14 @@ contains
             gpcy = cg%w(gpci)%arr(ydim + 3 * (ns - 1), i, j, k)
             gpcz = cg%w(gpci)%arr(zdim + 3 * (ns - 1), i, j, k)
 
-#ifdef MAGNETIC         
+#ifdef MAGNETIC
             bdotpc = gpcx * cg%w(magi)%arr(xdim,i,j,k) + gpcy * cg%w(magi)%arr(ydim,i,j,k) + &
             &        gpcz * cg%w(magi)%arr(zdim,i,j,k)
-            sgn_bgpc = 0.0 
+            sgn_bgpc = 0.0
             if (bdotpc > 1e-10  )   sgn_bgpc = 1.0     ! Careful with the magic number
             if (bdotpc < -1e-10 )   sgn_bgpc = -1.0     ! Careful with the magic number
-   
-            ! Need to floor rho ? 
+
+            ! Need to floor rho ?
             if (.not. disable_streaming) then
                vtot1 = vtot1 - sgn_bgpc * cg%w(magi)%arr(xdim,i,j,k)/sqrt(max(smalld,cg%w(fldi)%arr(iarr_all_dn(1),i,j,k))) ! vfluid + vs
                vtot2 = vtot2 - sgn_bgpc * cg%w(magi)%arr(ydim,i,j,k)/sqrt(max(smalld,cg%w(fldi)%arr(iarr_all_dn(1),i,j,k)))  ! vfluid + vs
@@ -124,9 +124,9 @@ contains
 #endif /* MAGNETIC */
             ec = cg%w(scri)%arr(iarr_all_escr(ns),i,j,k)
             f1 = cg%w(scri)%arr(iarr_all_xfscr(ns),i,j,k) / cred
-            f2 = cg%w(scri)%arr(iarr_all_yfscr(ns),i,j,k) / cred 
-            f3 = cg%w(scri)%arr(iarr_all_zfscr(ns),i,j,k) / cred 
-#ifdef MAGNETIC         
+            f2 = cg%w(scri)%arr(iarr_all_yfscr(ns),i,j,k) / cred
+            f3 = cg%w(scri)%arr(iarr_all_zfscr(ns),i,j,k) / cred
+#ifdef MAGNETIC
             call rotate_vec(f1, f2, f3, cp, sp, ct, st)
             call rotate_vec(v1, v2, v3, cp, sp, ct, st)
             call rotate_vec(vtot1, vtot2, vtot3, cp, sp, ct, st)
@@ -135,7 +135,7 @@ contains
 
             ec_source_ = v2 * gpcy + v3 * gpcz
 
-            vtot2 = 0.0 ; vtot3 = 0.0 
+            vtot2 = 0.0 ; vtot3 = 0.0
 
             sigma_parallel      = cg%w(sgmd)%arr(xdim+2*(ns-1),i,j,k)
             sigma_perpendicular = cg%w(sgmd)%arr(ydim+2*(ns-1),i,j,k)
@@ -165,7 +165,7 @@ contains
             newf3  = (f3 - m41 * newec) / m44
 
             newec = newec + rk_coef(istep) * dt_scr * ec_source_
-#ifdef MAGNETIC         
+#ifdef MAGNETIC
             call inverse_rotate_vec(newf1, newf2, newf3, cp, sp, ct, st)
 #endif /* MAGNETIC */
             if (use_smallescr) then
@@ -186,28 +186,31 @@ contains
             cg%w(scri)%arr(iarr_all_xfscr(ns), i, j, k) = newf1 * cred
             cg%w(scri)%arr(iarr_all_yfscr(ns), i, j, k) = newf2 * cred
             cg%w(scri)%arr(iarr_all_zfscr(ns), i, j, k) = newf3 * cred
+
+            if (sqrt(newf1 * newf1 + newf2 * newf2 + newf3 * newf3 ) > newec) scr_negative = .true.
+
          enddo
-      end do
-      if (.not. disable_feedback ) then  
+      enddo
+      if (.not. disable_feedback ) then
          cg%w(gpci)%arr(:,:,:,:) = cg%get_gradient(ord = ord_pc_grad, iw = scri, vec = iarr_all_escr)
          do ns = 1, scrind%nscr
             cg%w(uhi)%arr(iarr_all_mx(1), :,:,:) = cg%w(uhi)%arr(iarr_all_mx(1), :,:,:) - 1.0/3.0 * dt_scr * rk_coef(istep) * cg%w(gpci)%arr(xdim + 3 * (ns - 1),:,:,:)
             cg%w(uhi)%arr(iarr_all_my(1), :,:,:) = cg%w(uhi)%arr(iarr_all_my(1), :,:,:) - 1.0/3.0 * dt_scr * rk_coef(istep) * cg%w(gpci)%arr(ydim + 3 * (ns - 1),:,:,:)
             cg%w(uhi)%arr(iarr_all_mz(1), :,:,:) = cg%w(uhi)%arr(iarr_all_mz(1), :,:,:) - 1.0/3.0 * dt_scr * rk_coef(istep) * cg%w(gpci)%arr(zdim + 3 * (ns - 1),:,:,:)
-         end do
+         enddo
       endif
    end subroutine apply_scr_source
-   ! This function needs to be optimized. Currenlty causing a 0.02 second overhead for a 256 x256 run 
+   ! This function needs to be optimized. Currenlty causing a 0.02 second overhead for a 256 x256 run
    subroutine update_gradpc_here(cg)
       use grid_cont,        only: grid_container
       use named_array_list, only: wna
       use constants,        only: I_ONE, xdim, ydim, zdim, ndims, gpcn
       use domain,           only: dom
-      use fluidindex,       only: scrind                          
+      use fluidindex,       only: scrind
       use initstreamingcr,  only: cred, nscr, iarr_all_xfscr, iarr_all_yfscr, iarr_all_zfscr
 
       implicit none
-   
+
       type :: fxptr
          real, pointer :: flx(:,:,:,:)
       end type fxptr
@@ -237,11 +240,11 @@ contains
 
       L0 = [ lbound(cg%scr,2), lbound(cg%scr,3), lbound(cg%scr,4) ]
       U0 = [ ubound(cg%scr,2), ubound(cg%scr,3), ubound(cg%scr,4) ]
-      
+
       cg%w(wna%ind(gpcn))%arr = 0.0
 
       T => cg%w(wna%ind(gpcn))%arr
-      
+
       do ns = 1, scrind%nscr
          do d = xdim, zdim                          ! component of grad Pc (x,y,z)
             do afdim = xdim, zdim                    ! sweep direction
@@ -251,11 +254,11 @@ contains
                do concurrent (k = L(zdim) : U(zdim) , j = L(ydim):U(ydim) , i = L(xdim):U(xdim))
                T(iarr_all_gpc(d,ns), i, j, k) = T(iarr_all_gpc(d,ns), i, j, k) - &
                ( F(afdim)%flx(iarr_all_fscr(d,ns), i, j, k) - &
-               F(afdim)%flx(iarr_all_fscr(d,ns), i+shift(xdim),j+shift(ydim),k+shift(zdim)) ) / (cg%dl(afdim) * cred * cred) 
-               end do
-            end do
-         end do
-      end do
+               F(afdim)%flx(iarr_all_fscr(d,ns), i+shift(xdim),j+shift(ydim),k+shift(zdim)) ) / (cg%dl(afdim) * cred * cred)
+               enddo
+            enddo
+         enddo
+      enddo
 
    end subroutine update_gradpc_here
 

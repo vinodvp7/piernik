@@ -48,11 +48,16 @@ module initstreamingcr
    ! namelist parameters
    integer                                 :: nscr                !< number of non-spectral streaming CR components
    integer                                 :: nsub                !< number of CR subcycle per MHD timestep. -1: Disable substepping 0: Adaptive substepping N : Fixed N substep
+   integer                                 :: scr_verbose         !< verbosity level
+   integer                                 :: scr_violate_consec_max !< after 3 in a row → raise dyn floor
+   integer                                 :: scr_relax_after     !< after 200 good steps → lower dyn floor
    real                                    :: smallescr           !< floor value of streaming CR energy density
    real                                    :: cred_min            !< reduced speed of light.maximum speed in the simulation which controls the streaming CR timestepping
    real                                    :: cred_growth_fac     !< maximum speed in the simulation which controls the streaming CR timestepping
-   real                                    :: cred_to_mhd_threshold !< maximum value of cred/(|u| + cf) before cred -> cred_growth_fac * cred 
+   real                                    :: cred_decay_fac      !< how fast we relax floor (0.5 → halve)
+   real                                    :: cred_to_mhd_threshold !< maximum value of cred/(|u| + cf) before cred -> cred_growth_fac * cred
    real                                    :: scr_eff             !< conversion rate of SN explosion energy to streaming CR energy (default = 0.1)
+   real                                    :: scr_causality_limit !< enforce |Fc| < cred * Ec
    logical                                 :: use_smallescr       !< floor streaming CR energy density or not
    real, dimension(99)                     :: gamma_scr           !< adiabatic coefficient of streaming cosmic ray species
    real, dimension(99)                     :: sigma_paral         !< diffusion coefficient in the direction parallel to B
@@ -61,8 +66,6 @@ module initstreamingcr
    logical                                 :: disable_feedback    !< whether streaming cosmic ray feedback momentum and energy change to the gas.
    logical                                 :: disable_streaming   !< whether cosmic rays stream along B
    logical                                 :: cr_sound_speed      !< whether to add cr sound speed when calculating v_diff. Ideally keep it as false so that sound speed is added as it increases numerical stability.
-   logical                                 :: scr_causality_limit !< enforce |Fc| < cred * Ec 
-   logical                                 :: scr_verbose         !< verbosity level 
    character(len=cbuff_len)                :: transport_scheme    !< scheme used to calculate riemann flux for cosmic rays : HLLE / LF
 
    integer, parameter                      :: nscr_max   = 99     !< Maximum number of allowed streaming cr component
@@ -75,13 +78,15 @@ module initstreamingcr
    integer(kind=4), allocatable, dimension(:)   :: iarr_all_yfscr         !< array of indexes pointing to Fcy of all streaming cosmic rays
    integer(kind=4), allocatable, dimension(:)   :: iarr_all_zfscr         !< array of indexes pointing to Fcz of all streaming cosmic rays
    integer(kind=4), allocatable, dimension(:,:) :: iarr_all_scr_swp       !< array (size = scrind) of all streaming cosmic rays indexes in the order depending on sweeps direction
-   
-   real                                         :: dt_scr
-   real                                         :: cred
-   integer                                      :: nsub_scr
-   logical                                      :: scr_violation = .false.
-   integer                                      :: which_scr_transport
 
+   real                                         :: dt_scr                     !< streaming cosmic ray timestep
+   real                                         :: cred                       !< current reduced CR speed (what solver uses)
+   integer                                      :: nsub_scr                   !< number of subcycles of streaming cosmic ray updates
+   logical                                      :: scr_negative = .false.
+   integer                                      :: which_scr_transport
+   integer                                      :: scr_violate_consec = 0    ! consecutive steps that violated
+   integer                                      :: scr_good_steps     = 0    ! steps without violation
+   real                                         :: cred_floor_dyn            ! dynamic floor learned from violations
    enum, bind(C)
       enumerator :: SCR_HLLE, SCR_LF
    end enum
@@ -99,17 +104,22 @@ contains
 
       integer(kind=4) :: nl, nn
 
-      namelist /STREAMING_CR/ nscr, nsub, scr_verbose, smallescr, cred_min, cred_growth_fac, transport_scheme, &
-      &                       cred_to_mhd_threshold, use_smallescr, sigma_paral, sigma_perp, ord_pc_grad, &
-      &                       disable_feedback, disable_streaming, gamma_scr, cr_sound_speed, scr_eff, scr_causality_limit
-
+      namelist /STREAMING_CR/ nscr, nsub, scr_verbose, smallescr, cred_min, cred_growth_fac, cred_decay_fac  , &
+      &                       cred_to_mhd_threshold, use_smallescr, sigma_paral, sigma_perp, ord_pc_grad,      &
+      &                       disable_feedback, disable_streaming, gamma_scr, cr_sound_speed, scr_eff,         &
+      &                       scr_causality_limit, scr_violate_consec_max, scr_relax_after, transport_scheme
 
       nscr                     = 1
       nsub                     = 0        ! by default we let subcycling be adaptive
       ord_pc_grad              = 2
+      scr_verbose              = 20
+      scr_violate_consec_max   = 5
+      scr_relax_after          = 100
+      scr_causality_limit      = 1.0
       smallescr                = 1e-6
       cred_min                 = 100.0
-      cred_growth_fac          = 2
+      cred_growth_fac          = 2.0
+      cred_decay_fac           = 0.5
       cred_to_mhd_threshold    = 10.0
       scr_eff                  = 0.1        ! Maybe this should be an array for different conversion rate to different species ?
       use_smallescr            = .true.
@@ -119,8 +129,6 @@ contains
       disable_feedback         = .false.
       disable_streaming        = .false.
       cr_sound_speed           = .true.
-      scr_causality_limit      = .true.
-      scr_verbose              = .false.        
       transport_scheme         = "hlle"
 
       if (master) then
@@ -147,23 +155,26 @@ contains
          ibuff(1) = nscr
          ibuff(2) = ord_pc_grad
          ibuff(3) = nsub
+         ibuff(4) = scr_verbose
+         ibuff(5) = scr_violate_consec_max
+         ibuff(6) = scr_relax_after
 
          rbuff(1) = smallescr
          rbuff(2) = cred_min
          rbuff(3) = scr_eff
          rbuff(4) = cred_growth_fac
          rbuff(5) = cred_to_mhd_threshold
+         rbuff(6) = scr_causality_limit
+         rbuff(7) = cred_decay_fac
 
          lbuff(1) = use_smallescr
          lbuff(2) = disable_feedback
          lbuff(3) = disable_streaming
          lbuff(4) = cr_sound_speed
-         lbuff(5) = scr_causality_limit
-         lbuff(6) = scr_verbose
 
          cbuff(1) = transport_scheme
 
-         nl       = 6                                    ! this must match the last lbuff() index above
+         nl       = 4                                     ! this must match the last lbuff() index above
          nn       = count(rbuff(:) < huge(1.), kind=4)    ! this must match the last rbuff() index above
          ibuff(ubound(ibuff, 1)    ) = nn
          ibuff(ubound(ibuff, 1) - 1) = nl
@@ -185,24 +196,27 @@ contains
 
       if (slave) then
 
-         nscr                = ibuff(1)
-         ord_pc_grad         = ibuff(2)
-         nsub                = ibuff(3)
+         nscr                    = ibuff(1)
+         ord_pc_grad             = ibuff(2)
+         nsub                    = ibuff(3)
+         scr_verbose             = ibuff(4)
+         scr_violate_consec_max  = ibuff(5)
+         scr_relax_after         = ibuff(6)
 
          smallescr               = rbuff(1)
          cred_min                = rbuff(2)
          scr_eff                 = rbuff(3)
          cred_growth_fac         = rbuff(4)
          cred_to_mhd_threshold   = rbuff(5)
+         scr_causality_limit     = rbuff(6)
+         cred_decay_fac          = rbuff(7)
 
-         use_smallescr       = lbuff(1)
-         disable_feedback    = lbuff(2)
-         disable_streaming   = lbuff(3)
-         cr_sound_speed      = lbuff(4)
-         scr_causality_limit = lbuff(5)
-         scr_verbose         = lbuff(5)
+         use_smallescr           = lbuff(1)
+         disable_feedback        = lbuff(2)
+         disable_streaming       = lbuff(3)
+         cr_sound_speed          = lbuff(4)
 
-         transport_scheme    = cbuff(1)
+         transport_scheme        = cbuff(1)
 
          nn                  = ibuff(ubound(ibuff, 1)    )    ! this must match the last rbuff() index above
          nl                  = ibuff(ubound(ibuff, 1) - 1)    ! this must match the last lbuff() index above
@@ -222,9 +236,10 @@ contains
          case default
             call die("[initstreamingcr:init_streamingcr] unrecognized streaming cosmic ray transport scheme: '" // trim(transport_scheme) // "'")
       end select
-      
+
       cred = cred_min
-   
+      cred_floor_dyn = cred_min
+
       if (master) then
          if (nscr > nscr_max) then
             write(msg,'(A,I0)') "[initstreamingcr:init_streamingcr] Number of streaming CR species greater than maximum allowed = ", nscr_max

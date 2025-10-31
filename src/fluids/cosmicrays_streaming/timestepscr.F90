@@ -116,7 +116,7 @@ contains
          scr_violate_consec = 0            ! restart the count
       end if
 
-      if (cred/cred_min > cred_growth_fac**3) cred_min = cred_min * cred_growth_fac * 1.5
+      if (cred/cred_min > cred_growth_fac**3) cred_min = cred_min * cred_growth_fac
 
       !call piernik_MPI_Bcast(cred_min)
 

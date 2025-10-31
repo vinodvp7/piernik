@@ -50,8 +50,9 @@ contains
    subroutine check_scr_violations(istep)
 
       use cg_leaves,          only: leaves
+      use allreduce,          only: piernik_MPI_Allreduce
       use cg_list,            only: cg_list_element
-      use constants,          only: MAXL, V_WARN, xdim, ydim, zdim, uh_n, scrh, first_stage, half, I_ONE
+      use constants,          only: MAXL, V_WARN, xdim, ydim, zdim, uh_n, scrh, first_stage, half, I_ONE, pSUM
       use dataio_pub,         only: printinfo
       use fluidindex,         only: flind, iarr_all_dn, iarr_all_mx, iarr_all_my, iarr_all_mz
       use fluids_pub,         only: has_ion
@@ -74,7 +75,7 @@ contains
       integer,                       intent(in) :: istep
 
       type(cg_list_element), pointer   :: cgl
-      integer                          :: uhi, scri
+      integer                          :: uhi, scri, flag_violation
       type(value)                      :: ucf_max
 
       uhi    = wna%fi
@@ -84,12 +85,12 @@ contains
          scri   = wna%ind(scrh)
       endif
 
-      ! if (scr_negative) then
-      !    write(msg,'(a)')"[STREAMING COSMIC RAYS]"
-      !    write(msg(len_trim(msg)+1:), '(a)') '|Fc|/(cEc) > 1.0 '
-      !    if (master) call printinfo(msg, V_WARN)
-         ! return
-      ! endif
+      flag_violation = merge(1, 0, scr_negative)
+      call piernik_MPI_Allreduce(flag_violation, pSUM)
+      scr_negative = (flag_violation > 0)
+
+      ! If *any* rank had it set, now everybody has it and we can exit
+      if (scr_negative) return
       
       cgl => leaves%first
       do while (associated(cgl))
@@ -130,13 +131,23 @@ contains
 
       call leaves%get_extremum(qna%wai, MAXL, ucf_max)
 
-      ! if (cred_to_mhd_threshold > cred/ucf_max%val) then
+
+      ! if (cred_to_mhd_threshold < cred/ucf_max%val) then
       !    write(msg,'(a)')"[STREAMING COSMIC RAYS]"
       !    write(msg(len_trim(msg)+1:), '(a,es0.3e2,a,es0.3e2)') "c_reduced/(max(|u|+|cf|) = ",cred/ucf_max%val,"exceeds the threshold = ", cred_to_mhd_threshold
       !    if (master) call printinfo(msg, V_WARN)
-         ! scr_negative = .true.
+      !    scr_negative = .true.
       ! endif
 
+      if (cred_to_mhd_threshold > cred / (ucf_max%val + 1e-20)) then
+         flag_violation = 1
+      else
+         flag_violation = 0
+      end if
+
+      ! globalize again
+      call piernik_MPI_Allreduce(flag_violation, pSUM)
+      if (flag_violation > 0) scr_negative = .true.
    end subroutine check_scr_violations
 
 end module streamingcr_violations

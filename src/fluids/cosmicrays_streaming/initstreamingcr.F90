@@ -115,7 +115,7 @@ contains
       scr_verbose              = 20
       scr_violate_consec_max   = 5
       scr_relax_after          = 100
-      scr_causality_limit      = 1.0
+      scr_causality_limit      = 0.8
       smallescr                = 1e-6
       cred_min                 = 100.0
       cred_growth_fac          = 2.0

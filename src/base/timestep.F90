@@ -253,7 +253,7 @@ contains
             if (dt < dt_scr) then
                scr_negative = .true.
                dt_scr = dt
-               nsub_scr = I_ONE
+               nsub_scr = I_TWO
             else
                nsub_scr = max(I_ONE, ceiling(dt/dt_scr))
                if (mod(nsub_scr, 2) /= 0) nsub_scr = nsub_scr + I_ONE

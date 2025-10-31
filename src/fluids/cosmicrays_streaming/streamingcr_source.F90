@@ -46,7 +46,8 @@ contains
       use fluidindex,       only: scrind
       use fluidindex,       only: iarr_all_dn, iarr_all_mx, iarr_all_my, iarr_all_mz, iarr_all_en
       use initstreamingcr,  only: cred, disable_streaming, disable_feedback, use_smallescr, smallescr, dt_scr, &
-      &                           iarr_all_yfscr, iarr_all_zfscr, iarr_all_xfscr, iarr_all_escr, ord_pc_grad, scr_negative
+      &                           iarr_all_yfscr, iarr_all_zfscr, iarr_all_xfscr, iarr_all_escr, ord_pc_grad, scr_negative, &
+      &                           scr_causality_limit
       use scr_helpers,      only: update_interaction_term
       use func,             only: operator(.equals.)
 #ifdef MAGNETIC
@@ -187,7 +188,7 @@ contains
             cg%w(scri)%arr(iarr_all_yfscr(ns), i, j, k) = newf2 * cred
             cg%w(scri)%arr(iarr_all_zfscr(ns), i, j, k) = newf3 * cred
 
-            if (sqrt(newf1 * newf1 + newf2 * newf2 + newf3 * newf3 ) > newec) scr_negative = .true.
+            if (sqrt(newf1 * newf1 + newf2 * newf2 + newf3 * newf3 ) > scr_causality_limit * newec) scr_negative = .true.
 
          enddo
       enddo

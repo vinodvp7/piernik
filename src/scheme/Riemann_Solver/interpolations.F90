@@ -161,6 +161,10 @@ contains
 
       subroutine limit_face(qface, label)
 
+         use initstreamingcr,       only:    scr_negative, scr_causality_limit
+
+         implicit none
+
          real,           intent(inout) :: qface(:,:)
          character(*),   intent(in)    :: label
 
@@ -182,7 +186,8 @@ contains
 
                cap   = max(0.0, cred * ec)
 
-               if (fc2 > cap * cap) then
+               if (fc2 > scr_causality_limit * scr_causality_limit * cap * cap) then
+                  scr_negative = .true.
                   scale = cap / sqrt(fc2)
                   qface(i, b+xdim) = fcx * scale
                   qface(i, b+ydim) = fcy * scale

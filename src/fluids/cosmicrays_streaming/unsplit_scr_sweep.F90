@@ -80,7 +80,7 @@ contains
       use cg_leaves,                   only: leaves
       use cg_list,                     only: cg_list_element
       use cg_list_dataop,              only: cg_list_dataop_t
-      use constants,                   only: first_stage, last_stage, INVALID, PPP_CG
+      use constants,                   only: first_stage, last_stage, INVALID, PPP_SCR
       use dataio_pub,                  only: die
       use fc_fluxes_unsplit,           only: initiate_flx_recv, recv_cg_finebnd, send_cg_coarsebnd
       use global,                      only: integration_order
@@ -106,11 +106,11 @@ contains
       integer(kind=4)                  :: n_recv, g
       character(len=*), parameter :: solve_cgs_label = "solve_bunch_of_cg_scr", cg_label = "solve_cg_scr", init_src_label = "init_src_scr"
 
-      call ppp_main%start("unsplit_scrsweep")
+      call ppp_main%start("unsplit_scrsweep", PPP_SCR)
 
       sl => leaves%prioritized_cg(INVALID, covered_too = .true.)
 
-      call ppp_main%start(init_src_label)
+      call ppp_main%start(init_src_label, PPP_SCR)
 
       ! This is the loop over Runge-Kutta stages
       do istep = first_stage(integration_order), last_stage(integration_order)
@@ -125,7 +125,7 @@ contains
             ! OPT this loop should probably go from finest to coarsest for better compute-communicate overlap.
             cgl => sl%first
 
-            call ppp_main%start(solve_cgs_label)
+            call ppp_main%start(solve_cgs_label, PPP_SCR)
             do while (associated(cgl))
                cg => cgl%cg
                call cg%costs%start
@@ -134,7 +134,7 @@ contains
                   call recv_cg_finebnd(req, INVALID, cg, all_received)
 
                   if (all_received) then
-                     call ppp_main%start(cg_label, PPP_CG)
+                     call ppp_main%start(cg_label, PPP_SCR)
                      call cg%costs%stop(I_REFINE)
                      call cg%cleanup_flux()      ! Seems unnecessary.This just sets the flux array to 0.0
 
@@ -144,7 +144,7 @@ contains
 
                      call cg%costs%stop(I_SCR)
 
-                     call ppp_main%stop(cg_label, PPP_CG)
+                     call ppp_main%stop(cg_label, PPP_SCR)
 
                      call cg%costs%start
                      call send_cg_coarsebnd(req, INVALID, cg)
@@ -157,7 +157,7 @@ contains
                call cg%costs%stop(I_REFINE)
                cgl => cgl%nxt
             enddo
-            call ppp_main%stop(solve_cgs_label)
+            call ppp_main%stop(solve_cgs_label, PPP_SCR)
 
             if (.not. all_processed .and. blocks_done == 0) then
                if (n_recv > 0) call MPI_Waitany(n_recv, req%r(:n_recv), g, MPI_STATUS_IGNORE, err_mpi)
@@ -165,14 +165,14 @@ contains
             endif
          enddo
 
-         call req%waitall("scrsweeps")
+         call req%waitall("scrsweeps", PPP_SCR)
          call check_scr_violations(istep)
          call update_boundaries(istep)
       enddo
       call sl%delete
       deallocate(sl)
 
-      call ppp_main%stop("unsplit_scrsweep")
+      call ppp_main%stop("unsplit_scrsweep", PPP_SCR)
 
    end subroutine unsplit_scrsweep
    

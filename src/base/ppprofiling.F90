@@ -97,6 +97,7 @@ module ppp
    logical :: watch_problem    !< watch timers related to problem
    logical :: watch_debug      !< watch timers related to debugging
    logical :: watch_aux        !< watch auxiliary timers
+   logical :: watch_scr        !< watch timers related to streaming cosmic rays
    logical :: xxl              !< allow for significantly bigger number of collected events (at your own risk)
 
    integer, save :: umsg_request = 0  !< turn on profiling for next umsg_request steps (read from msg file)
@@ -135,7 +136,7 @@ contains
 
       use bcast,         only: piernik_MPI_Bcast
       use constants,     only: PPP_IO, PPP_MG, PPP_GRAV, PPP_CR, PPP_PART, PPP_MPI, &
-           &                   PPP_AMR, PPP_CG, PPP_MAG, PPP_PROB, PPP_DEBUG, PPP_AUX, I_ZERO
+           &                   PPP_AMR, PPP_CG, PPP_MAG, PPP_PROB, PPP_DEBUG, PPP_AUX, I_ZERO, PPP_SCR
       use dataio_pub,    only: nh, log_wr, problem_name, run_id, nrestart
       use mpisetup,      only: lbuff, master, slave
       use ppp_eventlist, only: use_profiling, disable_mask, profile_file
@@ -145,7 +146,7 @@ contains
       namelist /PROFILING/ use_profiling, xxl, &
            &               watch_io, watch_multigrid, watch_gravity, watch_cr, &
            &               watch_particles, watch_MPI, watch_AMR, watch_cg, &
-           &               watch_magnetic, watch_problem, watch_debug, watch_aux
+           &               watch_magnetic, watch_problem, watch_debug, watch_aux, watch_scr
 
       use_profiling   = .false.
       watch_io        = .true.
@@ -160,6 +161,7 @@ contains
       watch_problem   = .true.
       watch_debug     = .false.
       watch_aux       = .false.
+      watch_scr       = .true.
       xxl             = .false.
 
       if (master) then
@@ -192,8 +194,9 @@ contains
          lbuff(11) = watch_magnetic
          lbuff(12) = watch_problem
          lbuff(13) = watch_debug
-         lbuff(14) = watch_aux
-         lbuff(15) = xxl
+         lbuff(14) = watch_scr
+         lbuff(15) = watch_aux
+         lbuff(16) = xxl
 
       endif
 
@@ -213,8 +216,9 @@ contains
          watch_magnetic  = lbuff(11)
          watch_problem   = lbuff(12)
          watch_debug     = lbuff(13)
-         watch_aux       = lbuff(14)
-         xxl             = lbuff(15)
+         watch_scr = lbuff(14)
+         watch_aux       = lbuff(15)
+         xxl             = lbuff(16)
 
       endif
 
@@ -231,6 +235,7 @@ contains
       if (.not. watch_problem  ) disable_mask = disable_mask + PPP_PROB
       if (.not. watch_debug    ) disable_mask = disable_mask + PPP_DEBUG
       if (.not. watch_aux      ) disable_mask = disable_mask + PPP_AUX
+      if (.not. watch_scr      ) disable_mask = disable_mask + PPP_SCR
 
       write(profile_file, '(6a,i3.3,a)') trim(log_wr), '/', trim(problem_name), '_', trim(run_id), '_', max(I_ZERO, nrestart), '.ppprofile.ascii'
 

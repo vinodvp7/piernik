@@ -96,7 +96,7 @@ contains
 
       use bcast,              only: piernik_MPI_Bcast
       use initstreamingcr,    only: cred, cred_growth_fac, cred_floor_dyn, cred_min, scr_good_steps, scr_violate_consec, &
-      &                             scr_violate_consec_max
+      &                             scr_violate_consec_max, cred_max
 
       implicit none
 
@@ -104,7 +104,7 @@ contains
 
       ! bump the actual cred for the retry
       new_cred = cred * cred_growth_fac
-      cred     = max(new_cred, cred_floor_dyn, cred_min)
+      cred     = min(cred_max,max(new_cred, cred_floor_dyn, cred_min))
 
       ! book-keeping
       scr_violate_consec = scr_violate_consec + 1
@@ -116,7 +116,7 @@ contains
          scr_violate_consec = 0            ! restart the count
       end if
 
-      if (cred/cred_min > cred_growth_fac**3) cred_min = cred_min * cred_growth_fac
+      if (cred/cred_min > cred_growth_fac**2) cred_min = cred_min * cred_growth_fac
 
       !call piernik_MPI_Bcast(cred_min)
 

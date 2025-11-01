@@ -39,6 +39,7 @@ module initstreamingcr
 ! pulled by STREAM_CR
 
    use constants, only: cbuff_len
+   use units,     only: clight
 
    implicit none
 
@@ -53,6 +54,7 @@ module initstreamingcr
    integer                                 :: scr_relax_after     !< after 200 good steps → lower dyn floor
    real                                    :: smallescr           !< floor value of streaming CR energy density
    real                                    :: cred_min            !< reduced speed of light.maximum speed in the simulation which controls the streaming CR timestepping
+   real                                    :: cred_max            !< reduced speed of light.maximum speed in the simulation which controls the streaming CR timestepping
    real                                    :: cred_growth_fac     !< maximum speed in the simulation which controls the streaming CR timestepping
    real                                    :: cred_decay_fac      !< how fast we relax floor (0.5 → halve)
    real                                    :: cred_to_mhd_threshold !< maximum value of cred/(|u| + cf) before cred -> cred_growth_fac * cred
@@ -107,17 +109,18 @@ contains
       namelist /STREAMING_CR/ nscr, nsub, scr_verbose, smallescr, cred_min, cred_growth_fac, cred_decay_fac  , &
       &                       cred_to_mhd_threshold, use_smallescr, sigma_paral, sigma_perp, ord_pc_grad,      &
       &                       disable_feedback, disable_streaming, gamma_scr, cr_sound_speed, scr_eff,         &
-      &                       scr_causality_limit, scr_violate_consec_max, scr_relax_after, transport_scheme
+      &                       scr_causality_limit, scr_violate_consec_max, scr_relax_after, transport_scheme, cred_max
 
       nscr                     = 1
       nsub                     = 0        ! by default we let subcycling be adaptive
       ord_pc_grad              = 2
       scr_verbose              = 20
-      scr_violate_consec_max   = 5
+      scr_violate_consec_max   = 2
       scr_relax_after          = 100
       scr_causality_limit      = 0.8
       smallescr                = 1e-6
       cred_min                 = 100.0
+      cred_max                 = clight
       cred_growth_fac          = 2.0
       cred_decay_fac           = 0.5
       cred_to_mhd_threshold    = 10.0
@@ -166,6 +169,7 @@ contains
          rbuff(5) = cred_to_mhd_threshold
          rbuff(6) = scr_causality_limit
          rbuff(7) = cred_decay_fac
+         rbuff(8) = cred_max
 
          lbuff(1) = use_smallescr
          lbuff(2) = disable_feedback
@@ -210,6 +214,7 @@ contains
          cred_to_mhd_threshold   = rbuff(5)
          scr_causality_limit     = rbuff(6)
          cred_decay_fac          = rbuff(7)
+         cred_max                = rbuff(8)
 
          use_smallescr           = lbuff(1)
          disable_feedback        = lbuff(2)

@@ -62,7 +62,7 @@ contains
 
       use grid_cont,        only: grid_container
       use named_array_list, only: wna
-      use constants,        only: xdim, ydim, zdim, first_stage, magh_n, rtmn, sphi, cphi, stheta, ctheta
+      use constants,        only: xdim, ydim, zdim, first_stage, magh_n, rtmn, sphi, cphi, stheta, ctheta, HI, LO
       use global,           only: integration_order
 
       implicit none
@@ -70,13 +70,19 @@ contains
       type(grid_container), pointer, intent(in) :: cg
       integer,                       intent(in) :: istep
 
-      integer :: bhi
+      integer :: bhi, ilo, ihi, jlo, jhi, klo, khi
       real, parameter :: eps = 1.0e-12
 
-      real, pointer :: bx(:,:,:), by(:,:,:), bz(:,:,:)
-      real, pointer :: cp(:,:,:), sp(:,:,:), st(:,:,:), ct(:,:,:)
-      real           :: Bxy(cg%n_(xdim), cg%n_(ydim), cg%n_(zdim))    ! Stores bx^2 + by^2
-      real           :: Bxyz(cg%n_(xdim), cg%n_(ydim), cg%n_(zdim))   ! Stores bx^2 + by^2 + bz^2
+      real, pointer         :: bx(:,:,:), by(:,:,:), bz(:,:,:)
+      real, pointer         :: cp(:,:,:), sp(:,:,:), st(:,:,:), ct(:,:,:)
+      real, allocatable     :: Bxy(:,:,:)    ! Stores bx^2 + by^2
+      real, allocatable     :: Bxyz(:,:,:)   ! Stores bx^2 + by^2 + bz^2
+
+      ilo = cg%lhn(xdim,LO); ihi = cg%lhn(xdim,HI)
+      jlo = cg%lhn(ydim,LO); jhi = cg%lhn(ydim,HI)
+      klo = cg%lhn(zdim,LO); khi = cg%lhn(zdim,HI)
+
+      allocate(Bxy(ilo : ihi, jlo : jhi, klo : khi), Bxyz(ilo : ihi, jlo : jhi, klo : khi))
 
       bhi = wna%ind(magh_n)
       if (istep == first_stage(integration_order) .or. integration_order < 2) then
@@ -107,6 +113,9 @@ contains
          st = Bxy / Bxyz
          ct = bz  / Bxyz
       endwhere
+
+      deallocate(Bxy, Bxyz)
+
    end subroutine update_rotation_matrix
 #endif /* MAGNETIC */
 

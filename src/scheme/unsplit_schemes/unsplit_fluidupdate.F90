@@ -51,8 +51,14 @@ contains
 #ifdef CRESP
       use cresp_grid,     only: cresp_update_grid, cresp_clean_grid
 #endif /* CRESP */
+#ifdef STREAM_CR
+      use initstreamingcr,      only: nsub_scr
+      use unsplit_scr_sweep,    only: unsplit_scrsweep
+#endif /* STREAM_CR */
 
       implicit none
+      
+      integer :: i
 
       call repeat_fluidstep
       call update_chspeed
@@ -60,6 +66,12 @@ contains
       halfstep = .false.
 
       t = t +  dt
+
+#ifdef STREAM_CR
+      do i = 1, max(1, nsub_scr/2)
+         call unsplit_scrsweep
+      end do
+#endif /* STREAM_CR */
 
       call make_unsplitsweep(.true.)  ! Here forward argument is not useful for the MHD sweeps but other legacy subroutines need it
 
@@ -73,6 +85,12 @@ contains
       dtm = dt
 
       call make_unsplitsweep(.false.) 
+
+#ifdef STREAM_CR
+      do i = 1, max(1, nsub_scr/2)
+         call unsplit_scrsweep
+      end do
+#endif /* STREAM_CR */
 
       call update_magic_mass
 #ifdef CRESP
@@ -142,7 +160,7 @@ contains
 
 #ifdef STREAM_CR
       if (.not. forward) then
-         do i = 1, nsub_scr
+         do i = 1, max(1,nsub_scr/2)
             call unsplit_scrsweep
          end do
       endif
@@ -171,7 +189,7 @@ contains
 
 #ifdef STREAM_CR
       if (forward) then
-         do i = 1, nsub_scr
+         do i = 1, max(1,nsub_scr/2)
             call unsplit_scrsweep
          end do
       endif

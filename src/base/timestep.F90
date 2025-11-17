@@ -249,6 +249,7 @@ contains
       select case (nsub)
          case (INVALID)                                  ! sub-cycling disabled
             dt = dt_scr
+            dt_scr = 0.5 * dt_scr
             nsub_scr = I_ONE
          case (I_ZERO)                                   ! Adaptive sub-cycling
             if (dt < dt_scr) then

@@ -106,14 +106,26 @@ contains
 #ifdef CRESP
       use cresp_grid,     only: cresp_update_grid, cresp_clean_grid
 #endif /* CRESP */
+#ifdef STREAM_CR
+      use initstreamingcr,      only: nsub_scr
+      use unsplit_scr_sweep,    only: unsplit_scrsweep
+#endif /* STREAM_CR */
 
       implicit none
+      
+      integer :: i
 
       call repeat_fluidstep
       call update_chspeed
 
       halfstep = .false.
       t = t + dt
+
+#ifdef STREAM_CR
+      do i = 1, max(1, nsub_scr/2)
+         call unsplit_scrsweep
+      end do
+#endif /* STREAM_CR */
 
       call make_3sweeps(.true.) ! X -> Y -> Z
 
@@ -128,6 +140,13 @@ contains
       dtm = dt
 
       call make_3sweeps(.false.) ! Z -> Y -> X
+
+#ifdef STREAM_CR
+      do i = 1, max(1, nsub_scr/2)
+         call unsplit_scrsweep
+      end do
+#endif /* STREAM_CR */
+
       call update_magic_mass
 #ifdef CRESP
       call cresp_clean_grid ! BEWARE: due to diffusion some junk remains in the grid - this nullifies all inactive bins.
@@ -166,12 +185,16 @@ contains
 #ifdef SHEAR
       use shear,               only: shear_3sweeps
 #endif /* SHEAR */
+#ifdef STREAM_CR
+      use initstreamingcr,      only: nsub_scr
+      use unsplit_scr_sweep,    only: unsplit_scrsweep
+#endif /* STREAM_CR */
 
       implicit none
 
       logical, intent(in) :: forward  !< If .true. then do X->Y->Z sweeps, if .false. then reverse that order
 
-      integer(kind=4) :: s, sFRST, sLAST, sCHNG
+      integer(kind=4) :: s, sFRST, sLAST, sCHNG, i
       character(len=*), parameter :: sw3_label = "sweeps"
 
       if (forward) then
@@ -197,6 +220,13 @@ contains
          call make_diff_sweeps(forward)
       endif
 #endif /* COSM_RAYS */
+#ifdef STREAM_CR
+      if (.not. forward) then
+         do i = 1, max(1,nsub_scr/2)
+            call unsplit_scrsweep
+         end do
+      endif
+#endif /* STREAM_CR */
 
       ! At this point everything should be initialized after domain expansion and we no longer need this list.
       call expanded_domain%delete
@@ -222,6 +252,14 @@ contains
 #endif /* NBODY */
       if (need_update) call source_terms_grav
 #endif /* GRAV */
+
+#ifdef STREAM_CR
+      if (forward) then
+         do i = 1, max(1,nsub_scr/2)
+            call unsplit_scrsweep
+         end do
+      endif
+#endif /* STREAM_CR */
 
       call external_sources(forward)
       if (associated(problem_customize_solution)) call problem_customize_solution(forward)

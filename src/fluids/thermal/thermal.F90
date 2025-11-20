@@ -44,7 +44,7 @@ module thermal
    public ::  init_thermal, thermal_active, cfl_coolheat, thermal_sources, itemp, fit_cooling_curve, cleanup_thermal, calc_tcool, find_temp_bin, alpha, Tref, lambda0, G1_heat, G0_heat
 
    character(len=cbuff_len)        :: cool_model, cool_curve, heat_model, scheme, cool_file
-   logical                         :: thermal_active
+   logical                         :: thermal_active, CMZ_photoelectric
    real                            :: alpha_cool, L0_cool, G0_heat, G1_heat, G2_heat, cfl_coolheat
    real                            :: Teq          !> cooling parameter
    real, dimension(10)             :: Teql         !> temperatures of cooling / heating equilibrium
@@ -78,7 +78,7 @@ contains
       real :: dens, ddens
       integer :: i
 
-      namelist /THERMAL/ thermal_active, heat_model, Lambda_0, alpha_cool, Teq, G0, G1, G2, x_ion, cfl_coolheat, isochoric, scheme, cool_model, cool_curve, cool_file, d_isochoric, ndens_tab
+      namelist /THERMAL/ thermal_active, heat_model, Lambda_0, alpha_cool, Teq, G0, G1, G2, x_ion, cfl_coolheat, isochoric, scheme, cool_model, cool_curve, cool_file, d_isochoric, ndens_tab, CMZ_photoelectric
 
       if (code_progress < PIERNIK_INIT_MPI) call die("[thermal:init_thermal] mpi not initialized.")
 
@@ -103,6 +103,7 @@ contains
       isochoric      = 1
       d_isochoric    = 1.0
       cfl_coolheat   = 0.1
+      CMZ_photoelectric = .false.
 
       if (master) then
 
@@ -133,6 +134,7 @@ contains
          rbuff(9) = d_isochoric
 
          lbuff(1) = thermal_active
+         lbuff(2)  = CMZ_photoelectric
 
          cbuff(1) = cool_model
          cbuff(2) = cool_curve
@@ -158,7 +160,8 @@ contains
          heat_model     = cbuff(4)
          scheme         = cbuff(5)
 
-         thermal_active = lbuff(1)
+         thermal_active    = lbuff(1)
+         CMZ_photoelectric = lbuff(2)
 
          Lambda_0       = rbuff(1)
          alpha_cool     = rbuff(2)
@@ -590,29 +593,28 @@ contains
                            call calc_tcool(ta(i,j,k), dens(i,j,k), kbgmh, tcool)
                            dt_cool  = min(dt, tcool/10.0)
                            t1 = 0.0
-                           R1 = sqrt(X(i)**2+Y(j)**2)
-                           if (R1 .lt. 400) then
-                                !  fact_G1 = 1.0
-                                  fact_G1 = 0.01/0.00021 * exp(-dens(i,j,k)/1.775) / 10    !Following Moon+21
-                           else
-                               !fact_G1 = 10.0**(80000/3.0 /R1**2 - 8/3.0)
-                               !fact_G1 = 10.0**(288.0/5 * 10.0**4 / R1**2 - 18.0/5)
-                               fact_G1 = 10.0**(144.0/5 * 10.0**4 / R1**2 - 9.0/5)
-                           endif
-                           if ((abs(Z(k)) .lt. 50) .and. (abs(Z(k)) .gt. 30))  then
-                              !fact_G1 = fact_G1 * (-0.0495 * abs(Z(k)) + 2.485)
-                              fact_G1 = fact_G1 * (-0.045 * abs(Z(k)) + 2.35)
-                           else if (abs(Z(k)) .gt. 50) then
-                              !fact_G1 = 0.01
-                              fact_G1 = 0.1
-                           endif
-                           !fact_G1 = max(fact_G1, 0.01)
-                           fact_G1 = max(fact_G1, 0.1)
-                           !fact_G1 = 1.0                !!!!! MODIFIED
 
-                           if (ta(i,j,k) .gt. 15000.0) then
-                              fact_G1 = 0.0
+                           if (CMZ_photoelectric) then
+                              R1 = sqrt(X(i)**2+Y(j)**2)
+                              if (R1 .lt. 400) then
+                                    fact_G1 = 0.01/0.00021 * exp(-dens(i,j,k)/1.775) / 10    !Following Moon+21 inside CMZ
+                              else
+                                 fact_G1 = 10.0**(144.0/5 * 10.0**4 / R1**2 - 9.0/5)         ! Transition between CMZ and solar neighborhood
+                              endif
+                              if ((abs(Z(k)) .lt. 50) .and. (abs(Z(k)) .gt. 30))  then       ! Transition to halo
+                                 fact_G1 = fact_G1 * (-0.045 * abs(Z(k)) + 2.35)
+                              else if (abs(Z(k)) .gt. 50) then                               ! Halo
+                                 fact_G1 = 0.1
+                              endif
+                              fact_G1 = max(fact_G1, 0.1)
+
+                              if (ta(i,j,k) .gt. 15000.0) then
+                                 fact_G1 = 0.0
+                              endif
+                           else
+                              fact_G1 = 1.0
                            endif
+
                            CR_heating = 0.0
 #ifdef COSM_RAYS
                            if (cr_active .eq. 1.0) then

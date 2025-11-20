@@ -150,7 +150,8 @@ logical, intent(in) :: forward
       use dataio_pub,  only: msg, die, warn, nh
       use domain,      only: dom
       use fluidindex,  only: flind
-      use mpisetup,    only: rbuff, ibuff, master, slave, piernik_MPI_Bcast
+      use mpisetup,    only: rbuff, ibuff, master, slave
+      use bcast,       only: piernik_MPI_Bcast
       use problem_pub, only: jeans_d0, jeans_mode
 #ifdef NBODY
          use star_formation, only:init_SF

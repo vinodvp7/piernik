@@ -69,7 +69,8 @@ contains
    subroutine init_iosupport
 
       use dataio_pub, only: nh ! QA_WARN required for diff_nml
-      use mpisetup,   only: ibuff, lbuff, rbuff, master, slave, piernik_MPI_Bcast
+      use mpisetup,   only: ibuff, lbuff, rbuff, master, slave
+      use bcast,      only: piernik_MPI_Bcast
       use units,      only: kpc
 
       implicit none
@@ -447,7 +448,7 @@ contains
 
       use constants,   only: pSUM
       use diagnostics, only: pop_vector
-      use mpisetup,    only: piernik_MPI_Allreduce
+      use allreduce,       only: piernik_MPI_Allreduce
 
       implicit none
 
@@ -471,7 +472,7 @@ contains
       use fluidindex,       only: iarr_all_mz
       use global,           only: dt, t
       use grid_cont,        only: grid_container
-      use mpisetup,         only: piernik_MPI_Allreduce
+      use allreduce,            only: piernik_MPI_Allreduce
       use named_array_list, only: wna
       implicit none
 
@@ -514,7 +515,7 @@ contains
 
 #ifdef SNE_DISTR
       use constants, only: pSUM
-      use mpisetup,  only: piernik_MPI_Allreduce
+      use allreduce,     only: piernik_MPI_Allreduce
       use sndistr,   only: sum_emagadd, sum_encradd
 #endif /* SNE_DISTR */
 #ifdef SN_DISTRIBUTION

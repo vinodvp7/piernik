@@ -109,7 +109,8 @@ module sndistr
    subroutine init_supernovae
 
       use dataio_pub,     only: nh ! QA_WARN required for diff_nml
-      use mpisetup,       only: ibuff, lbuff, rbuff, master, slave, piernik_MPI_Bcast
+      use mpisetup,       only: ibuff, lbuff, rbuff, master, slave
+      use bcast,          only: piernik_MPI_Bcast
       use units,          only: erg, msun, year
 #ifdef COSM_RAYS
       use initcosmicrays, only: cr_eff
@@ -829,7 +830,8 @@ module sndistr
 
    subroutine addsn_ferriere(sndt)
 
-      use mpisetup, only: master, piernik_MPI_Bcast
+      use mpisetup, only: master
+      use bcast,    only: piernik_MPI_Bcast
 
       implicit none
 

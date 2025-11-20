@@ -107,7 +107,7 @@ $THERMAL
    thermal_active = .TRUE.
    cool_model     = 'piecewise_power_law'
    cool_curve     = 'tabulated'
-   cool_file      = 'cool_Kobayashi.txt'
+   cool_file      = 'cool_Kim.txt'
    heat_model     = 'G012'
    scheme         = 'EE'
    alpha_cool     = 1.5

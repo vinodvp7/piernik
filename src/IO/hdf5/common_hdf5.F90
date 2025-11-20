@@ -104,14 +104,14 @@ contains
 
    subroutine init_hdf5(vars)
 
-      use constants,      only: dsetnamelen, singlechar
-      use dataio_pub,     only: warn
+      use constants,      only: dsetnamelen, singlechar, RIEMANN_UNSPLIT
+      use fluidindex,     only: flind
+      use dataio_pub,     only: warn, die
       use fluids_pub,     only: has_ion, has_dst, has_neu
-      use global,         only: cc_mag
+      use global,         only: cc_mag, which_solver
       use mpisetup,       only: master
 #ifdef COSM_RAYS
       use cr_data,        only: cr_names, cr_spectral
-      use dataio_pub,     only: msg
 #endif /* COSM_RAYS */
 #ifdef CRESP
       use initcosmicrays, only: ncrb
@@ -123,13 +123,25 @@ contains
 
       integer                                              :: i
       character(len=singlechar)                            :: fc, ord
-      character(len=dsetnamelen)                           :: aux
+      character(len=dsetnamelen)                           :: aux, ifmt
 #ifdef COSM_RAYS
       integer                                              :: k, ke
 #endif /* COSM_RAYS */
 
+      i = 10  ! Let the default counter be 2-digit wide
+#ifdef COSM_RAYS
+      i = max(i, size(cr_names))
+#endif /* COSM_RAYS */
+#ifdef CRESP
+      i = max(i, ncrb + 1)
+#endif /* CRESP */
+      write(ifmt, '(i9)') i
+      i = len_trim(adjustl(ifmt))  ! convert max number of components into number of required digits
+      write(ifmt,'("i",i1,".",i1,")")') i, i  ! this would fail when i > 9 but the code would fail for billions of components anyway
+
       if (.not. allocated(hdf_vars)) allocate(hdf_vars(0))
 
+      ! ToDo: consider despaghettification
       do i = lbound(vars, 1), ubound(vars, 1)
          select case (trim(vars(i)))
             case ('')
@@ -190,6 +202,72 @@ contains
                call append_var(aux)
             case ("divb_diml")
                call append_var("divb_norm")
+            case ('xflux')
+               if (which_solver /= RIEMANN_UNSPLIT) call die("[common_hdf5:init_hdf5] Flux variable only avaible for unsplit riemann solver")
+               if (has_dst) then
+                  call append_var('xfdend')
+                  call append_var('xfmomxd')
+                  call append_var('xfmomyd')
+                  call append_var('xfmomzd')
+               endif
+               if (has_neu) then
+                  call append_var('xfdenn')
+                  call append_var('xfmomxn')
+                  call append_var('xfmomyn')
+                  call append_var('xfmomzn')
+                  if (flind%neu%has_energy) call append_var('xfenen')
+               endif
+               if (has_ion) then
+                  call append_var('xfdeni')
+                  call append_var('xfmomxi')
+                  call append_var('xfmomyi')
+                  call append_var('xfmomzi')
+                  if (flind%ion%has_energy) call append_var('xfenei')
+               endif
+            case ('yflux')
+               if (which_solver /= RIEMANN_UNSPLIT) call die("[common_hdf5:init_hdf5] Flux variable only avaible for unsplit riemann solver")
+               if (has_dst) then
+                  call append_var('yfdend')
+                  call append_var('yfmomxd')
+                  call append_var('yfmomyd')
+                  call append_var('yfmomzd')
+               endif
+               if (has_neu) then
+                  call append_var('yfdenn')
+                  call append_var('yfmomxn')
+                  call append_var('yfmomyn')
+                  call append_var('yfmomzn')
+                  if (flind%neu%has_energy) call append_var('yfenen')
+               endif
+               if (has_ion) then
+                  call append_var('yfdeni')
+                  call append_var('yfmomxi')
+                  call append_var('yfmomyi')
+                  call append_var('yfmomzi')
+                  if (flind%ion%has_energy) call append_var('yfenei')
+               endif
+            case ('zflux')
+               if (which_solver /= RIEMANN_UNSPLIT) call die("[common_hdf5:init_hdf5] Flux variable only avaible for unsplit riemann solver")
+               if (has_dst) then
+                  call append_var('zfdend')
+                  call append_var('zfmomxd')
+                  call append_var('zfmomyd')
+                  call append_var('zfmomzd')
+               endif
+               if (has_neu) then
+                  call append_var('zfdenn')
+                  call append_var('zfmomxn')
+                  call append_var('zfmomyn')
+                  call append_var('zfmomzn')
+                  if (flind%neu%has_energy) call append_var('zfenen')
+               endif
+               if (has_ion) then
+                  call append_var('zfdeni')
+                  call append_var('zfmomxi')
+                  call append_var('zfmomyi')
+                  call append_var('zfmomzi')
+                  if (flind%ion%has_energy) call append_var('zfenei')
+               endif
 #ifdef COSM_RAYS
             case ('encr')
                do k = 1, size(cr_names)
@@ -199,80 +277,46 @@ contains
                      call append_var(aux)
                   else
                      ke = k - count(cr_spectral)
-                     if (ke <= 99) then
-                        write(aux,'(A2,I2.2)') 'cr', ke
-                        call append_var(aux)
-                     else
-                        write(msg, '(a,i3)')"[common_hdf5:init_hdf5] Cannot create name for CR energy component #", ke
-                        call warn(msg)
-                     endif
+                     write(aux,'(A2,' // ifmt // ')') 'cr', ke
+                     call append_var(aux)
                   endif
                enddo
 #endif /* COSM_RAYS */
 #ifdef CRESP
             case ('cren') !< CRESP number density fields
                do k = 1, ncrb
-                  if (k<=99) then
-                     write(aux,'(A3,a,A1,I2.2)') 'cr_','e-','n', k
-                     call append_var(aux)
-                  else
-                     write(msg, '(a,i3)')"[common_hdf5:init_hdf5] Cannot create name for CRESP number density component #", k
-                     call warn(msg)
-                  endif
+                  write(aux,'(A3,a,A1,' // ifmt // ')') 'cr_','e-','n', k
+                  call append_var(aux)
                enddo
                do k = lbound(vars, 1), ubound(vars, 1)
                   if (vars(k) .eq. 'cree') exit
-                  if (k .eq. ubound(vars, 1)) then
-                     write(msg, '(a)')"[common_hdf5:init_hdf5] CRESP 'cren' field created, but 'cree' not defined: reconstruction of spectrum from hdf files requires both."
-                     call warn(msg)
-                  endif
+                  if (k .eq. ubound(vars, 1)) &
+                     call warn("[common_hdf5:init_hdf5] CRESP 'cren' field created, but 'cree' not defined: reconstruction of spectrum from hdf files requires both.")
                enddo
             case ('cree') !< CRESP energy density fields
                do k = 1, ncrb
-                  if (k<=99) then
-                     write(aux,'(A3,a,A1,I2.2)') 'cr_','e-','e', k
-                     call append_var(aux)
-                  else
-                     write(msg, '(a,i3)')"[common_hdf5:init_hdf5] Cannot create name for CRESP energy density component #", k
-                     call warn(msg)
-                  endif
+                  write(aux,'(A3,a,A1,' // ifmt // ')') 'cr_','e-','e', k
+                  call append_var(aux)
                enddo
                do k = lbound(vars, 1), ubound(vars, 1)
                   if (vars(k) .eq. 'cren') exit
-                  if (k .eq. ubound(vars, 1)) then
-                     write(msg, '(a)')"[common_hdf5:init_hdf5] CRESP 'cree' field created, but 'cren' not defined: reconstruction of spectrum from hdf files requires both."
-                     call warn(msg)
-                  endif
+                  if (k .eq. ubound(vars, 1)) &
+                     call warn("[common_hdf5:init_hdf5] CRESP 'cree' field created, but 'cren' not defined: reconstruction of spectrum from hdf files requires both.")
                enddo
             case ('cref') !< CRESP distribution function
                do k = 1, ncrb+1
-                  if (k<=99) then
-                     write(aux,'(A4,I2.2)') 'cref', k
-                     call append_var(aux)
-                  else
-                     write(msg, '(a,i3)')"[common_hdf5:init_hdf5] Cannot create name for CRESP distribution function component #", k
-                     call warn(msg)
-                  endif
+                  write(aux,'(A4,' // ifmt // ')') 'cref', k
+                  call append_var(aux)
                enddo
             case ('crep') !< CRESP cutoff momenta
                do k = 1, 2
-                  if (k<=99) then
-                     write(aux,'(A4,I2.2)') 'crep', k
-                     call append_var(aux)
-                  else
-                     write(msg, '(a,i3)')"[common_hdf5:init_hdf5] Cannot create name for CRESP cutoff momentum component #", k
-                     call warn(msg)
-                  endif
+                  write(aux,'(A4,' // ifmt // ')') 'crep', k
+                  call append_var(aux)
                enddo
             case ('creq') !< CRESP spectrum index
                do k = 1, ncrb
-                  if (k<=99) then
-                     write(aux,'(A4,I2.2)') 'creq', k
-                     call append_var(aux)
-                  else
-                     write(msg, '(a,i3)')"[common_hdf5:init_hdf5] Cannot create name for CRESP spectrum index component #", k
-                     call warn(msg)
-                  endif
+                  write(aux,'(A4,' // ifmt // ')') 'creq', k
+                  call append_var(aux)
                enddo
 #endif /* CRESP */
             case default
@@ -434,6 +478,53 @@ contains
             case default
                call warn("[common_hdf5:common_shortcuts] cannot assign fluid to '" // trim(var) // "'")
          end select
+      else if (any([ "xfden", "yfden", "zfden","xfene", "yfene", "zfene"] == var(1:5))) then
+         select case (var(6:6))
+            case ("d")
+               if (has_dst) then
+                  fl_dni => flind%dst
+               else
+                  call warn("[common_hdf5:common_shortcuts] cannot assign fluid to " // trim(var) // "' because we have no dust fluid")
+               endif
+            case ("n")
+               if (has_neu) then
+                  fl_dni => flind%neu
+               else
+                  call warn("[common_hdf5:common_shortcuts] cannot assign fluid to " // trim(var) // "' because we have no neutral fluid")
+               endif
+            case ("i")
+               if (has_ion) then
+                  fl_dni => flind%ion
+               else
+                  call warn("[common_hdf5:common_shortcuts] cannot assign fluid to " // trim(var) // "' because we have no ionized fluid")
+               endif
+            case default
+               call warn("[common_hdf5:common_shortcuts] cannot assign fluid to '" // trim(var) // "'")
+         end select
+      else if (any([ "xfmomx", "xfmomy", "xfmomz", "yfmomx", &
+         &           "yfmomy", "yfmomz", "zfmomx", "zfmomy", "zfmomz"] == var(1:6))) then
+         select case (var(7:7))
+            case ("d")
+               if (has_dst) then
+                  fl_dni => flind%dst
+               else
+                  call warn("[common_hdf5:common_shortcuts] cannot assign fluid to " // trim(var) // "' because we have no dust fluid")
+               endif
+            case ("n")
+               if (has_neu) then
+                  fl_dni => flind%neu
+               else
+                  call warn("[common_hdf5:common_shortcuts] cannot assign fluid to " // trim(var) // "' because we have no neutral fluid")
+               endif
+            case ("i")
+               if (has_ion) then
+                  fl_dni => flind%ion
+               else
+                  call warn("[common_hdf5:common_shortcuts] cannot assign fluid to " // trim(var) // "' because we have no ionized fluid")
+               endif
+            case default
+               call warn("[common_hdf5:common_shortcuts] cannot assign fluid to '" // trim(var) // "'")
+         end select
       endif
 
       i_xyz = huge(1_INT4)
@@ -441,6 +532,8 @@ contains
          dc = var(3:3)
       else if (var(1:3) == "mag" .or. var(1:3) == "mom") then
          dc = var(4:4)
+      else if (var(2:5) == "fmom") then
+         dc = var(6:6)
       else
          dc = '_'
       endif

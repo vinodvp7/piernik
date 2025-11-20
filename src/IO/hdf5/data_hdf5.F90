@@ -90,6 +90,17 @@ contains
          case ("dend", "deni", "denn")
             f%fu = "\rm{g}/\rm{cm}^3"
             f%f2cgs = 1.0 / (gram/cm**3)
+         case ("xfdenn", "xfdend", "xfdeni","yfdenn", "yfdend", "yfdeni","zfdenn", "zfdend", "zfdeni")
+            f%fu = "\rm{g}/\rm{cm}^2/\rm{s}"
+            f%f2cgs = 1.0 / (gram/cm**2/sek)
+         case ("xfmomxn", "xfmomyn", "xfmomzn","xfmomxd", "xfmomyd", "xfmomzd","xfmomxi", "xfmomyi", "xfmomzi", &
+         &     "yfmomxn", "yfmomyn", "yfmomzn","yfmomxd", "yfmomyd", "yfmomzd","yfmomxi", "yfmomyi", "yfmomzi", &
+         &     "zfmomxn", "zfmomyn", "zfmomzn","zfmomxd", "zfmomyd", "zfmomzd","zfmomxi", "zfmomyi", "zfmomzi")
+            f%fu = "\rm{erg}/\rm{cm}^2/\rm{s}"
+            f%f2cgs = 1.0 / (erg/cm**2/sek)
+         case ("xfenen", "xfened", "xfenei","yfenen", "yfened", "yfenei","zfenen", "zfened", "zfenei")
+            f%fu = "\rm{erg}/\rm{cm}/\rm{s}^2"
+            f%f2cgs = 1.0 / (erg/cm/sek**2)
          case ("vlxd", "vlxn", "vlxi", "vlyd", "vlyn", "vlyi", "vlzd", "vlzn", "vlzi", "v", "c_s", "cs")
             f%fu = "\rm{cm}/\rm{s}"
             f%f2cgs = 1.0 / (cm/sek)
@@ -116,12 +127,15 @@ contains
             f%fu= ""
          case ("magdir")
             f%fu = "\rm{radians}"
+         case ("xflux")
 #ifdef COSM_RAYS
+         ! ToDo: Adopt for wider range
          case ("cr01" : "cr99")
             f%fu = "\rm{erg}/\rm{cm}^3"
             f%f2cgs = 1.0 / (erg/cm**3)
 #endif /* COSM_RAYS */
 #ifdef CRESP
+         ! ToDo: Adopt for wider range
          case ("cr_e-n01" : "cr_e-n99")
             f%fu = "1/\rm{cm}^3"
             f%f2cgs = 1.0 / (1.0/cm**3) ! number density
@@ -231,6 +245,14 @@ contains
             case ("tdyn")
                newname="dynamical_time"
 #endif /* NBODY */
+            case ("xfdeni", "xfdenn", "xfdend", "yfdeni", "yfdenn", "yfdend", "zfdeni", "zfdenn", "zfdend")
+               write  (newname, '(A1,"_directed_density_flux")') var(1:1)
+         case ("xfmomxn", "xfmomyn", "xfmomzn","xfmomxd", "xfmomyd", "xfmomzd","xfmomxi", "xfmomyi", "xfmomzi", &
+         &     "yfmomxn", "yfmomyn", "yfmomzn","yfmomxd", "yfmomyd", "yfmomzd","yfmomxi", "yfmomyi", "yfmomzi", &
+         &     "zfmomxn", "zfmomyn", "zfmomzn","zfmomxd", "zfmomyd", "zfmomzd","zfmomxi", "zfmomyi", "zfmomzi")
+               write  (newname, '(A1,"_directed_momentum_",A1,"_flux")') var(1:1),var(6:6)
+            case ("xfenei", "xfenen", "xfened", "yfenei", "yfenen", "yfened", "zfenei", "zfenen", "zfened")
+               write  (newname, '(A1,"_directed_energy_flux")') var(1:1)
             case default
                write(newname, '(A)') trim(var)
          end select
@@ -323,7 +345,7 @@ contains
    subroutine datafields_hdf5(var, tab, ierrh, cg)
 
       use common_hdf5,      only: common_shortcuts
-      use constants,        only: dsetnamelen, I_ONE
+      use constants,        only: dsetnamelen, I_ONE, INVALID
       use fluids_pub,       only: has_ion, has_neu, has_dst
       use fluidindex,       only: flind
       use fluidtypes,       only: component_fluid
@@ -338,10 +360,11 @@ contains
 #endif /* MAGNETIC */
 #ifdef CRESP
       use initcrspectrum,   only: dfpq
-      use named_array_list, only: wna
 #endif /* CRESP */
 #ifdef COSM_RAYS
       use cr_data,          only: cr_names, cr_spectral
+      use dataio_pub,       only: die, warn, msg
+      use named_array_list, only: wna, na_var_4d
 #endif /* COSM_RAYS */
 #ifndef ISO
       use units,            only: kboltz, mH
@@ -358,14 +381,14 @@ contains
       integer(kind=4)                                :: i_xyz
       integer                                        :: ii, jj, kk
 #ifdef COSM_RAYS
+      integer(kind=4)                                :: clast
       integer                                        :: i
       integer, parameter                             :: auxlen = dsetnamelen - 1
       character(len=auxlen)                          :: aux
+      character(len=I_TWO)                           :: varn2
 #endif /* COSM_RAYS */
 #ifdef CRESP
-      character(len=I_TWO)                           :: varn2
       integer                                        :: ibin
-      integer(kind=4)                                :: clast
 #endif /* CRESP */
 
       call common_shortcuts(var, fl_dni, i_xyz)
@@ -390,11 +413,33 @@ contains
          case ("cr01" : "cr99")
             read(var,'(A2,I2.2)') aux, i !> \deprecated BEWARE 0 <= i <= 99, no other indices can be dumped to hdf file
             tab(:,:,:) = cg%u(flind%crn%beg+i-1, RNG)
+            select type(l => wna%lst(wna%fi))
+               class is (na_var_4d)
+                  if (trim(var) /= trim(l%compname(flind%crn%beg+i-1))) then
+                     write(msg, '(5a,i3)') "cr_01-99 '", trim(var), "' /= '", trim(l%compname(flind%crn%beg+i-1)), "' ", i
+                     call warn(msg)
+                  endif
+               class default
+                  call die("[datafields_hdf5] 'cr01-99' not a na_var_4d")
+            end select
          case ('cr_A000' : 'cr_zz99')
             do i = 1, size(cr_names)
                if (var == trim('cr_' // cr_names(i))) exit
             enddo
             tab(:,:,:) = cg%u(flind%crn%beg+i-1-count(cr_spectral), RNG)
+            select type(l => wna%lst(wna%fi))
+               class is (na_var_4d)
+                  clast = len(trim(var), kind=4)
+                  varn2 = var(clast - 1:clast)
+                  if (all(var(clast - 2:clast - 2) /= ['e', 'n'])) then
+                     if (trim(var) /= trim(l%compname(flind%crn%beg+i-1-count(cr_spectral)))) then
+                        write(msg, '(5a,i3)') "cr_A-zz '", trim(var), "' /= '", trim(l%compname(flind%crn%beg+i-1)), "' ", i
+                        call warn(msg)
+                     endif
+                  endif
+               class default
+                  call die("[datafields_hdf5] 'cr_A-zz' not a na_var_4d")
+            end select
 #endif /* COSM_RAYS */
 #ifdef CRESP
             clast = len(trim(var), kind=4)
@@ -405,6 +450,15 @@ contains
 
                read (varn2,'(I2.2)') ibin
                tab(:,:,:) = cg%u(flind%cre%ebeg+ibin-1, RNG)
+               select type(l => wna%lst(wna%fi))
+                  class is (na_var_4d)
+                     if (trim(var) /= trim(l%compname(flind%cre%ebeg+ibin-1))) then
+                        write(msg, '(5a,i3)') "cr_e '", trim(var), "' /= '", trim(l%compname(flind%cre%ebeg+ibin-1)), "' ", ibin
+                        call warn(msg)
+                     endif
+                  class default
+                     call die("[datafields_hdf5] 'cr_e' not a na_var_4d")
+               end select
 
             else if (var(clast - 2:clast - 2) == 'n') then
 
@@ -412,6 +466,15 @@ contains
 
                read (varn2,'(I2.2)') ibin
                tab(:,:,:) = cg%u(flind%cre%nbeg+ibin-1, RNG)
+               select type(l => wna%lst(wna%fi))
+                  class is (na_var_4d)
+                     if (trim(var) /= trim(l%compname(flind%cre%nbeg+ibin-1))) then
+                        write(msg, '(5a,i3)') "cr_n '", trim(var), "' /= '", trim(l%compname(flind%cre%nbeg+ibin-1)), "' ", ibin
+                        call warn(msg)
+                     endif
+                  class default
+                     call die("[datafields_hdf5] 'cr_n' not a na_var_4d")
+               end select
             endif
 
          case ("cren01" : "cren99")
@@ -441,6 +504,42 @@ contains
             if (associated(fl_dni)) tab(:,:,:) = cg%u(fl_dni%imx + i_xyz, RNG) / cg%u(fl_dni%idn, RNG)
          case ("momxd", "momxn", "momxi", "momyd", "momyn", "momyi", "momzd", "momzn", "momzi")
             if (associated(fl_dni)) tab(:,:,:) = cg%u(fl_dni%imx + i_xyz, RNG)
+         case ("xfdenn","xfdeni","xfdend")
+            if (associated(fl_dni)) then
+               if (associated(cg%fx)) tab(:,:,:) = cg%fx(fl_dni%idn, RNG)
+            endif
+         case ("yfdenn","yfdeni","yfdend")
+            if (associated(fl_dni)) then
+               if (associated(cg%gy)) tab(:,:,:) = cg%gy(fl_dni%idn, RNG)
+            endif
+         case ("zfdenn","zfdeni","zfdend")
+            if (associated(fl_dni)) then
+               if (associated(cg%hz)) tab(:,:,:) = cg%hz(fl_dni%idn, RNG)
+            endif
+         case ("xfmomxn", "xfmomyn", "xfmomzn","xfmomxd", "xfmomyd", "xfmomzd","xfmomxi", "xfmomyi", "xfmomzi")
+               if (associated(fl_dni)) then
+                 if (associated(cg%fx)) tab(:,:,:) = cg%fx(fl_dni%imx + i_xyz, RNG)
+               endif
+         case ("yfmomxn", "yfmomyn", "yfmomzn","yfmomxd", "yfmomyd", "yfmomzd","yfmomxi", "yfmomyi", "yfmomzi")
+               if (associated(fl_dni)) then
+                 if (associated(cg%gy)) tab(:,:,:) = cg%gy(fl_dni%imx + i_xyz, RNG)
+               endif
+         case ("zfmomxn", "zfmomyn", "zfmomzn","zfmomxd", "zfmomyd", "zfmomzd","zfmomxi", "zfmomyi", "zfmomzi")
+               if (associated(fl_dni)) then
+                 if (associated(cg%hz)) tab(:,:,:) = cg%hz(fl_dni%imx + i_xyz, RNG)
+               endif
+         case ("xfenen","xfenei","xfened")
+            if (associated(fl_dni) .and. fl_dni%ien /= INVALID )  then
+               if (associated(cg%fx)) tab(:,:,:) = cg%fx(fl_dni%ien, RNG)
+            endif
+         case ("yfenen","yfenei","yfened")
+            if (associated(fl_dni) .and. fl_dni%ien /= INVALID) then
+               if (associated(cg%gy)) tab(:,:,:) = cg%gy(fl_dni%ien, RNG)
+            endif
+         case ("zfenen","zfenei","zfened")
+            if (associated(fl_dni) .and. fl_dni%ien /= INVALID) then
+               if (associated(cg%hz)) tab(:,:,:) = cg%hz(fl_dni%ien, RNG)
+            endif
          case ("enen", "enei")
 #ifdef ISO
             if (associated(fl_dni)) tab(:,:,:) = ekin(cg%u(fl_dni%imx, RNG), cg%u(fl_dni%imy, RNG), cg%u(fl_dni%imz, RNG), cg%u(fl_dni%idn, RNG))

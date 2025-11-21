@@ -176,6 +176,9 @@ contains
 #ifdef COSM_RAYS
       use initcosmicrays,   only: cr_active, cr_eff
 #endif /* COSM_RAYS */
+#ifdef STREAM_CR
+      use initsreamingcr,   only: scr_eff
+#endif /* STREAM_CR */
 
       implicit none
 
@@ -212,6 +215,13 @@ contains
       en_SN01  = 0.0
       en_SN09  = en_SN
 #endif /* !COSM_RAYS */
+#ifdef STREAM_CR
+      en_SN01  = scr_eff * en_SN
+      en_SN09  = (1 - scr_eff) * en_SN
+#else /* !STREAM_CR */
+      en_SN01  = 0.0
+      en_SN09  = en_SN
+#endif /* !STREAM_CR */
       c_tau_ff = sqrt(3.*pi/(32.*newtong))
       sfdf     = eps_sf / c_tau_ff * 2 * dt
       SF_redo_timestep = .false.
@@ -466,6 +476,9 @@ contains
       use cr_data,        only: icr_H1, cr_index
       use initcosmicrays, only: iarr_crn, cr_active
 #endif /* COSM_RAYS */
+#ifdef STREAM_CR
+      use initstreamingcr, only: iarr_all_escr
+#endif /* STREAM_CR */
 #ifdef CRESP
       use cresp_crspectrum, only: cresp_get_scaled_init_spectrum
       use initcosmicrays,   only: iarr_cre_n, iarr_cre_e
@@ -489,6 +502,9 @@ contains
 #ifdef COSM_RAYS
       if (cr_active > 0.0) cg%u(iarr_crn(cr_index(icr_H1)),i,j,k) = cg%u(iarr_crn(cr_index(icr_H1)),i,j,k) + mfcr  ! adding CR
 #endif /* COSM_RAYS */
+#ifdef STREAM_CR
+      cg%scr(iarr_all_escr,i,j,k) = cg%scr(iarr_all_escr,i,j,k) + mfcr  ! adding CR
+#endif /* STREAM_CR */
 #ifdef TRACER
          cg%u(flind%trc%beg,i,j,k) = cg%w(wna%fi)%arr(idn,i,j,k)
 #endif /* TRACER */
@@ -598,7 +614,9 @@ contains
 #ifdef COSM_RAYS
     if ((divv_crit) .and. (cg%q(divv_i)%arr(i,j,k) .ge. 0)) return    ! convergent flow
 #endif /* COSM_RAYS */
-
+#ifdef STREAM_CR
+    if ((divv_crit)) return    ! convergent flow. Need to also account for divv . not really sure how now 
+#endif /* STREAM_CR */
 #ifdef THERM
     temp = cg%q(itemp)%arr(i,j,k)
 
@@ -1051,7 +1069,14 @@ contains
    en_SN01  = 0.0
    en_SN09  = en_SN
 #endif /* !COSM_RAYS */
-
+#ifdef STREAM_CR
+   en_SN01  = scr_eff * en_SN
+   en_SN09  = (1 - scr_eff) * en_SN
+   call sf_inject(cg, pfl%ien, pfl%idn, i, j, k, is, ish, 0.0, mfdv * en_SN01 *frac, dt, sne_dump)      ! Inject CRs
+#else /* !STREAM_CR */
+   en_SN01  = 0.0
+   en_SN09  = en_SN
+#endif /* !STREAM_CR */
    ! Option to inject only thermal energy (risking overcooling effects)
    if ((.not. kineticFB)) then
       if (aijk1 .eq. 0) print *, 'Thermal FB', i,j,k, dens_amb

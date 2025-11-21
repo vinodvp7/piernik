@@ -473,6 +473,11 @@ contains
       use fluidindex,        only: iarr_all_sg
       use mpisetup,          only: master
       use multigrid_gravity, only: multigrid_solve_grav, recover_sgpm, recover_sgp
+#ifdef NBODY
+      use constants,         only: nbdn_n, one, zero  
+      use named_array_list,  only: qna
+      use particle_maps,     only: map_particles
+#endif /* NBODY */
 #endif /* SELF_GRAV */
 
       implicit none
@@ -501,6 +506,10 @@ contains
          ! Reproducibility of restarts strongly depends on avalability of multigrid history in the restart file.
          ! ToDo: simplify the management of various histories of potential.
       else
+#ifdef NBODY
+         call leaves%set_q_value(qna%ind(nbdn_n), zero)
+         call map_particles(qna%ind(nbdn_n), one)
+#endif /* NBODY */
          call multigrid_solve_grav(iarr_all_sg)
       endif
       frun = .false.

@@ -503,7 +503,7 @@ contains
       if (cr_active > 0.0) cg%u(iarr_crn(cr_index(icr_H1)),i,j,k) = cg%u(iarr_crn(cr_index(icr_H1)),i,j,k) + mfcr  ! adding CR
 #endif /* COSM_RAYS */
 #ifdef STREAM_CR
-      cg%scr(iarr_all_escr,i,j,k) = cg%scr(iarr_all_escr,i,j,k) + mfcr  ! adding CR
+      cg%scr(iarr_all_escr(1),i,j,k) = cg%scr(iarr_all_escr(1),i,j,k) + mfcr  ! adding CR
 #endif /* STREAM_CR */
 #ifdef TRACER
          cg%u(flind%trc%beg,i,j,k) = cg%w(wna%fi)%arr(idn,i,j,k)

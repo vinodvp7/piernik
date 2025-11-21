@@ -185,7 +185,7 @@ $STREAMING_CR
    disable_feedback        = .false.      ! feedback to MHD gas
    disable_streaming       = .false.       ! knob for streaming + diffusion or only diffusion
    cr_sound_speed          = .true.
-   smallescr               =  0.e-2        ! floor value of 0.0 will blow up interaction coefficient calculation
+   smallescr               =  1e-6        ! floor value of 0.0 will blow up interaction coefficient calculation
 /
 
 $IO_PARAMS

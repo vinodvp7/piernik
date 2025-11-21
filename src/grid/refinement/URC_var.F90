@@ -172,8 +172,10 @@ contains
       else if (trim(vname) == "ener") then
          call alloc_ic(iarr_all_en)
          return
+#ifdef STREAM_CR
       else if (trim(vname) == "escr") then
          call alloc_ic(iarr_all_escr, .true.)
+#endif /* STREAM_CR */
          return
       endif
       !> \todo identify here all {den,vl[xyz],ene}{d,n,i}

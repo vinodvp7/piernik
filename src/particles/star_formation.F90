@@ -177,7 +177,7 @@ contains
       use initcosmicrays,   only: cr_active, cr_eff
 #endif /* COSM_RAYS */
 #ifdef STREAM_CR
-      use initsreamingcr,   only: scr_eff
+      use initstreamingcr,   only: scr_eff
 #endif /* STREAM_CR */
 
       implicit none
@@ -1035,6 +1035,9 @@ contains
 #ifdef COSM_RAYS
     use initcosmicrays,        only: cr_active, cr_eff
 #endif /* COSM_RAYS */
+#ifdef STREAM_CR
+    use initstreamingcr,       only: scr_eff
+#endif /* STREAM_CR */
 
    implicit none
 

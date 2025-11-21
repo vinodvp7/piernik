@@ -6,7 +6,9 @@
 
 #define IONIZED
 
-#undef MAGNETIC
+#define MAGNETIC
+
+#define STREAM_CR
 
 #define SELF_GRAV
 

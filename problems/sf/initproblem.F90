@@ -283,7 +283,7 @@ logical, intent(in) :: forward
 
       use cg_list,     only: cg_list_element
       use cg_leaves,   only: leaves
-      use constants,   only: xdim, ydim, zdim, LO
+      use constants,   only: xdim, ydim, zdim, LO, HI
       use domain,      only: dom
       use fluidindex,  only: flind
       use fluidtypes,  only: component_fluid
@@ -293,9 +293,11 @@ logical, intent(in) :: forward
 #ifdef NBODY
       use star_formation, only: initialize_id
 #endif /* NBODY */
-
       use thermal,     only: itemp, thermal_active
-
+#ifdef STREAM_CR
+      use fluidindex,     only: scrind
+      use fluidtypes,     only: component_scr
+#endif /* STREAM_CR */
 
 
       implicit none
@@ -306,7 +308,10 @@ logical, intent(in) :: forward
       type(cg_list_element),  pointer :: cgl
       type(grid_container),   pointer :: cg
       integer                         :: seed   ! jrandpert
-
+#ifdef STREAM_CR
+      class(component_scr),allocatable :: scr_fluid
+      integer                          :: p
+#endif /* STREAM_CR */
       seed = proc                               ! jrandpert
       call srand(seed)                          ! jrandpert
 
@@ -357,7 +362,29 @@ logical, intent(in) :: forward
 
          cgl => cgl%nxt
       enddo
-
+#ifdef STREAM_CR
+      do p = 1, scrind%nscr
+         scr_fluid = scrind%scr(p)
+         cgl => leaves%first
+         do while (associated(cgl))
+            cg => cgl%cg
+            do j = cg%lhn(ydim,LO), cg%lhn(ydim,HI)
+               yj = cg%y(j)
+               do i = cg%lhn(xdim,LO), cg%lhn(xdim,HI)
+                  xi = cg%x(i)
+                  do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
+                     zk = cg%z(k)
+                     cg%scr(scr_fluid%iescr,i,j,k) =  1e-6
+                     cg%scr(scr_fluid%ixfscr,i,j,k) = 0.0
+                     cg%scr(scr_fluid%iyfscr,i,j,k) = 0.0
+                     cg%scr(scr_fluid%izfscr,i,j,k) = 0.0
+                  enddo
+               enddo
+            enddo
+            cgl => cgl%nxt
+         enddo
+      enddo
+#endif /* STREAM_CR */
 
    end subroutine problem_initial_conditions
 

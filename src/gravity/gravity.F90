@@ -508,7 +508,7 @@ contains
       else
 #ifdef NBODY
          call leaves%set_q_value(qna%ind(nbdn_n), zero)
-         call map_particles(qna%ind(nbdn_n), one)
+         call map_particles(qna%ind(nbdn_n), one)                    ! Need to recalculate for restart case 
 #endif /* NBODY */
          call multigrid_solve_grav(iarr_all_sg)
       endif

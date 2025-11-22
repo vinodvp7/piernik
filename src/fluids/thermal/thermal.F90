@@ -582,9 +582,9 @@ contains
                case ('EE')
                   maxva = 0
                   maxcrheating=0
-                  do i = 5, n(xdim)-4
-                     do j = 5, n(ydim)-4
-                        do k = 5, n(zdim)-4
+                  do i = 2, n(xdim)-1          ! The bounds were wrong previously which lead to artifacts when nb = 4
+                     do j = 2, n(ydim)-1
+                        do k = 2, n(zdim)-1
                            int_ener = ener(i,j,k) - kinmag_ener(i,j,k)
                            !tcool    = kbgmh * ta(i,j,k) / (dens(i,j,k) * abs(L0_cool) * (ta(i,j,k)/Teq)**alpha_cool)
                            ta(i,j,k) = int_ener * ikbgmh / dens(i,j,k)

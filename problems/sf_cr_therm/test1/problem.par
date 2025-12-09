@@ -1,0 +1,155 @@
+ $BASE_DOMAIN
+    n_d = 50, 25, 100                          ! For streaming module need to rotate the problem
+    nb           = 4
+    bnd_xl       = 'per'
+    bnd_xr       = 'per'
+    bnd_yl       = 'per'
+    bnd_yr       = 'per'
+    bnd_zl       = 'outd'
+    bnd_zr       = 'outd'
+    xmin         =-500.0
+    xmax         = 500.0
+    ymin         =-250.0
+    ymax         = 250.0
+    zmin         =-1000.0
+    zmax         = 1000.0
+ /
+
+ $MPI_BLOCKS
+ /
+
+ $UNITS
+    units_set = "PSM"
+ /
+
+ $RESTART_CONTROL
+    restart      = 'last'
+    nrestart     = 0
+    res_id       = ''
+ /
+
+ $END_CONTROL
+    tend         = 5.0
+    nend         = 1000000000
+ /
+
+ $OUTPUT_CONTROL
+    enable_compression = .false. 
+    nproc_io           = 12 
+    use_v2_io          = .true.
+    problem_name = 'startbox'
+    run_id       = 'tst'
+    dt_hdf       = 1.0
+    dt_res       = 0.0
+    dt_log       = 1.0e-20
+    dt_tsl       = 1.0e-20
+    vars(1:) = 'dens', 'magx', 'magy', 'magz', 'velx', 'vely', 'velz', 'temp'
+ /
+
+ $FLUID_IONIZED
+    gamma = 1.66666667
+    cs_iso  =  7.0            ! sound speed
+ /
+
+$NUMERICAL_SETUP
+  cfl     = 0.3
+  smalld  = 1.e-6                   ! Default value of 1e-5 or < 1e-2 will lead to huge spikes in speed that crashes the code
+  smallei = 1.e-8
+  limiter = 'vanleer'
+  solver_str = 'riemann_unsplit'
+  integration_order = 2
+  cfl_glm = 0.3
+/
+
+ $GRAVITY
+    user_grav    = .true.
+    gprofs_target= 'gpth'
+    r_gc         = 5000     ! Galactic radius of coordinate system
+    nsub         = 10
+ /
+
+ $RESISTIVITY
+    cfl_resist   =    0.9   ! Courant's number for resistivity
+    eta_0        =  100.0   ! uniform resistivity
+    eta_1        =    0.0   ! anomalous resistivity, works above j_crit
+    j_crit       = 1000.0   ! critical value of current
+ /
+
+$STREAMING_CR
+   nscr                    = 1
+   cred_min                = 5000.0
+   nsub                    = -1
+   sigma_paral             = 1e-4
+   sigma_perp              = 1e10
+   ord_pc_grad             = 2
+   disable_feedback        = .false.      ! feedback to MHD gas
+   disable_streaming       = .true.       ! knob for streaming + diffusion or only diffusion
+   cr_sound_speed          = .true.
+   smallescr               =  1e-6        ! floor value of 0.0 will blow up interaction coefficient calculation
+/
+
+
+ $SHEARING
+    omega        = 0.0      ! angular freq.
+    qshear       = 1.0      ! shearing param. q: vy=q*omega*x
+ /
+
+ $SN_SOURCES
+    r_sn         =  50.0    ! radius of explosion (gauss function)
+    h_sn         = 100.0    ! std. dev. for normal distribution of SN i "z" direction
+    f_sn_kpc2    =  0.0    ! surface frequency of SN ( / kpc^2 / Myr )
+ /
+
+ $PROBLEM_CONTROL
+    d0           =  5.0     ! density in galactic plane
+    bxn          =  1.0     !
+    byn          =  0.0     ! __direction__ of B field
+    bzn          =  0.0     !
+    x0           =  0.0     ! coordinates of single expl with amplitude
+    y0           =  0.0     ! that is set in problem_initial_conditions (testing purpose)
+    z0           =  100.0   !
+    beta_cr      =  4.0     ! participation of CR in initial equil. (similar to alfa for B)
+    amp_cr       =  0.0     ! amplitude of expl. (problem_initial_conditionslem, x0,y0,z0)
+    alpha        =  1.0
+    T_mid        = 5000
+ /
+
+ $THERMAL
+   thermal_active = .TRUE.
+   cool_model     = 'piecewise_power_law'
+   cool_curve     = 'tabulated'
+   cool_file      = 'cool_Kobayashi.txt'
+   heat_model     = 'G012'
+   scheme         = 'EE'
+   alpha_cool     = 1.5
+   Teq            = 1000.0
+   Lambda_0       = 1.0e-25
+   G0             = 0.0e-26
+   G1             = 2.0e-25 !40.44e-25
+   G2             = 0.0e-27
+   x_ion          = 1.0
+   cfl_coolheat   = 0.000001
+   isochoric      = 1
+/
+
+ $MULTIGRID_SOLVER
+ /
+
+ $MULTIGRID_DIFFUSION
+    diff_explicit = .false.
+    diff_theta     = 0.6
+    diff_tstep_fac = 20
+    norm_tol = 1e-4
+    nsmoob = 4
+    max_cycles = 20
+    diff_bnd_str = "zero"
+ /
+
+ $MULTIGRID_GRAVITY
+ /
+
+ $INTERACTIONS
+ /
+
+ $AMR
+ /

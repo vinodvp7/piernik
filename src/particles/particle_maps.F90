@@ -131,7 +131,10 @@ contains
          call cgl%cg%costs%stop(I_PARTICLE)
          cgl => cgl%nxt
       enddo
-
+#ifdef SHEARING_BOX
+      ! Force boundary update to handle Shearing Box periodicity
+      call leaves%leaf_arr3d_boundaries(iv)
+#endif /* SHEARING_BOX */
       call ppp_main%stop(map_label, PPP_PART)
 
    end subroutine map_ngp
@@ -209,7 +212,10 @@ contains
          call cgl%cg%costs%stop(I_PARTICLE)
          cgl => cgl%nxt
       enddo
-
+#ifdef SHEARING_BOX
+      ! Force boundary update to handle Shearing Box periodicity
+      call leaves%leaf_arr3d_boundaries(iv)
+#endif /* SHEARING_BOX */
       call ppp_main%stop(map_label, PPP_PART)
 
    end subroutine map_cic

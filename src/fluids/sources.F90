@@ -62,6 +62,9 @@ contains
 #ifdef THERM
       use thermal,      only: init_thermal
 #endif /* THERM */
+#ifdef SHEARING_BOX
+      use new_shear,    only: init_shear
+#endif /* SHEARING_BOX */
 
       implicit none
 
@@ -86,6 +89,10 @@ contains
 #ifdef THERM
       call init_thermal
 #endif /* THERM */
+
+#ifdef SHEARING_BOX
+      call init_shear
+#endif /* SHEARING_BOX */
 
     end subroutine init_sources
 
@@ -177,6 +184,9 @@ contains
 #ifdef SHEAR
       use shear,            only: shear_acc
 #endif /* SHEAR */
+#ifdef SHEARING_BOX
+      use new_shear,        only: add_shear_source 
+#endif /* SHEARING_BOX */
 
       implicit none
 
@@ -214,6 +224,11 @@ contains
 #ifdef CORIOLIS
       call get_updates_from_acc(n, u, usrc, coriolis_force(sweep,u)) ! n safe
 #endif /* CORIOLIS */
+#ifdef SHEARING_BOX
+      ! Call directly, similar to grav_src_exec. 
+      ! 'usrc' is updated in-place inside the subroutine.
+      call add_shear_source(sweep, n, u, cg, i1, i2, usrc)
+#endif /* SHEARING_BOX */
 #ifdef NON_INERTIAL
       call get_updates_from_acc(n, u, usrc, non_inertial_force(sweep, u, cg))
 #endif /* NON_INERTIAL */
@@ -233,6 +248,7 @@ contains
          usrc(:,:) = usrc(:,:) + newsrc(:,:)
       endif
 #endif /* COSM_RAYS */
+
 
 ! --------------------------------------------------
 

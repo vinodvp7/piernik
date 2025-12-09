@@ -242,6 +242,11 @@ contains
       use grid_cont,  only: grid_container
       use mpisetup,   only: proc
       use ordering,   only: SFC_order
+#ifdef SHEARING_BOX
+      use global,     only: t
+      use constants,  only: BND_SHE
+      use new_shear,  only: qshear, omega
+#endif /* SHEARING_BOX */
 
       implicit none
 
@@ -259,6 +264,10 @@ contains
       integer(kind=4)                   :: tag
       integer(kind=8), dimension(xdim:zdim, LO:HI) :: overlap
       type(gcpa_t) :: l_pse
+#ifdef SHEARING_BOX
+      real                              :: y_shift_cells
+      integer                           :: y_shift_int_blocks, block_size_y
+#endif /* SHEARING_BOX */
 
       if (.not. this%dot%is_blocky) call die("[cg_list_neighbors:find_neighbors_SFC] Can work only on regular cartesian decompositions")
 
@@ -279,6 +288,32 @@ contains
                   if (any( [ ix, iy, iz ] /= 0)) then
                      ! find their SFC_id (take care about periodicity)
                      n_off = cg%my_se(:, LO) + [ ix, iy, iz ] * cg%n_b
+#ifdef SHEARING_BOX
+                     if (abs(ix) == 1 .and. dom%bnd(xdim, LO) == BND_SHE) then
+                        
+                        block_size_y = cg%n_b(ydim)
+                        
+                        ! Calculate the shear shift in units of CELLS.
+                        ! Formula: Shift = (q * Omega * t) * (Ly / Lx) * Total_Cells_Y
+                        ! We use 'this%l%n_d(ydim)' which is the total domain size in indices
+                        ! to handle AMR levels correctly.
+                        
+                        y_shift_cells = (qshear * omega * t) * &
+                                        (dom%len(xdim) / dom%len(ydim)) * &
+                                        real(this%l%n_d(ydim))
+                        
+                        ! Convert to Integer Blocks
+                        y_shift_int_blocks = floor(y_shift_cells / real(block_size_y))
+                        
+                        ! Apply Shift to Neighbor Coordinate:
+                        ! Left Neighbor (ix=-1) -> Shifted +Y
+                        ! Right Neighbor (ix=+1) -> Shifted -Y
+                        if (ix == -1) n_off(ydim) = n_off(ydim) + int(y_shift_int_blocks, kind=8) * block_size_y
+                        if (ix ==  1) n_off(ydim) = n_off(ydim) - int(y_shift_int_blocks, kind=8) * block_size_y
+
+                     endif
+#endif /* SHEARING_BOX */
+
                      where (dom%periodic) n_off = mod(n_off + this%l%n_d - this%l%off, this%l%n_d) + this%l%off
                      n_id = INVALID
                      if ( all(n_off >= this%l%off            .or. .not. dom%has_dir) .and. &
@@ -307,6 +342,12 @@ contains
                            tag = cart_uniq_tag([-ix, -iy, -iz], n_grid_id)
                            overlap(:, LO) = max(cg%lhn(:, LO), cg%ijkse(:, LO) + [ ix, iy, iz ] * cg%n_b)
                            overlap(:, HI) = min(cg%lhn(:, HI), cg%ijkse(:, HI) + [ ix, iy, iz ] * cg%n_b)
+#ifdef SHEARING_BOX
+                           if (abs(ix) == 1 .and. dom%bnd(xdim, LO) == BND_SHE) then
+                               overlap(ydim, LO) = overlap(ydim, LO) - 1
+                               overlap(ydim, HI) = overlap(ydim, HI) + 1
+                           endif
+#endif /* SHEARING_BOX */
                            call cg%i_bnd(n_dd)%add_seg(n_p, overlap, tag)
                            if (n_p == proc) cg%i_bnd(n_dd)%seg(ubound(cg%i_bnd(n_dd)%seg, dim=1))%local => l_pse%l_pse(n_grid_id)%p
 
@@ -314,6 +355,12 @@ contains
                            tag = cart_uniq_tag([ix, iy, iz], cg%grid_id)
                            overlap(:, LO) = max(cg%ijkse(:, LO), cg%lhn(:, LO) + [ ix, iy, iz ] * cg%n_b)
                            overlap(:, HI) = min(cg%ijkse(:, HI), cg%lhn(:, HI) + [ ix, iy, iz ] * cg%n_b)
+#ifdef SHEARING_BOX
+                           if (abs(ix) == 1 .and. dom%bnd(xdim, LO) == BND_SHE) then
+                               overlap(ydim, LO) = overlap(ydim, LO) - 1
+                               overlap(ydim, HI) = overlap(ydim, HI) + 1
+                           endif
+#endif /* SHEARING_BOX */
                            call cg%o_bnd(n_dd)%add_seg(n_p, overlap, tag)
 
                         endif
@@ -392,7 +439,7 @@ contains
 !! as the only option for AMR 'blocky' grids.
 !<
 
-   subroutine find_neighbors_bruteforce(this)
+subroutine find_neighbors_bruteforce(this)
 
       use cg_list,    only: cg_list_element
       use constants,  only: xdim, ydim, zdim, cor_dim, ndims, LO, HI, BND_MPI_FC, BND_FC
@@ -401,6 +448,11 @@ contains
       use grid_cont,  only: grid_container
       use mpisetup,   only: FIRST, LAST, proc
       use overlap,    only: is_overlap
+#ifdef SHEARING_BOX
+      use global,     only: t
+      use constants,  only: BND_SHE
+      use new_shear,  only: qshear, omega
+#endif /* SHEARING_BOX */
 
       implicit none
 
@@ -421,6 +473,10 @@ contains
       type(fmap), dimension(xdim:zdim, LO:HI)         :: f
       integer(kind=8), dimension(ndims, LO:HI)        :: box_8   !< temporary storage
       type(gcpa_t) :: l_pse
+#ifdef SHEARING_BOX
+      real                              :: y_shift_cells
+      integer                           :: y_shift_int_blocks, block_size_y
+#endif /* SHEARING_BOX */
 
       call l_pse%init(this)
 
@@ -434,6 +490,14 @@ contains
 
          per(:) = 0
          where (dom%periodic(:)) per(:) = this%l%n_d(:)
+
+#ifdef SHEARING_BOX
+         if (dom%bnd(xdim, LO) == BND_SHE) then
+             block_size_y = cg%n_b(ydim)
+             y_shift_cells = (qshear * omega * t) * (dom%len(xdim) / dom%len(ydim)) * real(this%l%n_d(ydim))
+             y_shift_int_blocks = floor(y_shift_cells / real(block_size_y))
+         endif
+#endif /* SHEARING_BOX */
 
          ! Create maps to mark neighbouring face cells
          do d = xdim, zdim
@@ -474,6 +538,14 @@ contains
                               if (id == 0 .or. per(d)>0) then
                                  poff = b_layer
                                  poff(d, :) = poff(d, :) + id*per(d)
+                                 
+#ifdef SHEARING_BOX
+                                 if (d == xdim .and. abs(id) == 1 .and. dom%bnd(xdim, LO) == BND_SHE) then
+                                     if (id == -1) poff(ydim, :) = poff(ydim, :) + int(y_shift_int_blocks, kind=8) * block_size_y
+                                     if (id ==  1) poff(ydim, :) = poff(ydim, :) - int(y_shift_int_blocks, kind=8) * block_size_y
+                                 endif
+#endif /* SHEARING_BOX */
+
                                  poff(:, LO) = max(poff(:, LO), f(d, lh)%b_layer(:, LO))
                                  poff(:, HI) = min(poff(:, HI), f(d, lh)%b_layer(:, HI))
                                  ! construct the layer to be send to the _interior_ of neighbouring grid and set the flag map
@@ -500,12 +572,26 @@ contains
                                              poff = this%dot%gse(j)%c(b)%se
                                              poff(:, LO) = poff(:, LO) + [ ix, iy, iz ] * per(:)
                                              poff(:, HI) = poff(:, HI) + [ ix, iy, iz ] * per(:)
+
+#ifdef SHEARING_BOX
+                                             if (abs(ix) == 1 .and. dom%bnd(xdim, LO) == BND_SHE) then
+                                                 if (ix == -1) poff(ydim, :) = poff(ydim, :) + int(y_shift_int_blocks, kind=8) * block_size_y
+                                                 if (ix ==  1) poff(ydim, :) = poff(ydim, :) - int(y_shift_int_blocks, kind=8) * block_size_y
+                                             endif
+#endif /* SHEARING_BOX */
+
                                              if (is_overlap(b_layer, poff)) then
                                                 poff(:, LO) = max(b_layer(:, LO), poff(:, LO))
                                                 poff(:, HI) = min(b_layer(:, HI), poff(:, HI))
                                                 aux = this%dot%gse(j)%c(b)%se
                                                 aux(:, LO) = aux(:, LO) + [ ix, iy, iz ] * per(:)
                                                 aux(:, HI) = aux(:, HI) + [ ix, iy, iz ] * per(:)
+#ifdef SHEARING_BOX
+                                                if (abs(ix) == 1 .and. dom%bnd(xdim, LO) == BND_SHE) then
+                                                    if (ix == -1) aux(ydim, :) = aux(ydim, :) + int(y_shift_int_blocks, kind=8) * block_size_y
+                                                    if (ix ==  1) aux(ydim, :) = aux(ydim, :) - int(y_shift_int_blocks, kind=8) * block_size_y
+                                                endif
+#endif /* SHEARING_BOX */
                                                 tag = uniq_tag(cg%my_se, aux, b)
                                                 aux = poff
                                                 aux(d, :) = aux(d, :) + [ -1, 1 ]
@@ -543,16 +629,40 @@ contains
                                              poff = b_layer
                                              poff(:, LO) = poff(:, LO) + [ ix, iy, iz ] * per(:)
                                              poff(:, HI) = poff(:, HI) + [ ix, iy, iz ] * per(:)
+
+#ifdef SHEARING_BOX
+                                             if (abs(ix) == 1 .and. dom%bnd(xdim, LO) == BND_SHE) then
+                                                 if (ix == -1) poff(ydim, :) = poff(ydim, :) + int(y_shift_int_blocks, kind=8) * block_size_y
+                                                 if (ix ==  1) poff(ydim, :) = poff(ydim, :) - int(y_shift_int_blocks, kind=8) * block_size_y
+                                             endif
+#endif /* SHEARING_BOX */
+
                                              if (is_overlap(poff(:,:), cg%my_se)) then
                                                 poff(:, LO) = max(cg%my_se(:, LO), poff(:, LO))
                                                 poff(:, HI) = min(cg%my_se(:, HI), poff(:, HI))
                                                 aux = cg%my_se
                                                 aux(:, LO) = aux(:, LO) - [ ix, iy, iz ] * per(:)
                                                 aux(:, HI) = aux(:, HI) - [ ix, iy, iz ] * per(:)
+
+#ifdef SHEARING_BOX
+                                                if (abs(ix) == 1 .and. dom%bnd(xdim, LO) == BND_SHE) then
+                                                    if (ix == -1) aux(ydim, :) = aux(ydim, :) - int(y_shift_int_blocks, kind=8) * block_size_y
+                                                    if (ix ==  1) aux(ydim, :) = aux(ydim, :) + int(y_shift_int_blocks, kind=8) * block_size_y
+                                                endif
+#endif /* SHEARING_BOX */
+
                                                 tag = uniq_tag(this%dot%gse(j)%c(b)%se, aux, cg%grid_id)
                                                 aux = poff
                                                 aux(:, LO) = aux(:, LO) - [ ix, iy, iz ] * per(:)
                                                 aux(:, HI) = aux(:, HI) - [ ix, iy, iz ] * per(:)
+
+#ifdef SHEARING_BOX
+                                                if (abs(ix) == 1 .and. dom%bnd(xdim, LO) == BND_SHE) then
+                                                    if (ix == -1) aux(ydim, :) = aux(ydim, :) - int(y_shift_int_blocks, kind=8) * block_size_y
+                                                    if (ix ==  1) aux(ydim, :) = aux(ydim, :) + int(y_shift_int_blocks, kind=8) * block_size_y
+                                                endif
+#endif /* SHEARING_BOX */
+
                                                 aux(d, :) = aux(d, :) + [ -1, 1 ]
                                                 if (is_overlap(this%dot%gse(j)%c(b)%se, aux)) then
                                                    dd = d
@@ -615,7 +725,7 @@ contains
 !!   such case)
 !<
 
-   subroutine find_ext_neighbors_bruteforce(this)
+subroutine find_ext_neighbors_bruteforce(this)
 
       use cg_list,    only: cg_list_element
       use constants,  only: xdim, ydim, zdim, cor_dim, ndims, LO, HI, I_ONE
@@ -625,6 +735,11 @@ contains
       use global,     only: do_external_corners
       use mpisetup,   only: FIRST, LAST, proc, tag_ub
       use overlap,    only: is_overlap
+#ifdef SHEARING_BOX
+      use global,     only: t
+      use constants,  only: BND_SHE
+      use new_shear,  only: qshear, omega
+#endif /* SHEARING_BOX */
 
       implicit none
 
@@ -637,6 +752,10 @@ contains
       integer(kind=8), dimension(ndims, LO:HI) :: box, box_narrow, e_guard, e_guard_wide, whole_level, poff, aux
       integer(kind=4)                          :: d, hl, lh, m_tag
       type(gcpa_t)                             :: l_pse
+#ifdef SHEARING_BOX
+      real                              :: y_shift_cells
+      integer                           :: y_shift_int_blocks, block_size_y
+#endif /* SHEARING_BOX */
 
       if (.not. do_external_corners) return
 
@@ -660,6 +779,14 @@ contains
 
             per(:) = 0
             where (dom%periodic(:)) per(:) = this%l%n_d(:)
+
+#ifdef SHEARING_BOX
+            if (dom%bnd(xdim, LO) == BND_SHE) then
+               block_size_y = cgl%cg%n_b(ydim)
+               y_shift_cells = (qshear * omega * t) * (dom%len(xdim) / dom%len(ydim)) * real(this%l%n_d(ydim))
+               y_shift_int_blocks = floor(y_shift_cells / real(block_size_y))
+            endif
+#endif /* SHEARING_BOX */
 
             do j = FIRST, LAST
                do b = lbound(this%dot%gse(j)%c(:), dim=1), ubound(this%dot%gse(j)%c(:), dim=1)
@@ -705,17 +832,47 @@ contains
                                                       ! poff: all periodic images of remote cg  with all possible guardcells
                                                       poff(:, LO) = box(:, LO) + [ ix, iy, iz ] * per(:)
                                                       poff(:, HI) = box(:, HI) + [ ix, iy, iz ] * per(:)
+
+#ifdef SHEARING_BOX
+                                                      if (abs(ix) == 1 .and. dom%bnd(xdim, LO) == BND_SHE) then
+                                                          if (ix == -1) poff(ydim, :) = poff(ydim, :) + int(y_shift_int_blocks, kind=8) * block_size_y
+                                                          if (ix ==  1) poff(ydim, :) = poff(ydim, :) - int(y_shift_int_blocks, kind=8) * block_size_y
+                                                      endif
+#endif /* SHEARING_BOX */
+
                                                       if (is_overlap(e_guard, poff)) then
                                                          aux(:, LO) = max(e_guard(:, LO), poff(:, LO))
                                                          aux(:, HI) = min(e_guard(:, HI), poff(:, HI))
+#ifdef SHEARING_BOX
+                                                         if (abs(ix) == 1 .and. dom%bnd(xdim, LO) == BND_SHE) then
+                                                            ! Reverse shift to recover original grid ID context
+                                                            if (ix == -1) aux(ydim, :) = aux(ydim, :) - int(y_shift_int_blocks, kind=8) * block_size_y
+                                                            if (ix ==  1) aux(ydim, :) = aux(ydim, :) + int(y_shift_int_blocks, kind=8) * block_size_y
+                                                         endif
+#endif /* SHEARING_BOX */
                                                          call cgl%cg%o_bnd(cor_dim)%add_seg(j, aux, m_tag + uniq_tag(this%dot%gse(j)%c(b)%se, aux, cgl%cg%grid_id))
                                                       endif
 
                                                       poff(:, LO) = box_narrow(:, LO) + [ ix, iy, iz ] * per(:)
                                                       poff(:, HI) = box_narrow(:, HI) + [ ix, iy, iz ] * per(:)
+
+#ifdef SHEARING_BOX
+                                                      if (abs(ix) == 1 .and. dom%bnd(xdim, LO) == BND_SHE) then
+                                                          if (ix == -1) poff(ydim, :) = poff(ydim, :) + int(y_shift_int_blocks, kind=8) * block_size_y
+                                                          if (ix ==  1) poff(ydim, :) = poff(ydim, :) - int(y_shift_int_blocks, kind=8) * block_size_y
+                                                      endif
+#endif /* SHEARING_BOX */
+
                                                       if (is_overlap(e_guard_wide, poff)) then
                                                          aux(:, LO) = max(e_guard_wide(:, LO), poff(:, LO))
                                                          aux(:, HI) = min(e_guard_wide(:, HI), poff(:, HI))
+#ifdef SHEARING_BOX
+                                                         if (abs(ix) == 1 .and. dom%bnd(xdim, LO) == BND_SHE) then
+                                                            ! Reverse shift to recover original grid ID context
+                                                            if (ix == -1) aux(ydim, :) = aux(ydim, :) - int(y_shift_int_blocks, kind=8) * block_size_y
+                                                            if (ix ==  1) aux(ydim, :) = aux(ydim, :) + int(y_shift_int_blocks, kind=8) * block_size_y
+                                                         endif
+#endif /* SHEARING_BOX */
                                                          call cgl%cg%i_bnd(cor_dim)%add_seg(j, aux, m_tag + uniq_tag(cgl%cg%my_se, aux, b))
                                                          if (j == proc) cgl%cg%i_bnd(cor_dim)%seg(ubound(cgl%cg%i_bnd(cor_dim)%seg, dim=1))%local => l_pse%l_pse(b)%p
                                                       endif

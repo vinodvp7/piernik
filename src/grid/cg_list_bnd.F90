@@ -327,7 +327,7 @@ contains
 !! rank-4 arrays. Pieces of boundaries that have to be sent between same pair of processes are merged
 !<
 
-   subroutine internal_boundaries_MPI_merged(this, ind, tgt3d, dmask)
+subroutine internal_boundaries_MPI_merged(this, ind, tgt3d, dmask)
 
       use constants,        only: xdim, ydim, zdim, cor_dim, I_ONE, LO, HI, base_level_id
       use dataio_pub,       only: die
@@ -337,6 +337,15 @@ contains
       use mpisetup,         only: FIRST, LAST, proc
       use named_array_list, only: wna
       use pppmpi,           only: req_ppp
+
+#ifdef SHEARING_BOX
+      ! Shearing Box Modules
+      use new_shear,        only: apply_shear_remap_3D, qshear, omega, Lx_box
+      use global,           only: t    ! Time variable
+      use domain,           only: dom  ! For domain bounds/dx
+      use constants,        only: BND_SHE
+      use fluidindex,       only: iarr_all_my, iarr_all_dn
+#endif /* SHEARING_BOX */
 
       implicit none
 
@@ -349,10 +358,19 @@ contains
       integer(kind=4) :: p
       type(req_ppp) :: req1, req2
 
+#ifdef SHEARING_BOX
+      ! Local variables for Shearing Remap
+      real                          :: y_shift_cells_total, frac_shift, v_shift
+      logical                       :: is_shear_bnd
+      integer(kind=4)               :: bnd_dir_idx
+#endif /* SHEARING_BOX */
+
       if (.not. this%ms%valid) call die("[cg_list_bnd:internal_boundaries_MPI_merged] this%ms%valid .eqv. .false.")
       if (this%l%id < base_level_id .and. .not. tgt3d) call die("[cg_list_bnd:internal_boundaries_MPI_merged] some 4D buffers aren't reliably initialized below base level")
 
-      ! for some reasons
+      ! -----------------------------------------------------------
+      ! 1. PREPARE & SEND (Standard logic, no shear mods needed here)
+      ! -----------------------------------------------------------
       call req1%init(owncomm = .false., label = "clb:ib.m1")
       call req2%init(owncomm = .false., label = "clb:ib.m2")
       do p = FIRST, LAST
@@ -393,7 +411,6 @@ contains
                      endif
                   enddo
                endif
-               ! explicit buf(lbound(buf, ...), ...) needed to prevent valgrind complains on "Invalid read of size 8", at least with gfortran 12.3
                call piernik_Irecv(slin%buf( lbound(slin%buf,  1):), size(slin%buf,  kind=4), MPI_DOUBLE_PRECISION, p, p,    req1)
                call piernik_Isend(slout%buf(lbound(slout%buf, 1):), size(slout%buf, kind=4), MPI_DOUBLE_PRECISION, p, proc, req2)
             endif
@@ -403,40 +420,107 @@ contains
 
       call req1%waitall("int_bnd_merged_R")
 
+      ! -----------------------------------------------------------
+      ! 2. RECEIVE & UNPACK (Modified with Shear Remap)
+      ! -----------------------------------------------------------
       do p = FIRST, LAST
          if (p /= proc) then
             associate (slin => this%ms%sl(p, IN))
             if (slin%total_size /= 0) then ! we have something received from process p
+               
+               ! --- CASE 1: 3D ARRAYS (Scalars: Density, Gravity Pot, etc.) ---
                if (tgt3d) then
                   do i = lbound(slin%list, dim=1), slin%cur_last
                      associate (li => slin%list(i))
                      if (dmask( li%dir)) then
-                        li%cg%q(ind)%arr( &
-                             li%se(xdim, LO):li%se(xdim, HI), &
-                             li%se(ydim, LO):li%se(ydim, HI), &
-                             li%se(zdim, LO):li%se(zdim, HI)) = reshape ( &
-                             slin%buf(li%offset:li%off_ceil), [ &
-                             li%se(xdim, HI) - li%se(xdim, LO) + I_ONE, &
-                             li%se(ydim, HI) - li%se(ydim, LO) + I_ONE, &
-                             li%se(zdim, HI) - li%se(zdim, LO) + I_ONE ] )
+
+#ifdef SHEARING_BOX
+                        ! Check if this specific boundary is Shearing
+                        is_shear_bnd = (li%dir == xdim .and. dom%bnd(xdim, LO) == BND_SHE)
+                        
+                        if (is_shear_bnd) then
+                           ! Calculate Shift
+                           y_shift_cells_total = (qshear * omega * Lx_box * t) / dom%dx(ydim)
+                           frac_shift = y_shift_cells_total - floor(y_shift_cells_total)
+                           
+                           ! Adjust direction sign for Left/Right boundary
+                           if (li%se(xdim, LO) < li%cg%ijkse(xdim, LO)) frac_shift = -frac_shift
+
+                           ! Apply Remap Interpolation
+                           call apply_shear_remap_3D( &
+                                li%cg%q(ind)%arr, &
+                                slin%buf(li%offset:li%off_ceil), &
+                                li%se, frac_shift )
+                        else
+#endif /* SHEARING_BOX */
+                           ! Standard Copy (Non-Shear or SHEARING_BOX disabled)
+                           li%cg%q(ind)%arr( &
+                                li%se(xdim, LO):li%se(xdim, HI), &
+                                li%se(ydim, LO):li%se(ydim, HI), &
+                                li%se(zdim, LO):li%se(zdim, HI)) = reshape ( &
+                                slin%buf(li%offset:li%off_ceil), [ &
+                                li%se(xdim, HI) - li%se(xdim, LO) + I_ONE, &
+                                li%se(ydim, HI) - li%se(ydim, LO) + I_ONE, &
+                                li%se(zdim, HI) - li%se(zdim, LO) + I_ONE ] )
+                        endif
+
                      endif
                      end associate
                   enddo
+
+               ! --- CASE 2: 4D ARRAYS (Vectors: Hydro/MHD state) ---
                else
                   do i = lbound(slin%list, dim=1), slin%cur_last
                      associate (li => slin%list(i))
                      if (dmask( li%dir)) then
-                        li%cg%w(ind)%arr( 1:wna%get_dim4(ind), &
-                             li%se(xdim, LO):li%se(xdim, HI), &
-                             li%se(ydim, LO):li%se(ydim, HI), &
-                             li%se(zdim, LO):li%se(zdim, HI)) = reshape ( &
-                             slin%buf( &
-                            (li%offset - I_ONE) * wna%get_dim4(ind) + I_ONE : &
-                             li%off_ceil        * wna%get_dim4(ind) ), [ &
-                             int(wna%get_dim4(ind), kind=8), &
-                             li%se(xdim, HI) - li%se(xdim, LO) + I_ONE, &
-                             li%se(ydim, HI) - li%se(ydim, LO) + I_ONE, &
-                             li%se(zdim, HI) - li%se(zdim, LO) + I_ONE ] )
+
+#ifdef SHEARING_BOX
+                        is_shear_bnd = (li%dir == xdim .and. dom%bnd(xdim, LO) == BND_SHE)
+
+                        if (is_shear_bnd) then
+                           y_shift_cells_total = (qshear * omega * Lx_box * t) / dom%dx(ydim)
+                           frac_shift = y_shift_cells_total - floor(y_shift_cells_total)
+                           if (li%se(xdim, LO) < li%cg%ijkse(xdim, LO)) frac_shift = -frac_shift
+
+                           ! Remap each component (Density, MomX, MomY, etc.)
+                           do bnd_dir_idx = 1, wna%get_dim4(ind)
+                               call apply_shear_remap_3D( &
+                                   li%cg%w(ind)%arr(bnd_dir_idx, :, :, :), &
+                                   slin%buf( (li%offset-1)*wna%get_dim4(ind) + bnd_dir_idx : &
+                                             li%off_ceil   *wna%get_dim4(ind) : wna%get_dim4(ind) ), &
+                                   li%se, frac_shift )
+                           enddo
+
+                           ! Apply Velocity Boost to Y-Momentum (Only for Hydro array)
+                           ! Check if we are updating the main fluid array (ind == 1 or wna%fi)
+                           if (ind == wna%fi) then 
+                               v_shift = qshear * omega * Lx_box
+                               if (li%se(xdim, LO) > li%cg%ijkse(xdim, LO)) v_shift = -v_shift
+
+                               ! py = py + rho * v_shift (Simplified conservative update)
+                               li%cg%w(ind)%arr(iarr_all_my, &
+                                    li%se(xdim, LO):li%se(xdim, HI), &
+                                    li%se(ydim, LO):li%se(ydim, HI), &
+                                    li%se(zdim, LO):li%se(zdim, HI)) = &
+                                    li%cg%w(ind)%arr(iarr_all_my, ..., ..., ...) + &
+                                    li%cg%w(ind)%arr(iarr_all_dn, ..., ..., ...) * v_shift
+                           endif
+
+                        else
+#endif /* SHEARING_BOX */
+                           ! Standard Copy (Non-Shear or SHEARING_BOX disabled)
+                           li%cg%w(ind)%arr( 1:wna%get_dim4(ind), &
+                                li%se(xdim, LO):li%se(xdim, HI), &
+                                li%se(ydim, LO):li%se(ydim, HI), &
+                                li%se(zdim, LO):li%se(zdim, HI)) = reshape ( &
+                                slin%buf( &
+                               (li%offset - I_ONE) * wna%get_dim4(ind) + I_ONE : &
+                                li%off_ceil        * wna%get_dim4(ind) ), [ &
+                                int(wna%get_dim4(ind), kind=8), &
+                                li%se(xdim, HI) - li%se(xdim, LO) + I_ONE, &
+                                li%se(ydim, HI) - li%se(ydim, LO) + I_ONE, &
+                                li%se(zdim, HI) - li%se(zdim, LO) + I_ONE ] )
+                        endif
                      endif
                      end associate
                   enddo
@@ -465,7 +549,7 @@ contains
 !! pointer in cg%i_bnd(:)%seg(:)%local is not set.
 !<
 
-   subroutine internal_boundaries_MPI_1by1(this, ind, tgt3d, dmask)
+subroutine internal_boundaries_MPI_1by1(this, ind, tgt3d, dmask)
 
       use cg_cost_data,     only: I_OTHER
       use cg_list,          only: cg_list_element
@@ -478,6 +562,15 @@ contains
       use mpisetup,         only: err_mpi
       use named_array_list, only: wna
       use pppmpi,           only: req_ppp
+      
+#ifdef SHEARING_BOX
+      ! Shearing Box Modules for 1by1
+      use new_shear,        only: apply_shear_remap_3D, qshear, omega, Lx_box
+      use global,           only: t    ! Time variable
+      use domain,           only: dom  ! For domain bounds/dx
+      use constants,        only: BND_SHE
+      use fluidindex,       only: iarr_all_my, iarr_all_dn
+#endif /* SHEARING_BOX */
 
       implicit none
 
@@ -494,6 +587,14 @@ contains
       integer(kind=4), parameter        :: rank3 = I_THREE, rank4 = I_FOUR
       integer(kind=4), dimension(rank3) :: b3sz, b3su, b3st
       integer(kind=4), dimension(rank4) :: b4sz, b4su, b4st
+      
+#ifdef SHEARING_BOX
+      real                          :: y_shift_cells_total, frac_shift, v_shift
+      logical                       :: is_shear_bnd
+      integer(kind=4)               :: bnd_dir_idx
+      real, allocatable, dimension(:) :: tmp_buf
+      integer(kind=8)               :: buf_size
+#endif /* SHEARING_BOX */
 
       call req%init(owncomm = .true., label = "clb:ib.1by1")
       cgl => this%first
@@ -579,6 +680,95 @@ contains
                if (allocated(cg%i_bnd(d)%seg)) then
                   ! sanity checks are already done
                   do g = lbound(cg%i_bnd(d)%seg(:), dim=1), ubound(cg%i_bnd(d)%seg(:), dim=1)
+                     
+#ifdef SHEARING_BOX
+                     ! ----------------------------------------------------------------
+                     ! Shearing Box Logic for 1by1 (Applied AFTER Recv is complete)
+                     ! ----------------------------------------------------------------
+                     is_shear_bnd = (d == xdim .and. dom%bnd(xdim, LO) == BND_SHE)
+
+                     if (is_shear_bnd) then
+                        ! For 1by1, we handle segments individually.
+                        ! Only apply shearing if this segment is at the domain boundary.
+                        ! Logic: if received region is outside global domain (Ghost)
+                        
+                        i_seg => cg%i_bnd(d)%seg(g)
+
+                        ! Calculate Shift
+                        y_shift_cells_total = (qshear * omega * Lx_box * t) / dom%dx(ydim)
+                        frac_shift = y_shift_cells_total - floor(y_shift_cells_total)
+                        
+                        ! Direction check: Left Ghost (receiving from Right side) needs negative shift
+                        if (i_seg%se(xdim, HI) < cg%ijkse(xdim, LO)) frac_shift = -frac_shift
+
+                        if (tgt3d) then
+                           ! Copy ghost region to temp buffer to serve as Source for Remap
+                           buf_size = product(int(i_seg%se(:,HI)-i_seg%se(:,LO)+I_ONE, kind=8))
+                           allocate(tmp_buf(buf_size))
+                           
+                           tmp_buf = reshape(cg%q(ind)%arr( &
+                                i_seg%se(xdim, LO):i_seg%se(xdim, HI), &
+                                i_seg%se(ydim, LO):i_seg%se(ydim, HI), &
+                                i_seg%se(zdim, LO):i_seg%se(zdim, HI)), [buf_size])
+
+                           call apply_shear_remap_3D( &
+                                cg%q(ind)%arr, &   ! Target (writes back to grid)
+                                tmp_buf, &         ! Source (from temp buffer)
+                                i_seg%se, &
+                                frac_shift )
+
+                           deallocate(tmp_buf)
+
+                        else
+                           ! 4D Arrays (Momentum, Magnetic)
+                           buf_size = wna%get_dim4(ind) * product(int(i_seg%se(:,HI)-i_seg%se(:,LO)+I_ONE, kind=8))
+                           allocate(tmp_buf(buf_size))
+
+                           do bnd_dir_idx = 1, wna%get_dim4(ind)
+                              ! Extract single component to temp buf (size reduced)
+                              ! Note: apply_shear_remap_3D wants 1D array of scalar values for that component
+                              
+                              ! We can reuse buf_size logic but per component
+                              buf_size = product(int(i_seg%se(:,HI)-i_seg%se(:,LO)+I_ONE, kind=8))
+                              
+                              ! Careful: re-allocate or just use slice? 
+                              ! To be safe, allocate per component or manage indices.
+                              ! Let's allocate/deallocate inside loop for simplicity (or make tmp_buf large enough)
+                              
+                              deallocate(tmp_buf)
+                              allocate(tmp_buf(buf_size))
+                              
+                              tmp_buf = reshape(cg%w(ind)%arr(bnd_dir_idx, &
+                                   i_seg%se(xdim, LO):i_seg%se(xdim, HI), &
+                                   i_seg%se(ydim, LO):i_seg%se(ydim, HI), &
+                                   i_seg%se(zdim, LO):i_seg%se(zdim, HI)), [buf_size])
+
+                              call apply_shear_remap_3D( &
+                                   cg%w(ind)%arr(bnd_dir_idx, :, :, :), &
+                                   tmp_buf, &
+                                   i_seg%se, &
+                                   frac_shift )
+                           enddo
+                           
+                           deallocate(tmp_buf)
+
+                           ! Velocity Boost (Hydro only)
+                           if (ind == wna%fi) then 
+                               v_shift = qshear * omega * Lx_box
+                               if (i_seg%se(xdim, LO) > cg%ijkse(xdim, LO)) v_shift = -v_shift
+
+                               cg%w(ind)%arr(iarr_all_my, &
+                                    i_seg%se(xdim, LO):i_seg%se(xdim, HI), &
+                                    i_seg%se(ydim, LO):i_seg%se(ydim, HI), &
+                                    i_seg%se(zdim, LO):i_seg%se(zdim, HI)) = &
+                                    cg%w(ind)%arr(iarr_all_my, ..., ..., ...) + &
+                                    cg%w(ind)%arr(iarr_all_dn, ..., ..., ...) * v_shift
+                           endif
+                        endif
+                     endif
+                     ! ----------------------------------------------------------------
+#endif /* SHEARING_BOX */
+
                      call MPI_Type_free(cg%i_bnd(d)%seg(g)%sub_type, err_mpi)
                      call MPI_Type_free(cg%o_bnd(d)%seg(g)%sub_type, err_mpi)
                   enddo

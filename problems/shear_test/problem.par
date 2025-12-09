@@ -1,0 +1,45 @@
+$BASE_DOMAIN
+  n_d = 128, 128, 1
+  nb  = 4
+  ! x-boundaries are Shearing
+  bnd_xl = 'she'
+  bnd_xr = 'she'
+  ! y-boundaries are Periodic (standard for shearing box)
+  bnd_yl = 'per'
+  bnd_yr = 'per'
+  bnd_zl = 'per'
+  bnd_zr = 'per'
+  ! Domain centered on 0 for simple shear profile setup
+  xmin   = -0.5
+  xmax   =  0.5
+  ymin   = -0.5
+  ymax   =  0.5
+  zmin   =  0.0
+  zmax   =  1.0
+/
+
+$SHEARING_BOX
+  qshear = 1.5
+  omega  = 1.0
+/
+
+$PROBLEM_DATA
+  amp     = 10.0
+  sigma   = 0.05
+  prob_q  = 1.5
+  prob_om = 1.0
+/
+
+$OUTPUT_CONTROL
+  problem_name = 'shearblob'
+  dt_hdf = 0.1
+  vars(1:) = 'dens', 'velx', 'vely', 'pres'
+/
+
+$END_CONTROL
+  tend = 3.14159 ! approx half orbit (Pi/Omega)
+/
+
+$NUMERICAL_SETUP
+  cfl = 0.4
+/

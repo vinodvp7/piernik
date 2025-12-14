@@ -190,6 +190,68 @@ contains
 
    end subroutine hydrostatic_zeq_densmid
 
+
+   subroutine hydrostatic_zeq_densmid_new(d0, csim2, sd)
+
+      
+      use constants,       only: half, small, two, xdim, ydim, zdim, LO, HI
+      use dataio_pub,      only: die
+      use gravity,         only: get_gprofs
+      use grid_cont,       only: grid_container
+      use fluidindex,      only: iarr_all_dn
+      use cg_leaves,       only: leaves
+      use cg_list,         only: cg_list_element
+
+      implicit none
+
+      real,           intent(in)          :: d0, csim2
+      real, optional, intent(out)         :: sd
+
+
+      type(cg_list_element),  pointer :: cgl
+      type(grid_container),   pointer :: cg
+      integer                         :: i, j, k 
+      real, allocatable               :: old_phi(:,:,:)
+      real                            :: diff, max_diff
+
+      cgl => leaves%first
+      do while (associated(cgl))
+         cg => cgl%cg
+         call set_default_hsparams(cg)
+         i = cg%lhn(xdim,LO)
+         j = cg%lhn(ydim,LO)
+         call hydrostatic_zeq_densmid(i, j, d0, csim2, sd)
+         cg%u(iarr_all_dn(1), i, j,:) = dprof(:)  
+         cgl => cgl%nxt
+      enddo
+
+      cg => leaves%first%cg
+      if (allocated(old_phi)) deallocate(old_phi)
+      allocate(old_phi(size(cg%sgp,1), size(cg%sgp,2), size(cg%sgp,3)))
+      old_phi = cg%sgp
+
+      ! Solve for new potential
+      call multigrid_solve_grav(iarr_all_sg)
+
+      max_diff = 0.0
+      diff = maxval(abs(cg%sgp - old_phi))
+      max_diff = max(max_diff, diff)
+
+
+
+
+
+   end subroutine hydrostatic_zeq_densmid_new
+
+
+
+
+
+
+
+
+
+
    !>
 !! \brief Routine that establishes hydrostatic + thermal equilibrium for a given midplane Temperature T0
 !! \details It is important to have get_gprofs pointer associated to a proper routine that gives back the column of nsub*nzt elements of gravitational acceleration in z direction. gprogs_target needs to be then set to "gpth"

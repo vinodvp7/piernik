@@ -99,6 +99,9 @@ contains
       use pppmpi,            only: req_ppp
       use sources,           only: prepare_sources
       use solvecg_unsplit,   only: solve_cg_unsplit
+#ifdef RESISTIVE
+      use resistivity_helpers,   only: update_resistive_terms
+#endif /* RESISTIVE */
 
       implicit none
 
@@ -185,8 +188,12 @@ contains
          call req%waitall("sweeps")
 
          call update_boundaries(istep)
-      enddo
 
+#ifdef RESISTIVE
+         call update_resistive_terms(istep)
+#endif /* RESISTIVE */
+
+      enddo
       call sl%delete
       deallocate(sl)
 

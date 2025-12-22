@@ -82,6 +82,7 @@ contains
       use wrapper_stats,         only: init_wstats
 #ifdef RESISTIVE
       use resistivity,           only: init_resistivity
+      use resistivity_helpers,   only: update_resistive_terms
 #endif /* RESISTIVE */
 #ifdef GRAV
       use gravity,               only: init_grav, init_terms_grav, source_terms_grav
@@ -299,6 +300,10 @@ contains
 
          call init_psi ! initialize the auxiliary field for divergence cleaning when needed
 
+#ifdef RESISTIVE
+      call update_resistive_terms
+#endif /* RESISTIVE */
+
          write(msg, '(a,f10.2)')"[initpiernik] IC on base level, time elapsed: ",set_timer(tmr_fu)
          if (master) call printinfo(msg, V_INFO)
          call ppp_main%stop(iter_label // "0", PPP_PROB)
@@ -325,7 +330,9 @@ contains
             call ppp_main%start(prob_label)
             call problem_initial_conditions ! reset initial conditions after possible changes of refinement structure
             call ppp_main%stop(prob_label)
-
+#ifdef RESISTIVE
+      call update_resistive_terms
+#endif /* RESISTIVE */
             nit = nit + 1
             write(msg, '(2(a,i3),a,f10.2)')"[initpiernik] IC iteration: ",nit,", finest level:",finest%level%l%id,", time elapsed: ",set_timer(tmr_fu)
             if (master) call printinfo(msg, V_INFO)

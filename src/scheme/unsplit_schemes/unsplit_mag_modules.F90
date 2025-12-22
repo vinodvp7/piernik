@@ -48,6 +48,10 @@ contains
       use fluxtypes,        only: ext_fluxes
       use unsplit_source,   only: apply_source
       use diagnostics,      only: my_allocate, my_deallocate
+#ifdef RESISTIVE
+      use resistivity,      only: eta_jn
+      use constants,        only: I_TWO, ndims
+#endif /* RESISTIVE */
 
       implicit none
 
@@ -70,6 +74,10 @@ contains
       real, dimension(:,:),allocatable           :: tbflux                ! to temporarily store transpose of bflux
       type(ext_fluxes)                           :: eflx
       integer                                    :: i_cs_iso2
+#ifdef RESISTIVE
+      real, dimension(:,:),   pointer              :: resterm
+      real, dimension(:,:)                         :: resterm_e
+#endif /* RESISTIVE */
 
       uhi = wna%ind(uh_n)
       bhi = wna%ind(magh_n)
@@ -94,7 +102,9 @@ contains
          call my_allocate(tflux,  [size(u, 2, kind=4),         size(u, 1, kind=4)])
          call my_allocate(bflux,  [size(b, 1, kind=4) - I_ONE, size(b_psi, 2, kind=4)])
          call my_allocate(tbflux, [size(b_psi, 2, kind=4),     size(b, 1, kind=4)])
-
+#ifdef RESISTIVE
+         call my_allocate(resterm_e, [size(u, 1, kind=4) - I_ONE , I_TWO * ndims])
+#endif /* RESISTIVE */
          do i2 = cg%ijkse(pdims(ddim, ORTHO2), LO), cg%ijkse(pdims(ddim, ORTHO2), HI)
             do i1 = cg%ijkse(pdims(ddim, ORTHO1), LO), cg%ijkse(pdims(ddim, ORTHO1), HI)
 
@@ -131,8 +141,13 @@ contains
                if (i_cs_iso2 > 0) cs2 => cg%q(i_cs_iso2)%get_sweep(ddim, i1, i2)
 
                call cg%set_fluxpointers(ddim, i1, i2, eflx)
-
+#ifdef RESISTIVE
+               resterm   => cg%w(wna%ind(eta_jn))%get_sweep(ddim,i1,i2)
+               resterm_e =  transpose(resterm)
+               call solve(u, b_psi ,cs2, eflx, flux, bflux, resterm_e, ddim)
+#else /* !RESISTIVE */
                call solve(u, b_psi ,cs2, eflx, flux, bflux)
+#endif /* !RESISTIVE */
 
                call cg%save_outfluxes(ddim, i1, i2, eflx)
 
@@ -152,7 +167,9 @@ contains
          call my_deallocate(u); call my_deallocate(flux); call my_deallocate(tflux)
          call my_deallocate(b); call my_deallocate(b_psi); call my_deallocate(tbflux)
          call my_deallocate(bflux)
-
+#ifdef RESISTIVE
+         call my_deallocate(resterm_e)
+#endif /* RESISTIVE */
       enddo
 
       call apply_flux(cg,istep,.true.)
@@ -163,7 +180,7 @@ contains
 
    end subroutine solve_cg_ub
 
-   subroutine solve(ui, bi, cs2, eflx, flx, bflx)
+   subroutine solve(ui, bi, cs2, eflx, flx, bflx, resterm, ddim)
 
       use constants,      only: DIVB_HDC
       use fluxtypes,      only: ext_fluxes
@@ -171,19 +188,29 @@ contains
       use hlld,           only: riemann_wrap
       use interpolations, only: interpol
       use dataio_pub,     only: die
+#ifdef RESISTIVE
+      use resistivity_helpers,   only: resitive_flux_correct
+#endif /* RESISTIVE */
 
       implicit none
 
-      real, dimension(:,:),        intent(in)    :: ui      !< cell-centered initial fluid states
-      real, dimension(:,:),        intent(in)    :: bi      !< cell-centered initial magnetic field states (including psi field when necessary)
-      real, dimension(:,:),        intent(inout) :: flx     !< cell-centered intermediate fluid states
-      real, dimension(:,:),        intent(inout) :: bflx    !< cell-centered intermediate magnetic field states (including psi field when necessary)
-      real, dimension(:), pointer, intent(in)    :: cs2     !< square of local isothermal sound speed
-      type(ext_fluxes),            intent(inout) :: eflx    !< external fluxes
+      real, dimension(:,:),                    intent(in)        :: ui      !< cell-centered initial fluid states
+      real, dimension(:,:),                    intent(in)        :: bi      !< cell-centered initial magnetic field states (including psi field when necessary)
+      real, dimension(:,:),                    intent(inout)     :: flx     !< cell-centered intermediate fluid states
+      real, dimension(:,:),                    intent(inout)     :: bflx    !< cell-centered intermediate magnetic field states (including psi field when necessary)
+      real, dimension(:), pointer,             intent(in)        :: cs2     !< square of local isothermal sound speed
+      type(ext_fluxes),                        intent(inout)     :: eflx    !< external fluxes
+      real, dimension(:,:), optional,          intent(in)        :: resterm !< optional resitive flux correction to fluid energy and B field
+      integer, optional,                       intent(in)        :: ddim    !< which dimension
 
       ! left and right states at interfaces 1 .. n-1
       real, dimension(size(ui, 1)-1, size(ui, 2)), target :: ql, qr
       real, dimension(size(bi, 1)-1, size(bi, 2)), target :: bl, br
+
+#ifdef RESISTIVE
+      real, dimension(size(ui, 1) - 1, size(resterm, 2)), target  :: rl, rr
+      call interpol_generic(resterm, rl, rr)
+#endif /* RESISTIVE */
 
       ! updates required for higher order of integration will likely have shorter length
 
@@ -191,6 +218,10 @@ contains
 
       call interpol(ui, ql, qr, bi, bl, br)
       call riemann_wrap(ql, qr, bl, br, cs2, flx, bflx) ! Now we advance the left and right states by a timestep.
+
+#ifdef RESISTIVE
+      call resitive_flux_correct(flx, bflx, rl, rr, ddim)
+#endif /* RESISTIVE */
 
       if (associated(eflx%li)) flx(eflx%li%index, :) = eflx%li%uflx
       if (associated(eflx%ri)) flx(eflx%ri%index, :) = eflx%ri%uflx

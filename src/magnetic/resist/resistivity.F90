@@ -39,7 +39,8 @@ module resistivity
    implicit none
 
    private
-   public  :: init_resistivity, timestep_resist, cleanup_resistivity, etamax, diffuseb, cu2max, deimin, eta1_active
+   public  :: init_resistivity, timestep_resist, cleanup_resistivity, etamax, diffuseb, cu2max, deimin, eta1_active, &
+   &          eta_jn, eta_n, ord_curl_grad, compute_resist
 
    real                                  :: cfl_resist                     !< CFL factor for resistivity effect
    real                                  :: eta_0                          !< uniform resistivity
@@ -48,10 +49,12 @@ module resistivity
    real                                  :: jc2                            !< squared critical value of current density
    real                                  :: deint_max                      !< COMMENT ME
    integer(kind=4)                       :: eta_scale                      !< COMMENT ME
+   integer(kind=4)                       :: ord_curl_grad
    real(kind=8)                          :: d_eta_factor
    type(value)                           :: etamax, cu2max, deimin
    logical, save                         :: eta1_active = .true.           !< resistivity off-switcher while eta_1 == 0.0
-   character(len=dsetnamelen), parameter :: eta_n = "eta", wb_n = "wb", eh_n = "eh", dbx_n = "dbx", dby_n = "dby", dbz_n = "dbz"
+   character(len=dsetnamelen), parameter :: eta_n = "eta", wb_n = "wb", eh_n = "eh", dbx_n = "dbx", dby_n = "dby", &
+   &                                        dbz_n = "dbz", eta_jn = "eta_jn"
 
 contains
 
@@ -89,6 +92,7 @@ contains
       use func,             only: operator(.equals.)
       use mpisetup,         only: rbuff, ibuff, master, slave
       use named_array_list, only: qna
+      use constants,        only: ndims
 #ifdef ISO
       use constants,        only: zero
 #endif /* ISO */
@@ -98,36 +102,38 @@ contains
       real                           :: dims_twice
       type(cg_list_element), pointer :: cgl
 
-      namelist /RESISTIVITY/ cfl_resist, eta_0, eta_1, eta_scale, j_crit, deint_max
+      namelist /RESISTIVITY/ cfl_resist, eta_0, eta_1, eta_scale, j_crit, deint_max, ord_curl_grad
 
       if (code_progress < PIERNIK_INIT_GRID) call die("[resistivity:init_resistivity] grid not initialized.")
 
-      cfl_resist = 0.4
-      eta_0      = 0.0
-      eta_1      = 0.0
-      eta_scale  = 4
-      j_crit     = 1.0e6
-      deint_max  = 0.01
+      cfl_resist    = 0.4
+      eta_0         = 0.0
+      eta_1         = 0.0
+      eta_scale     = 4
+      j_crit        = 1.0e6
+      deint_max     = 0.01
+      ord_curl_grad = 4
 
       if (master) then
 
          if (.not.nh%initialized) call nh%init()
          open(newunit=nh%lun, file=nh%tmp1, status="unknown")
-         write(nh%lun, nml=RESISTIVITY)
+         write(nh%lun,nml=RESISTIVITY)
          close(nh%lun)
          open(newunit=nh%lun, file=nh%par_file)
          nh%errstr=""
          read(unit=nh%lun, nml=RESISTIVITY, iostat=nh%ierrh, iomsg=nh%errstr)
          close(nh%lun)
          call nh%namelist_errh(nh%ierrh, "RESISTIVITY")
-         read(nh%cmdl_nml, nml=RESISTIVITY, iostat=nh%ierrh)
+         read(nh%cmdl_nml,nml=RESISTIVITY, iostat=nh%ierrh)
          call nh%namelist_errh(nh%ierrh, "RESISTIVITY", .true.)
          open(newunit=nh%lun, file=nh%tmp2, status="unknown")
-         write(nh%lun, nml=RESISTIVITY)
+         write(nh%lun,nml=RESISTIVITY)
          close(nh%lun)
          call nh%compare_namelist()
 
          ibuff(1) = eta_scale
+         ibuff(2) = ord_curl_grad
 
          rbuff(1) = cfl_resist
          rbuff(2) = eta_0
@@ -142,7 +148,8 @@ contains
 
       if (slave) then
 
-         eta_scale  = ibuff(1)
+         eta_scale      = ibuff(1)
+         ord_curl_grad  = ibuff(2)
 
          cfl_resist = rbuff(1)
          eta_0      = rbuff(2)
@@ -161,6 +168,8 @@ contains
       call all_cg%reg_var(dbx_n)
       call all_cg%reg_var(dby_n)
       call all_cg%reg_var(dbz_n)
+      call all_cg%reg_var(name = eta_jn, dim4 = 2 * ndims)
+      
 #ifdef ISO
       if (eta_1 .equals. zero) then
          cgl => leaves%first
@@ -261,10 +270,10 @@ contains
             wb = wb + eh**2
          endif
 
-!        eta(:,:,:) = eta_0 + eta_1 * sqrt( max(0.0,wb(:,:,:) - jc2 ))
-!        the above may cause FPE because compiler may transform it to max(0.0, sqrt(wb(:,:,:) - jc2 ))
+!        eta(:,:,:) = eta_0 + eta_1 * sqrt( max(0.0,wb(:,:,:)- jc2 ))
+!        the above may cause FPE because compiler may transform it to max(0.0, sqrt(wb(:,:,:)- jc2 ))
          where (wb(:,:,:) - jc2 > zero)
-            eta(:,:,:) = eta_0 + eta_1 * sqrt(wb(:,:,:) - jc2)
+            eta(:,:,:) = eta_0 + eta_1 * sqrt(wb(:,:,:)- jc2)
          elsewhere
             eta(:,:,:) = eta_0
          endwhere
@@ -282,7 +291,7 @@ contains
             eh(:,:,cg%lhn(zdim,LO)+1:cg%lhn(zdim,HI)-1) = eh(:,:,cg%lhn(zdim,LO)+1:cg%lhn(zdim,HI)-1) + eta(:,:,cg%lhn(zdim,LO):cg%lhn(zdim,HI)-2) + eta(:,:,cg%lhn(zdim,LO)+2:cg%lhn(zdim,HI))
             eh(:,:,cg%lhn(zdim,LO)) = eh(:,:,cg%lhn(zdim,LO)+1) ; eh(:,:,cg%lhn(zdim,HI)) = eh(:,:,cg%lhn(zdim,HI)-1)
          endif
-         eh = real((eh + eta_scale*eta) * d_eta_factor)
+         eh = real((eh + eta_scale*eta)*d_eta_factor)
 
          where (eta > eta_0) eta = eh
 
@@ -382,7 +391,7 @@ contains
 !! \brief
 !! \todo overload me or use class(*) if you dare
 !<
-   subroutine vanleer_limiter(f, a, b)
+   subroutine vanleer_limiter(f,a,b)
 
       implicit none
 
@@ -392,9 +401,9 @@ contains
       ! locals
       real, dimension(size(a,1))        :: c !< a*b
 
-      c = a * b                                                                    !> \todo OPTIMIZE ME
+      c = a*b                                                                    !> \todo OPTIMIZE ME
       where (c > 0.0)
-         f = f + 2.0 * c/(a + b)
+         f = f+2.0*c/(a+b)
       endwhere
 
    end subroutine vanleer_limiter
@@ -419,8 +428,8 @@ contains
       wp(1:n-1) = half*(w(2:n) - w(1:n-1))                   ; wp(n) = wp(n-1)
       wm(2:n)   = wp(1:n-1)                                  ; wm(1) = wm(2)
 
-      call vanleer_limiter(w, wm, wp)
-      wcu1d     = w * dt
+      call vanleer_limiter(w,wm,wp)
+      wcu1d     = w*dt
 
    end subroutine tvdd_1d
 
@@ -458,7 +467,7 @@ contains
 
       n1 = I_ONE + mod(sdir    ,   ndims)
       n2 = I_ONE + mod(sdir+I_ONE, ndims)
-      etadir = sum([xdim, ydim, zdim]) - ibdir - sdir
+      etadir = sum([xdim,ydim,zdim]) - ibdir - sdir
 
       call compute_resist
 
@@ -476,9 +485,9 @@ contains
 
          do i1 = cg%lhn(n1,LO), cg%lhn(n1,HI)
             do i2 = cg%lhn(n2,LO), cg%lhn(n2,HI)
-               b1d   => cg%w(wna%bi)%get_sweep(sdir, ibdir, i1, i2)
-               eta1d => cg%q(eta_i )%get_sweep(sdir,        i1, i2)
-               wcu1d => cg%q(wcu_i )%get_sweep(sdir,        i1, i2)
+               b1d   => cg%w(wna%bi)%get_sweep(sdir,ibdir,i1,i2)
+               eta1d => cg%q(eta_i )%get_sweep(sdir,      i1,i2)
+               wcu1d => cg%q(wcu_i )%get_sweep(sdir,      i1,i2)
                call tvdd_1d(b1d, eta1d, cg%idl(sdir), dt, wcu1d)
             enddo
          enddo

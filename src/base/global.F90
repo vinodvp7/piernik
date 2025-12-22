@@ -34,7 +34,7 @@
 module global
 
    use barrier,      only: extra_barriers
-   use constants,    only: cbuff_len, xdim, zdim
+   use constants,    only: cbuff_len, xdim, zdim, I_ZERO
    use mpi_wrappers, only: MPI_wrapper_stats
 
    implicit none
@@ -46,7 +46,7 @@ module global
         &    repetitive_steps, integration_order, limiter, limiter_b, smalld, smallei, smallp, use_smalld, use_smallei, interpol_str, &
         &    relax_time, grace_period_passed, cfr_smooth, skip_sweep, geometry25D, &
         &    dirty_debug, do_ascii_dump, show_n_dirtys, no_dirty_checks, sweeps_mgu, use_fargo, print_divB, do_external_corners, prefer_merged_MPI, waitall_timeout, &
-        &    divB_0_method, cc_mag, glm_alpha, use_eglm, cfl_glm, ch_grid, w_epsilon, psi_bnd, ord_mag_prolong, ord_fluid_prolong, which_solver, use_uhi, is_split
+        &    divB_0_method, cc_mag, glm_alpha, use_eglm, cfl_glm, ch_grid, w_epsilon, psi_bnd, ord_mag_prolong, ord_fluid_prolong, which_solver, use_uhi, is_split, is_resistive_mhd
 
 
    logical         :: dn_negative = .false.
@@ -114,7 +114,7 @@ module global
    integer(kind=4)               :: ord_fluid_prolong !< prolongation order for u
    logical                       :: do_external_corners  !< when .true. then perform boundary exchanges inside external guardcells
    character(len=cbuff_len)      :: solver_str           !< allow to switch between RIEMANN and RTVD without recompilation
-
+   integer                       :: is_resistive_mhd = I_ZERO     !< Is the mhd fluid ideal or resistive
    namelist /NUMERICAL_SETUP/ cfl, cflcontrol, disallow_negatives, disallow_CRnegatives, cfl_max, use_smalld, use_smallei, smalld, smallei, smallc, smallp, dt_initial, dt_max_grow, dt_shrink, dt_min, dt_max, &
         &                     max_redostep_attempts, limiter, limiter_b, relax_time, integration_order, cfr_smooth, skip_sweep, geometry25D, sweeps_mgu, print_divB, &
         &                     use_fargo, divB_0, glm_alpha, use_eglm, cfl_glm, ch_grid, interpol_str, w_epsilon, psi_bnd_str, ord_mag_prolong, ord_fluid_prolong, do_external_corners, solver_str
@@ -186,7 +186,7 @@ contains
 
       use bcast,      only: piernik_MPI_Bcast
       use constants,  only: big_float, one, PIERNIK_INIT_DOMAIN, INVALID, DIVB_CT, DIVB_HDC, &
-           &                BND_INVALID, BND_ZERO, BND_REF, BND_OUT, I_ZERO, O_INJ, O_LIN, O_I2, INVALID, &
+           &                BND_INVALID, BND_ZERO, BND_REF, BND_OUT, I_ZERO, I_ONE, O_INJ, O_LIN, O_I2, INVALID, &
            &                RTVD_SPLIT, HLLC_SPLIT, RIEMANN_SPLIT, RIEMANN_UNSPLIT, GEO_XYZ, V_INFO, V_DEBUG, V_ESSENTIAL
       use dataio_pub, only: die, msg, warn, code_progress, printinfo, nh
       use domain,     only: dom
@@ -468,7 +468,7 @@ contains
             if (master .and. .false.) call warn("[global:init_global] In case of problems with stability connected with checkerboard pattern in the psi field consider reducing CFL parameter (or just CFL_GLM). This solver also doesn't like sudden changes of timestep length.")
             ! ToDo: create a way to add this to the crash message.
 #ifdef RESISTIVE
-            call die("[global:init_global] RESISTIVE not yet implemented for DIVB_HDC")
+            is_resistive_mhd = I_ONE
 #endif /* RESISTIVE */
          case default
             call die("[global:init_global] unrecognized divergence cleaning description.")

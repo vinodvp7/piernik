@@ -132,6 +132,9 @@ contains
       use solvecg_rtvd,     only: solve_cg_rtvd
       use solvecg_riemann,  only: solve_cg_riemann
       use sources,          only: prepare_sources
+#ifdef RESISTIVE
+      use resistivity_helpers,   only: update_resistive_terms
+#endif /* RESISTIVE */
 
       implicit none
 
@@ -269,6 +272,9 @@ contains
          call req%waitall("sweeps")
 
          call update_boundaries(cdim, istep)
+#ifdef RESISTIVE
+         call update_resistive_terms(istep)
+#endif /* RESISTIVE */
       enddo
 
       call sl%delete

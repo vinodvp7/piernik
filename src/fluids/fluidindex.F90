@@ -70,6 +70,7 @@ module fluidindex
 
    integer(kind=4), allocatable, dimension(:)   :: iarr_all_mag         !< array (size = nmag) of all magnetic field components
    integer(kind=4), allocatable, dimension(:,:) :: iarr_mag_swp         !< array (size = nmag) of all mag. field indexes in the order depending on sweeps direction
+   integer(kind=4), allocatable, dimension(:,:) :: iarr_cur_swp         !< array (size = nmag) of all mag. field indexes in the order depending on sweeps direction
 
    integer(kind=4) :: i_sg                                              !< index denoting position of the selfgravitating fluid in the row of fluids - should be an iarr_sg !
 
@@ -191,6 +192,10 @@ contains
       iarr_mag_swp(ydim,:) = [ydim,xdim,zdim]
       iarr_mag_swp(zdim,:) = [zdim,ydim,xdim]
       iarr_all_mag(:)      = [xdim,ydim,zdim]
+
+      iarr_cur_swp(xdim,:) = [xdim,zdim,zdim]
+      iarr_cur_swp(ydim,:) = [ydim,xdim,zdim]
+      iarr_cur_swp(zdim,:) = [zdim,ydim,xdim]
 
       ! Compute index arrays for the ionized fluid
       if (has_ion) call set_fluidindex_arrays(flind%ion,.true.)

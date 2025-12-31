@@ -54,6 +54,7 @@ module grid_container_op
       procedure, pass :: get_curl        => cg_get_curl
       procedure, pass :: dot             => cg_dot
       procedure, pass :: cross           => cg_cross
+      procedure, pass :: face_to_center  => cg_face_to_center 
 
    end type grid_container_op_t
 
@@ -213,8 +214,9 @@ contains
 
    function cg_get_divergence(this, ord, iw, vec) result(cg_div)
 
-      use constants, only: xdim, ydim, zdim, LO, HI, ndims
-      use domain,    only: dom
+      use constants,          only: xdim, ydim, zdim, LO, HI, ndims, VAR_XFACE
+      use domain,             only: dom
+      use named_array_list,   only: wna
 
       implicit none
 
@@ -226,6 +228,7 @@ contains
       real, allocatable :: cg_div(:,:,:)
       integer           :: i, j, k, ilo, ihi, jlo, jhi, klo, khi, v1(ndims), s
       real              :: cfc(ord/2), cfo(0:ord)
+      logical           :: is_staggered = .false.
 
       call validate_stencil_order(ord, "cg_get_divergence")
 
@@ -233,7 +236,6 @@ contains
       jlo = this%lhn(ydim,LO); jhi = this%lhn(ydim,HI)
       klo = this%lhn(zdim,LO); khi = this%lhn(zdim,HI)
 
-      call get_central_method_coeffs(ord, cfc, cfo)
       if (present(vec)) then
          v1 = vec
       else
@@ -241,80 +243,110 @@ contains
       endif
       allocate(cg_div(ilo : ihi, jlo : jhi, klo : khi))
       cg_div = 0.0
-      if (dom%has_dir(xdim)) then
 
-         do concurrent (k = klo : khi, j = jlo : jhi, i = ilo + ord/2 : ihi - ord/2 )
-            do s = 1, ord/2
-               cg_div(i, j, k) = cg_div(i, j, k) + &
-               &                        cfc(s) * (this%w(iw)%arr(v1(xdim), i + s , j, k) - this%w(iw)%arr(v1(xdim), i - s , j, k)) * this%idl(xdim)
+      if (any(wna%lst(iw)%position == VAR_XFACE)) is_staggered = .true.
+
+      if (is_staggered) then
+
+         if (dom%has_dir(xdim)) then
+            do concurrent (k=klo:khi, j=jlo:jhi, i=ilo:ihi)
+               cg_div(i,j,k) = cg_div(i,j,k) + &
+                  (this%w(iw)%arr(v1(xdim), i+1, j, k) - this%w(iw)%arr(v1(xdim), i, j, k)) * this%idl(xdim)
             enddo
-         enddo
-
-         do concurrent (k = klo : khi, j = jlo : jhi, i = ilo : ilo + ord/2 - 1)
-            do s = 0, ord
-               cg_div(i, j, k) = cg_div(i, j, k) + cfo(s) * this%w(iw)%arr(v1(xdim), i + s , j, k) * this%idl(xdim)
+         endif
+         
+         if (dom%has_dir(ydim)) then
+            do concurrent (k=klo:khi, j=jlo:jhi, i=ilo:ihi)
+               cg_div(i,j,k) = cg_div(i,j,k) + &
+                  (this%w(iw)%arr(v1(ydim), i, j+1, k) - this%w(iw)%arr(v1(ydim), i, j, k)) * this%idl(ydim)
             enddo
-         enddo
+         endif
 
-         do concurrent (k = klo : khi, j = jlo : jhi, i = ihi - ord/2 + 1 : ihi)
-            do s = 0, ord
-               cg_div(i, j, k) = cg_div(i, j, k) - cfo(s) * this%w(iw)%arr(v1(xdim), i - s , j, k) * this%idl(xdim)
+         if (dom%has_dir(zdim)) then
+            do concurrent (k=klo:khi, j=jlo:jhi, i=ilo:ihi)
+               cg_div(i,j,k) = cg_div(i,j,k) + &
+                  (this%w(iw)%arr(v1(zdim), i, j, k+1) - this%w(iw)%arr(v1(zdim), i, j, k)) * this%idl(zdim)
             enddo
-         enddo
+         endif
+      else
+         call get_central_method_coeffs(ord, cfc, cfo)
+         if (dom%has_dir(xdim)) then
 
-      endif
-
-      if (dom%has_dir(ydim)) then
-
-         do concurrent (k = klo : khi, j = jlo + ord/2 : jhi - ord/2, i = ilo : ihi)
-            do s = 1, ord/2
-               cg_div(i, j, k) = cg_div(i, j, k) + &
-               &                        cfc(s) * (this%w(iw)%arr(v1(ydim), i, j + s, k) - this%w(iw)%arr(v1(ydim), i, j - s, k)) * this%idl(ydim)
+            do concurrent (k = klo : khi, j = jlo : jhi, i = ilo + ord/2 : ihi - ord/2 )
+               do s = 1, ord/2
+                  cg_div(i, j, k) = cg_div(i, j, k) + &
+                  &                        cfc(s) * (this%w(iw)%arr(v1(xdim), i + s , j, k) - this%w(iw)%arr(v1(xdim), i - s , j, k)) * this%idl(xdim)
+               enddo
             enddo
-         enddo
 
-         do concurrent (k = klo : khi, j = jlo : jlo + ord/2 - 1, i = ilo : ihi)
-            do s = 0, ord
-               cg_div(i, j, k) = cg_div(i, j, k) + cfo(s) * this%w(iw)%arr(v1(ydim), i, j + s, k) * this%idl(ydim)
+            do concurrent (k = klo : khi, j = jlo : jhi, i = ilo : ilo + ord/2 - 1)
+               do s = 0, ord
+                  cg_div(i, j, k) = cg_div(i, j, k) + cfo(s) * this%w(iw)%arr(v1(xdim), i + s , j, k) * this%idl(xdim)
+               enddo
             enddo
-         enddo
 
-         do concurrent (k = klo : khi, j = jhi - ord/2 + 1 : jhi, i = ilo : ihi)
-            do s = 0, ord
-               cg_div(i, j, k) = cg_div(i, j, k) - cfo(s) * this%w(iw)%arr(v1(ydim), i, j - s, k) * this%idl(ydim)
+            do concurrent (k = klo : khi, j = jlo : jhi, i = ihi - ord/2 + 1 : ihi)
+               do s = 0, ord
+                  cg_div(i, j, k) = cg_div(i, j, k) - cfo(s) * this%w(iw)%arr(v1(xdim), i - s , j, k) * this%idl(xdim)
+               enddo
             enddo
-         enddo
 
-      endif
+         endif
 
-      if (dom%has_dir(zdim)) then
+         if (dom%has_dir(ydim)) then
 
-         do concurrent (k = klo + ord/2 : khi - ord/2, j = jlo : jhi, i = ilo : ihi)
-            do s = 1, ord/2
-               cg_div(i, j, k) = cg_div(i, j, k) + &
-               &                        cfc(s) * (this%w(iw)%arr(v1(zdim), i, j, k + s) - this%w(iw)%arr(v1(zdim), i, j, k - s)) * this%idl(zdim)
+            do concurrent (k = klo : khi, j = jlo + ord/2 : jhi - ord/2, i = ilo : ihi)
+               do s = 1, ord/2
+                  cg_div(i, j, k) = cg_div(i, j, k) + &
+                  &                        cfc(s) * (this%w(iw)%arr(v1(ydim), i, j + s, k) - this%w(iw)%arr(v1(ydim), i, j - s, k)) * this%idl(ydim)
+               enddo
             enddo
-         enddo
 
-         do concurrent (k = klo : klo + ord/2 - 1, j = jlo : jhi, i = ilo : ihi)
-            do s = 0, ord
-               cg_div(i, j, k) = cg_div(i, j, k) + cfo(s) * this%w(iw)%arr(v1(zdim), i, j, k + s) * this%idl(zdim)
+            do concurrent (k = klo : khi, j = jlo : jlo + ord/2 - 1, i = ilo : ihi)
+               do s = 0, ord
+                  cg_div(i, j, k) = cg_div(i, j, k) + cfo(s) * this%w(iw)%arr(v1(ydim), i, j + s, k) * this%idl(ydim)
+               enddo
             enddo
-         enddo
 
-         do concurrent (k = khi - ord/2 + 1 : khi, j = jlo  : jhi, i = ilo  : ihi)
-            do s = 0, ord
-               cg_div(i, j, k) = cg_div(i, j, k) - cfo(s) * this%w(iw)%arr(v1(zdim), i, j, k - s) * this%idl(zdim)
+            do concurrent (k = klo : khi, j = jhi - ord/2 + 1 : jhi, i = ilo : ihi)
+               do s = 0, ord
+                  cg_div(i, j, k) = cg_div(i, j, k) - cfo(s) * this%w(iw)%arr(v1(ydim), i, j - s, k) * this%idl(ydim)
+               enddo
             enddo
-         enddo
 
+         endif
+
+         if (dom%has_dir(zdim)) then
+
+            do concurrent (k = klo + ord/2 : khi - ord/2, j = jlo : jhi, i = ilo : ihi)
+               do s = 1, ord/2
+                  cg_div(i, j, k) = cg_div(i, j, k) + &
+                  &                        cfc(s) * (this%w(iw)%arr(v1(zdim), i, j, k + s) - this%w(iw)%arr(v1(zdim), i, j, k - s)) * this%idl(zdim)
+               enddo
+            enddo
+
+            do concurrent (k = klo : klo + ord/2 - 1, j = jlo : jhi, i = ilo : ihi)
+               do s = 0, ord
+                  cg_div(i, j, k) = cg_div(i, j, k) + cfo(s) * this%w(iw)%arr(v1(zdim), i, j, k + s) * this%idl(zdim)
+               enddo
+            enddo
+
+            do concurrent (k = khi - ord/2 + 1 : khi, j = jlo  : jhi, i = ilo  : ihi)
+               do s = 0, ord
+                  cg_div(i, j, k) = cg_div(i, j, k) - cfo(s) * this%w(iw)%arr(v1(zdim), i, j, k - s) * this%idl(zdim)
+               enddo
+            enddo
+
+         endif
       endif
 
    end function cg_get_divergence
 
    function cg_get_curl(this, ord, iw, vec) result(cg_curl)
 
-      use constants, only: xdim, ydim, zdim, LO, HI, ndims
+      use constants,          only: xdim, ydim, zdim, LO, HI, ndims, VAR_CENTER
+      use named_array_list,   only: wna
+      use domain,             only: dom
 
       implicit none
 
@@ -324,7 +356,9 @@ contains
       integer(kind = 4),                   intent(in) :: ord   !< Stencil order
 
       real, allocatable :: cg_curl(:,:,:,:), cg_jac(:,:,:,:)
-      integer           :: ilo, ihi, jlo, jhi, klo, khi, v1(ndims)
+      integer           :: ilo, ihi, jlo, jhi, klo, khi, v1(ndims), i_end, j_end, k_end
+      integer           :: i, j, k
+      logical           :: is_staggered = .false.
 
       call validate_stencil_order(ord, "cg_get_curl")
 
@@ -338,23 +372,117 @@ contains
          v1 = [xdim, ydim, zdim]
       endif
 
-      allocate(cg_curl(xdim : zdim, ilo : ihi, jlo : jhi, klo : khi))
+      if (any(wna%lst(iw)%position /= VAR_CENTER)) is_staggered = .true.
 
-      cg_jac = this%get_gradient(ord = ord, iw = iw, vec = v1)
+      if (is_staggered) then
+         
+         allocate(cg_curl(xdim : zdim, ilo : ihi+1, jlo : jhi+1, klo : khi+1))
+         cg_curl = 0.0
 
-      cg_curl(xdim,:,:,:) = cg_jac(8,:,:,:) - cg_jac(6,:,:,:)
-      cg_curl(ydim,:,:,:) = cg_jac(3,:,:,:) - cg_jac(7,:,:,:)
-      cg_curl(zdim,:,:,:) = cg_jac(4,:,:,:) - cg_jac(2,:,:,:)
+         ! ========================================================
+         ! CURL X = dFz/dy - dFy/dz
+         ! Lives at Edge: (i, j+1/2, k+1/2)
+         ! ========================================================
+         
+         ! Term 1: + dFz/dy
+         if (dom%has_dir(ydim)) then
+             k_end = khi
+             if (dom%has_dir(zdim)) k_end = khi+1 ! If Z exists, edge is at k+1/2, else flat k
 
-      deallocate(cg_jac)
+             do concurrent (k=klo:k_end, j=jlo:jhi+1, i=ilo:ihi)
+                cg_curl(xdim, i, j, k) = cg_curl(xdim, i, j, k) + &
+                   (this%w(iw)%arr(v1(zdim), i, j, k) - this%w(iw)%arr(v1(zdim), i, j-1, k)) * this%idl(ydim)
+             enddo
+         endif
+
+         ! Term 2: - dFy/dz
+         if (dom%has_dir(zdim)) then
+             j_end = jhi
+             if (dom%has_dir(ydim)) j_end = jhi+1
+
+             do concurrent (k=klo:khi+1, j=jlo:j_end, i=ilo:ihi)
+                cg_curl(xdim, i, j, k) = cg_curl(xdim, i, j, k) - &
+                   (this%w(iw)%arr(v1(ydim), i, j, k) - this%w(iw)%arr(v1(ydim), i, j, k-1)) * this%idl(zdim)
+             enddo
+         endif
+
+
+         ! ========================================================
+         ! CURL Y = dFx/dz - dFz/dx
+         ! Lives at Edge: (i+1/2, j, k+1/2)
+         ! ========================================================
+
+         ! Term 1: + dFx/dz
+         if (dom%has_dir(zdim)) then
+             i_end = ihi
+             if (dom%has_dir(xdim)) i_end = ihi+1
+
+             do concurrent (k=klo:khi+1, j=jlo:jhi, i=ilo:i_end)
+                cg_curl(ydim, i, j, k) = cg_curl(ydim, i, j, k) + &
+                   (this%w(iw)%arr(v1(xdim), i, j, k) - this%w(iw)%arr(v1(xdim), i, j, k-1)) * this%idl(zdim)
+             enddo
+         endif
+
+         ! Term 2: - dFz/dx
+         if (dom%has_dir(xdim)) then
+             k_end = khi
+             if (dom%has_dir(zdim)) k_end = khi+1
+
+             do concurrent (k=klo:k_end, j=jlo:jhi, i=ilo:ihi+1)
+                cg_curl(ydim, i, j, k) = cg_curl(ydim, i, j, k) - &
+                   (this%w(iw)%arr(v1(zdim), i, j, k) - this%w(iw)%arr(v1(zdim), i-1, j, k)) * this%idl(xdim)
+             enddo
+         endif
+
+
+         ! ========================================================
+         ! CURL Z = dFy/dx - dFx/dy
+         ! Lives at Edge: (i+1/2, j+1/2, k)
+         ! ========================================================
+
+         ! Term 1: + dFy/dx
+         if (dom%has_dir(xdim)) then
+             j_end = jhi
+             if (dom%has_dir(ydim)) j_end = jhi+1
+
+             do concurrent (k=klo:khi, j=jlo:j_end, i=ilo:ihi+1)
+                cg_curl(zdim, i, j, k) = cg_curl(zdim, i, j, k) + &
+                   (this%w(iw)%arr(v1(ydim), i, j, k) - this%w(iw)%arr(v1(ydim), i-1, j, k)) * this%idl(xdim)
+             enddo
+         endif
+
+         ! Term 2: - dFx/dy
+         if (dom%has_dir(ydim)) then
+             i_end = ihi
+             if (dom%has_dir(xdim)) i_end = ihi+1
+
+             do concurrent (k=klo:khi, j=jlo:jhi+1, i=ilo:i_end)
+                cg_curl(zdim, i, j, k) = cg_curl(zdim, i, j, k) - &
+                   (this%w(iw)%arr(v1(xdim), i, j, k) - this%w(iw)%arr(v1(xdim), i, j-1, k)) * this%idl(ydim)
+             enddo
+         endif
+      else
+
+         allocate(cg_curl(xdim : zdim, ilo : ihi, jlo : jhi, klo : khi))
+
+         cg_jac = this%get_gradient(ord = ord, iw = iw, vec = v1)
+
+         cg_curl(xdim,:,:,:) = cg_jac(8,:,:,:) - cg_jac(6,:,:,:)
+         cg_curl(ydim,:,:,:) = cg_jac(3,:,:,:) - cg_jac(7,:,:,:)
+         cg_curl(zdim,:,:,:) = cg_jac(4,:,:,:) - cg_jac(2,:,:,:)
+
+         deallocate(cg_jac)
+
+      endif
 
    end function cg_get_curl
 
    function cg_get_gradient(this, ord, iw, iq, vec) result(cg_grad)
 
-      use constants,  only: xdim, ydim, zdim, LO, HI, ndims
-      use dataio_pub, only: die
-      use domain,     only: dom
+      use constants,          only: xdim, ydim, zdim, LO, HI, ndims, VAR_CENTER
+      use dataio_pub,         only: die, msg
+      use domain,             only: dom
+      use named_array_list,   only: wna, qna
 
       implicit none
 
@@ -368,6 +496,20 @@ contains
       integer                 :: i, j, k, ilo, ihi, jlo, jhi, klo, khi, ddim, s
       real                    :: cfc(ord/2), cfo(0:ord)
       integer, allocatable    :: v1(:)
+
+      if (present(iw)) then
+         if (any(wna%lst(iw)%position /= VAR_CENTER)) then
+             write(msg,'(a,i4,a)') "[cg_get_gradient] Error: Field ", iw, " is Staggered. Gradient only supported for Cell-Centered Field."
+             call die(msg)
+         endif
+      endif
+
+      if (present(iq)) then
+         if (any(qna%lst(iq)%position /= VAR_CENTER)) then
+             write(msg,'(a,i4,a)') "[cg_get_gradient] Error: Field ", iq, " is Staggered. Gradient only supported for Cell-Centered Field."
+             call die(msg)
+         endif
+      endif
 
       call validate_stencil_order(ord, "cg_get_gradient")
 
@@ -536,5 +678,48 @@ contains
       if (allocated(v1)) deallocate(v1)
 
    end function cg_get_gradient
+
+!> \brief Interpolate Staggered Face fields to Cell Centers
+   !> Returns a newly allocated 4D array (xdim:zdim, ix, iy, iz)
+   function cg_face_to_center(this, id_face) result(res)
+      
+      use constants,          only: xdim, ydim, zdim, LO, HI, half
+      use named_array_list,   only: wna
+      
+      implicit none
+      
+      class(grid_container_op_t), intent(in) :: this
+      integer, intent(in) :: id_face   ! ID of the staggered 4D array (input)
+
+      real, allocatable, dimension(:,:,:,:) :: res
+      integer :: i, j, k, ilo, ihi, jlo, jhi, klo, khi
+
+      ! Define interior bounds (Cell Centers)
+      ilo = this%lhn(xdim,LO); ihi = this%lhn(xdim,HI)
+      jlo = this%lhn(ydim,LO); jhi = this%lhn(ydim,HI)
+      klo = this%lhn(zdim,LO); khi = this%lhn(zdim,HI)
+
+      ! Allocate result array with shape (3, nx, ny, nz)
+      allocate(res(xdim:zdim, ilo:ihi, jlo:jhi, klo:khi))
+
+      ! X-Component: Average Left(i) and Right(i+1) faces
+      do concurrent (k=klo:khi, j=jlo:jhi, i=ilo:ihi)
+         res(xdim, i,j,k) = half * ( &
+            this%w(id_face)%arr(xdim, i,j,k) + this%w(id_face)%arr(xdim, i+1,j,k) )
+      enddo
+
+      ! Y-Component: Average Back(j) and Front(j+1) faces
+      do concurrent (k=klo:khi, j=jlo:jhi, i=ilo:ihi)
+         res(ydim, i,j,k) = half * ( &
+            this%w(id_face)%arr(ydim, i,j,k) + this%w(id_face)%arr(ydim, i,j+1,k) )
+      enddo
+
+      ! Z-Component: Average Bottom(k) and Top(k+1) faces
+      do concurrent (k=klo:khi, j=jlo:jhi, i=ilo:ihi)
+         res(zdim, i,j,k) = half * ( &
+            this%w(id_face)%arr(zdim, i,j,k) + this%w(id_face)%arr(zdim, i,j,k+1) )
+      enddo
+
+   end function cg_face_to_center
 
 end module grid_container_op

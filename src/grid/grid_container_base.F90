@@ -30,7 +30,7 @@
 
 module grid_cont_base
 
-   use constants,        only: xdim, zdim, ndims, LO, HI, CENTER, INV_CENTER
+   use constants,        only: xdim, zdim, ndims, LO, HI, CENTER, INV_CENTER, VAR_CENTER, VAR_ZEDGE
    use level_essentials, only: level_t
    use real_vector,      only: real_vec_t
 
@@ -116,6 +116,9 @@ module grid_cont_base
       integer(kind=8), dimension(ndims, LO:HI)  :: my_se         !< own segment. my_se(:,LO) = 0; my_se(:,HI) = dom%n_d(:) - 1 would cover entire domain on a base level
                                                                  !! my_se(:,LO) = 0; my_se(:,HI) = finest%level%n_d(:) -1 would cover entire domain on the most refined level
                                                                  !! DEPRECATED: will be equivalent to ijkse(:,:)
+      integer(kind=4), dimension(ndims, VAR_CENTER:VAR_ZEDGE, LO:HI)  :: lhn_all       !< [[iln, jln, kln], [ihn, jhn, khn]] but for face and edge centered fields as well
+      integer(kind=4), dimension(ndims, VAR_CENTER:VAR_ZEDGE, LO:HI)  :: ijkse_all     !< [[is,  js,  ks ], [ie,  je,  ke ]] but for face and edge centered fields as well
+
 
       ! External boundary conditions and internal boundaries
 
@@ -129,8 +132,11 @@ module grid_cont_base
       type(real_vec_t), dimension(CENTER:INV_CENTER, ndims) :: coord !< all coordinates (CENTER, LEFT, RIGHT, INV_CENTER)
       ! shortcuts
       real, pointer, dimension(:) :: x                             !< array of x-positions of %grid cells centers
-      real, pointer, dimension(:) :: y                             !< array of x-positions of %grid cells centers
-      real, pointer, dimension(:) :: z                             !< array of x-positions of %grid cells centers
+      real, pointer, dimension(:) :: y                             !< array of y-positions of %grid cells centers
+      real, pointer, dimension(:) :: z                             !< array of z-positions of %grid cells centers
+      real, pointer, dimension(:) :: xf                            !< array of x-positions of %grid cells face-center
+      real, pointer, dimension(:) :: yf                            !< array of y-positions of %grid cells face-center
+      real, pointer, dimension(:) :: zf                            !< array of z-positions of %grid cells face-center
       real, pointer, dimension(:) :: inv_x                         !< array of invert x-positions of %grid cells centers
       real, pointer, dimension(:) :: inv_y                         !< array of invert y-positions of %grid cells centers
       real, pointer, dimension(:) :: inv_z                         !< array of invert z-positions of %grid cells centers
@@ -164,7 +170,8 @@ contains
 
    subroutine init_gc_base(this, my_se, grid_id, l)
 
-      use constants,        only: xdim, ydim, zdim, LO, HI, I_ONE, I_TWO, BND_MPI, BND_COR, GEO_XYZ, GEO_RPZ, dpi
+      use constants,        only: xdim, ydim, zdim, LO, HI, I_ONE, I_TWO, BND_MPI, BND_COR, GEO_XYZ, GEO_RPZ, dpi, &
+      &                           VAR_CENTER, VAR_XFACE, VAR_YFACE, VAR_ZFACE, VAR_XEDGE, VAR_YEDGE, VAR_ZEDGE, VAR_CORNER
       use dataio_pub,       only: die, warn
       use domain,           only: dom
       use level_essentials, only: level_t
@@ -176,7 +183,8 @@ contains
       integer,                              intent(in)    :: grid_id  !< ID which should be unique across level
       class(level_t), pointer,              intent(in)    :: l        !< level essential data
 
-      integer :: i
+      integer :: i, ps
+      integer(kind=4), dimension(ndims) :: ub_pad
 
       this%l          => l
       this%grid_id    = grid_id
@@ -245,6 +253,25 @@ contains
          this%fbnd(:, LO)  = dom%edge(:, LO)
          this%fbnd(:, HI)  = dom%edge(:, HI)
       endwhere
+
+      do ps = VAR_CENTER, VAR_ZEDGE
+         ub_pad = 0
+         select case (ps)
+            case (VAR_CORNER); ub_pad(:)    = 1            
+            case (VAR_XFACE);  ub_pad(xdim) = 1
+            case (VAR_YFACE);  ub_pad(ydim) = 1
+            case (VAR_ZFACE);  ub_pad(zdim) = 1
+            case (VAR_XEDGE);  ub_pad(ydim) = 1; ub_pad(zdim) = 1
+            case (VAR_YEDGE);  ub_pad(xdim) = 1; ub_pad(zdim) = 1
+            case (VAR_ZEDGE);  ub_pad(xdim) = 1; ub_pad(ydim) = 1
+         end select
+
+         this%lhn_all(:, ps, LO)   = this%lhn(:, LO)
+         this%ijkse_all(:, ps, LO) = this%ijkse(:, LO)
+
+         this%lhn_all(:, ps, HI)   = this%lhn(:, HI)   + ub_pad(:)
+         this%ijkse_all(:, ps, HI) = this%ijkse(:, HI) + ub_pad(:)
+      end do
 
       ! Compute indices that include external boundary cells
       ! Strangely, we ignore periodicity here, following what we had in restart_hdf5_v1::set_dims_for_restart
@@ -411,6 +438,10 @@ contains
       this%y     => this%coord(CENTER,     ydim)%r
       this%z     => this%coord(CENTER,     zdim)%r
 
+      this%xf     => this%coord(LEFT,     xdim)%r
+      this%yf     => this%coord(LEFT,     ydim)%r
+      this%zf     => this%coord(LEFT,     zdim)%r 
+
       this%inv_x => this%coord(INV_CENTER, xdim)%r
       this%inv_y => this%coord(INV_CENTER, ydim)%r
       this%inv_z => this%coord(INV_CENTER, zdim)%r
@@ -432,6 +463,9 @@ contains
       if (associated(this%x))     nullify(this%x)
       if (associated(this%y))     nullify(this%y)
       if (associated(this%z))     nullify(this%z)
+      if (associated(this%xf))     nullify(this%xf)
+      if (associated(this%yf))     nullify(this%yf)
+      if (associated(this%zf))     nullify(this%zf)
       if (associated(this%inv_x)) nullify(this%inv_x)
       if (associated(this%inv_y)) nullify(this%inv_y)
       if (associated(this%inv_z)) nullify(this%inv_z)

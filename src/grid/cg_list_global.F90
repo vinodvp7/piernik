@@ -187,9 +187,9 @@ contains
       endif
 
       if (present(dim4)) then
-         call wna%add2lst(na_var_4d(name, vit, rm, op, mg, dim4=d4))
+         call wna%add2lst(na_var_4d(name, vit, rm, op, mg, pos, dim4=d4))
       else
-         call qna%add2lst(na_var(name, vit, rm, op, mg))
+         call qna%add2lst(na_var(name, vit, rm, op, mg, pos))
       endif
 
       select case (op)
@@ -213,9 +213,9 @@ contains
       cgl => this%first
       do while (associated(cgl))
          if (present(dim4)) then
-            call cgl%cg%add_na_4d(d4)  ! Strange: passing dim4 here resulted in an access to already freed memory. Possibly a gfortran bug.
+            call cgl%cg%add_na_4d(d4, pos)  ! Strange: passing dim4 here resulted in an access to already freed memory. Possibly a gfortran bug.
          else
-            call cgl%cg%add_na(mg)
+            call cgl%cg%add_na(mg, pos) ! So we only pass the first index of pos because all other variable will have the same dimensional box.
          endif
          cgl => cgl%nxt
       enddo

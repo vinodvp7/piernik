@@ -298,6 +298,9 @@ module constants
       enumerator :: VAR_XFACE       !! X-face
       enumerator :: VAR_YFACE       !! Y-face
       enumerator :: VAR_ZFACE       !! Z-face
+      enumerator :: VAR_XEDGE       !! X-edge
+      enumerator :: VAR_YEDGE       !! Y-edge
+      enumerator :: VAR_ZEDGE       !! Z-edge
    end enum
 
    ! Interpolation order

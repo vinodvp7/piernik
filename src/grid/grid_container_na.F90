@@ -135,13 +135,13 @@ contains
 
       if (allocated(qna%lst)) then
          do i = lbound(qna%lst(:), dim=1), ubound(qna%lst(:), dim=1)
-            call this%add_na(qna%lst(i)%multigrid)
+            call this%add_na(qna%lst(i)%multigrid,qna%lst(i)%position)
          enddo
       endif
 
       if (allocated(wna%lst)) then
          do i = lbound(wna%lst(:), dim=1), ubound(wna%lst(:), dim=1)
-            call this%add_na_4d(wna%get_dim4(int(i, kind=4)))
+            call this%add_na_4d(wna%get_dim4(int(i, kind=4)), wna%lst(i)%position)
          enddo
       endif
 
@@ -172,18 +172,28 @@ contains
 !!
 !! \warning This routine should not be called directly from user routines
 !<
-   subroutine add_na(this, multigrid)
+   subroutine add_na(this, multigrid, position)
 
-      use constants,   only: base_level_id, LO, HI
+      use constants,   only: base_level_id, LO, HI, VAR_CENTER, I_ONE, I_ZERO
       use named_array, only: named_array3d
 
       implicit none
 
-      class(grid_container_na_t), intent(inout) :: this       !< object invoking type-bound procedure
-      logical,                    intent(in)    :: multigrid  !< If .true. then cg%q(:)%arr and cg%w(:)%arr are allocated also below base level
+      class(grid_container_na_t),              intent(inout) :: this       !< object invoking type-bound procedure
+      logical,                                 intent(in)    :: multigrid  !< If .true. then cg%q(:)%arr and cg%w(:)%arr are allocated also below base level
+      integer(kind=4), dimension(:), optional, intent(in)    :: position   !< If present then use this value instead of VAR_CENTER
 
       type(named_array3d), allocatable, dimension(:) :: tmp
+      integer(kind=4), dimension(1) :: pos
+      integer(kind=4) :: upad = I_ZERO
 
+      pos(:) = VAR_CENTER
+      if (present(position)) then
+            pos = position
+      endif
+
+      if (any(pos /= VAR_CENTER)) upad = I_ONE
+      
       if (.not. allocated(this%q)) then
          allocate(this%q(1))
       else
@@ -192,7 +202,7 @@ contains
          call move_alloc(from=tmp, to=this%q)
       endif
 
-      if (multigrid .or. this%l%id >= base_level_id) call this%q(ubound(this%q(:), dim=1))%init(this%lhn(:, LO), this%lhn(:, HI))
+      if (multigrid .or. this%l%id >= base_level_id) call this%q(ubound(this%q(:), dim=1))%init(this%lhn(:, LO), this%lhn(:, HI) + upad)
 
    end subroutine add_na
 
@@ -201,17 +211,28 @@ contains
 !!
 !! \warning This routine should not be called directly from user routines
 !<
-   subroutine add_na_4d(this, n)
+   subroutine add_na_4d(this, n, position)
 
-      use constants,   only: base_level_id, INT4, LO, HI
+      use constants,   only: base_level_id, INT4, LO, HI, VAR_CENTER, I_ONE, I_ZERO
       use named_array, only: named_array4d
 
       implicit none
 
-      class(grid_container_na_t), intent(inout) :: this  !< object invoking type-bound procedure
-      integer(kind=4),            intent(in)    :: n     !< Length of the vector quantity to be stored (first dimension of the array)
+      class(grid_container_na_t), intent(inout)              :: this       !< object invoking type-bound procedure
+      integer(kind=4),            intent(in)                 :: n          !< Length of the vector quantity to be stored (first dimension of the array)
+      integer(kind=4), dimension(:), optional, intent(in)    :: position   !< If present then use this value instead of VAR_CENTER
 
       type(named_array4d), allocatable, dimension(:) :: tmp
+      integer(kind=4), allocatable, dimension(:) :: pos
+      integer(kind=4) :: upad = I_ZERO
+
+      allocate(pos(n))
+      pos(:) = VAR_CENTER
+      if (present(position)) then
+            pos = position
+      endif
+
+      if (any(pos /= VAR_CENTER)) upad = I_ONE
 
       if (.not. allocated(this%w)) then
          allocate(this%w(1))
@@ -221,7 +242,7 @@ contains
          call move_alloc(from=tmp, to=this%w)
       endif
 
-      if (this%l%id >= base_level_id) call this%w(ubound(this%w(:), dim=1))%init( [1_INT4, this%lhn(:, LO)], [n, this%lhn(:, HI)] ) !< \deprecated magic integer
+      if (this%l%id >= base_level_id) call this%w(ubound(this%w(:), dim=1))%init( [1_INT4, this%lhn(:, LO)], [n, this%lhn(:, HI) + upad] ) !< \deprecated magic integer
 
    end subroutine add_na_4d
 

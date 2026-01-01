@@ -37,12 +37,142 @@ module unsplit_mag_modules
 
 contains
 
+   !> \brief Update the face-centred magnetic field using a constrained-transport scheme
+   !!
+   !! This routine implements the flux‑CT update for the unsplit Riemann solver.  It reconstructs
+   !! edge‑centred electromotive forces (EMFs) from the face‑centred magnetic fluxes and then
+   !! applies the curl of these EMFs to evolve the magnetic field.  The update is only called
+   !! when divB_0_method is not DIVB_HDC.  At present the scheme uses a simple arithmetic
+   !! average of the four surrounding faces (Flux‑CT).  The CTU option falls back to Flux‑CT
+   !! until a full upwinded reconstruction is implemented.
+   subroutine update_B_CT(cg, istep)
+
+      use grid_cont,          only: grid_container
+      use constants,          only: xdim, ydim, zdim, I_ONE, last_stage, rk_coef, mag_n, magh_n
+      use global,             only: dt, integration_order
+      use named_array_list,   only: wna
+
+      implicit none
+
+      type(grid_container), pointer, intent(in) :: cg
+      integer,                       intent(in) :: istep
+
+      integer :: Lx, Ux, Ly, Uy, Lz, Uz
+      integer :: i, j, k
+      integer :: bi_idx, bhi_idx
+      real :: dt_x, dt_y, dt_z
+      real, pointer :: B(:,:,:,:)       !< magnetic field array to update (may be original or half‑step copy)
+      real, pointer :: bfx(:,:,:,:), bgy(:,:,:,:), bhz(:,:,:,:) !< face‑centred magnetic fluxes
+      real :: Ey_up, Ey_lo, Ez_up, Ez_lo, Ex_up, Ex_lo
+
+      ! Determine the appropriate storage array for B.  During intermediate Runge–Kutta stages
+      ! we must update a copy of the magnetic field, while at the final stage we update the
+      ! original field in place.  This mimics the behaviour of apply_flux.
+      bi_idx  = wna%ind(mag_n)
+      bhi_idx = wna%ind(magh_n)
+
+      if ( (istep == last_stage(integration_order)) .or. (integration_order == I_ONE) ) then
+         B => cg%w(bi_idx)%arr
+      else
+         ! Copy the base field into the half‑step array and operate on that
+         cg%w(bhi_idx)%arr(:,:,:,:) = cg%w(bi_idx)%arr(:,:,:,:)
+         B => cg%w(bhi_idx)%arr
+      endif
+
+      ! Pointers to the face‑centred magnetic fluxes.  These contain the flux of B_y and B_z
+      ! across x‑faces, of B_x and B_z across y‑faces and of B_x and B_y across z‑faces.  The
+      ! relationship between these fluxes and EMF components is given by the ideal MHD
+      ! induction equation: F_x(B_y) = −E_z, F_x(B_z) = +E_y, F_y(B_x) = +E_z, F_y(B_z) = −E_x,
+      ! F_z(B_x) = −E_y and F_z(B_y) = +E_x.
+      bfx => cg%bfx
+      bgy => cg%bgy
+      bhz => cg%bhz
+
+      ! Precompute time‑step factors including the Runge–Kutta weight for this stage
+      dt_x = dt / cg%dl(xdim) * rk_coef(istep)
+      dt_y = dt / cg%dl(ydim) * rk_coef(istep)
+      dt_z = dt / cg%dl(zdim) * rk_coef(istep)
+
+      ! Determine interior loop bounds.  We shrink the bounds by one cell on each side to
+      ! ensure that all required neighbouring fluxes (j±1, k±1, i±1) exist.  Without
+      ! sufficient neighbours we cannot form edge‑centred averages.  External ghost cells are
+      ! handled separately by the boundary exchange routines.
+      Lx = lbound(B, 2) + 1
+      Ux = ubound(B, 2) - 1
+      Ly = lbound(B, 3) + 1
+      Uy = ubound(B, 3) - 1
+      Lz = lbound(B, 4) + 1
+      Uz = ubound(B, 4) - 1
+
+      !------------------------------------------------------------------------
+      ! Update Bx = component 1.  Bx lives on faces normal to the x‑direction.  Its update
+      ! involves differences of E_y across z and E_z across y.  The edge‑centred EMFs are
+      ! computed from the surrounding face‑centred magnetic fluxes using the flux‑CT
+      ! arithmetic averages.  We iterate over j up to Uy‑1 and k up to Uz‑1 so that
+      ! j+1 and k+1 are valid indices.  Neighbouring indices j‑1 and k‑1 refer to ghost
+      ! cells which have been filled by boundary routines.
+      do i = Lx, Ux
+         do j = Ly, Uy-1
+            do k = Lz, Uz-1
+               ! Edge‑centred E_y at (i+1/2,j,k+1/2): average of B_z fluxes on x‑faces and B_x fluxes on z‑faces
+               Ey_up = 0.25*( bfx(3,i  ,j  ,k) + bfx(3,i  ,j  ,k+1) - bhz(1,i  ,j  ,k) - bhz(1,i+1,j  ,k) )
+               Ey_lo = 0.25*( bfx(3,i  ,j  ,k-1) + bfx(3,i  ,j  ,k  ) - bhz(1,i  ,j  ,k-1) - bhz(1,i+1,j  ,k-1) )
+               ! Edge‑centred E_z at (i+1/2,j+1/2,k): average of B_y fluxes on x‑faces and B_x fluxes on y‑faces
+               Ez_up = 0.25*( bgy(1,i  ,j  ,k) + bgy(1,i+1,j  ,k) - bfx(2,i  ,j  ,k) - bfx(2,i  ,j+1,k) )
+               Ez_lo = 0.25*( bgy(1,i  ,j-1,k) + bgy(1,i+1,j-1,k) - bfx(2,i  ,j-1,k) - bfx(2,i  ,j  ,k) )
+               B(1,i,j,k) = B(1,i,j,k) + dt_z * (Ey_up - Ey_lo) - dt_y * (Ez_up - Ez_lo)
+            enddo
+         enddo
+      enddo
+
+      !------------------------------------------------------------------------
+      ! Update By = component 2.  By lives on faces normal to the y‑direction.  Its update
+      ! involves differences of E_z across x and E_x across z.  We construct E_z at
+      ! (i±1/2,j+1/2,k) and E_x at (i,j+1/2,k±1/2) from face‑centred fluxes.  To ensure
+      ! that i−1 and i+1 neighbours exist, the loop in i is offset by one cell on either
+      ! side.  We iterate j up to Uy−1 and k up to Uz−1 so that j+1 and k+1 indices are valid.
+      do i = Lx+1, Ux-1
+         do j = Ly, Uy-1
+            do k = Lz, Uz-1
+               ! Edge‑centred E_z at (i+1/2,j+1/2,k): average of B_y fluxes on x‑faces and B_x fluxes on y‑faces
+               Ez_up = 0.25*( bgy(1,i  ,j  ,k) + bgy(1,i+1,j  ,k) - bfx(2,i  ,j  ,k) - bfx(2,i  ,j+1,k) )
+               Ez_lo = 0.25*( bgy(1,i-1,j  ,k) + bgy(1,i  ,j  ,k) - bfx(2,i-1,j  ,k) - bfx(2,i-1,j+1,k) )
+               ! Edge‑centred E_x at (i,j+1/2,k+1/2): average of B_z fluxes on y‑faces and B_y fluxes on z‑faces
+               Ex_up = 0.25*( bhz(2,i  ,j  ,k) + bhz(2,i  ,j+1,k) - bgy(3,i  ,j  ,k) - bgy(3,i  ,j  ,k+1) )
+               Ex_lo = 0.25*( bhz(2,i  ,j  ,k-1) + bhz(2,i  ,j+1,k-1) - bgy(3,i  ,j  ,k-1) - bgy(3,i  ,j  ,k  ) )
+               B(2,i,j,k) = B(2,i,j,k) + dt_x * (Ez_up - Ez_lo) - dt_z * (Ex_up - Ex_lo)
+            enddo
+         enddo
+      enddo
+
+      !------------------------------------------------------------------------
+      ! Update Bz = component 3.  Bz lives on faces normal to the z‑direction.  Its update
+      ! involves differences of E_x across y and E_y across x.  We construct E_x at
+      ! (i,j+1/2,k+1/2) and E_y at (i+1/2,j,k+1/2).  To ensure that i−1 and i+1 as well as
+      ! j−1 and j+1 neighbours exist, the loops are restricted accordingly.  We iterate k
+      ! up to Uz‑1 so that k+1 is a valid index.
+      do i = Lx+1, Ux-1
+         do j = Ly+1, Uy-1
+            do k = Lz, Uz-1
+               ! Edge‑centred E_x at (i,j+1/2,k+1/2): average of B_z fluxes on y‑faces and B_y fluxes on z‑faces
+               Ex_up = 0.25*( bhz(2,i  ,j  ,k) + bhz(2,i  ,j+1,k) - bgy(3,i  ,j  ,k) - bgy(3,i  ,j  ,k+1) )
+               Ex_lo = 0.25*( bhz(2,i  ,j-1,k) + bhz(2,i  ,j  ,k) - bgy(3,i  ,j-1,k) - bgy(3,i  ,j-1,k+1) )
+               ! Edge‑centred E_y at (i+1/2,j,k+1/2): average of B_z fluxes on x‑faces and B_x fluxes on z‑faces
+               Ey_up = 0.25*( bfx(3,i  ,j  ,k) + bfx(3,i  ,j  ,k+1) - bhz(1,i  ,j  ,k) - bhz(1,i+1,j  ,k) )
+               Ey_lo = 0.25*( bfx(3,i-1,j  ,k) + bfx(3,i-1,j  ,k+1) - bhz(1,i-1,j  ,k) - bhz(1,i  ,j  ,k) )
+               B(3,i,j,k) = B(3,i,j,k) + dt_y * (Ex_up - Ex_lo) - dt_x * (Ey_up - Ey_lo)
+            enddo
+         enddo
+      enddo
+
+   end subroutine update_B_CT
+
    subroutine solve_cg_ub(cg,istep)
       use grid_cont,        only: grid_container
       use named_array_list, only: wna, qna
       use constants,        only: pdims, ORTHO1, ORTHO2, I_ONE, LO, HI, magh_n, uh_n, &
-                                  psi_n, psih_n, psidim, cs_i2_n, first_stage, xdim, ydim, zdim, I_ONE
-      use global,           only: integration_order
+                                  psi_n, psih_n, psidim, cs_i2_n, first_stage, xdim, ydim, zdim, I_ONE, DIVB_HDC, INVALID
+      use global,           only: integration_order, divB_0_method
       use domain,           only: dom
       use fluidindex,       only: iarr_all_swp, iarr_mag_swp
       use fluxtypes,        only: ext_fluxes
@@ -70,12 +200,19 @@ contains
       real, dimension(:,:),allocatable           :: tbflux                ! to temporarily store transpose of bflux
       type(ext_fluxes)                           :: eflx
       integer                                    :: i_cs_iso2
+      logical                                    :: has_psi
 
       uhi = wna%ind(uh_n)
       bhi = wna%ind(magh_n)
 
-      psii = qna%ind(psi_n)
-      psihi = qna%ind(psih_n)
+      psii  = INVALID
+      psihi = INVALID
+      has_psi = .false.
+      if (qna%exists(psi_n)) then
+            has_psi = .true.
+            psii  = qna%ind(psi_n)
+            psihi = qna%ind(psih_n)
+      endif
 
       if (qna%exists(cs_i2_n)) then
          i_cs_iso2 = qna%ind(cs_i2_n)
@@ -101,32 +238,47 @@ contains
                if (ddim==xdim) then
                   pflux => cg%w(wna%xflx)%get_sweep(xdim, i1, i2)
                   pbflux => cg%w(wna%xbflx)%get_sweep(xdim, i1, i2)
-                  apsiflux => cg%w(wna%psiflx)%get_sweep(xdim, i1, i2)
-                  ppsiflux => apsiflux(xdim,:)
+                  if (has_psi) then
+                     apsiflux => cg%w(wna%psiflx)%get_sweep(xdim, i1, i2)
+                     ppsiflux => apsiflux(xdim,:)
+                  endif
                else if (ddim==ydim) then
                   pflux => cg%w(wna%yflx)%get_sweep(ydim, i1, i2)
                   pbflux => cg%w(wna%ybflx)%get_sweep(ydim, i1, i2)
-                  apsiflux => cg%w(wna%psiflx)%get_sweep(ydim, i1, i2)
-                  ppsiflux => apsiflux(ydim,:)
+                  if (has_psi) then
+                     apsiflux => cg%w(wna%psiflx)%get_sweep(ydim, i1, i2)
+                     ppsiflux => apsiflux(ydim,:)
+                  endif
                else if (ddim==zdim) then
                   pflux => cg%w(wna%zflx)%get_sweep(zdim, i1, i2)
                   pbflux => cg%w(wna%zbflx)%get_sweep(zdim, i1, i2)
-                  apsiflux => cg%w(wna%psiflx)%get_sweep(zdim, i1, i2)
-                  ppsiflux => apsiflux(zdim,:)
+                  if (has_psi) then
+                     apsiflux => cg%w(wna%psiflx)%get_sweep(zdim, i1, i2)
+                     ppsiflux => apsiflux(zdim,:)
+                  endif
                endif
                pu   => cg%w(uhi)%get_sweep(ddim, i1, i2)
                pb   => cg%w(bhi)%get_sweep(ddim, i1, i2)
-               ppsi => cg%q(psihi)%get_sweep(ddim, i1, i2)
+               if (has_psi) then
+                  ppsi => cg%q(psihi)%get_sweep(ddim, i1, i2)
+               endif
                if (istep == first_stage(integration_order) .or. integration_order < 2 ) then
                   pu   => cg%w(wna%fi)%get_sweep(ddim, i1, i2)
                   pb   => cg%w(wna%bi)%get_sweep(ddim, i1, i2)
-                  ppsi => cg%q(psii)%get_sweep(ddim, i1, i2)
+                  if (has_psi) then
+                     ppsi => cg%q(psii)%get_sweep(ddim, i1, i2)
+                  endif
                endif
 
                u(:, iarr_all_swp(ddim,:)) = transpose(pu(:,:))
                b(:, iarr_mag_swp(ddim,:)) = transpose(pb(:,:))
 
-               b_psi(:, xdim:zdim) = b(:,:) ; b_psi(:,psidim) = ppsi(:)
+               b_psi(:, xdim:zdim) = b(:,:)
+               if (has_psi) then 
+                  b_psi(:,psidim) = ppsi(:)
+               else 
+                  b_psi(:,psidim) = 0.0
+               endif
 
                if (i_cs_iso2 > 0) cs2 => cg%q(i_cs_iso2)%get_sweep(ddim, i1, i2)
 
@@ -142,10 +294,13 @@ contains
 
                tbflux(:,2:) = transpose(bflux(:, iarr_mag_swp(ddim,:)))
                tbflux(:,1) = 0
-               tbflux(psidim,2:) = bflux(:,psidim)
+               if (has_psi) then
+                  tbflux(psidim,2:) = bflux(:,psidim)
+               endif
                pbflux(:,:) = tbflux(xdim:zdim,:)
-               ppsiflux(:) =  tbflux(psidim,:)
-
+               if (has_psi) then
+                  ppsiflux(:) = tbflux(psidim,:)
+               endif
             enddo
          enddo
 
@@ -155,9 +310,20 @@ contains
 
       enddo
 
-      call apply_flux(cg,istep,.true.)
+      ! Apply fluxes or constrained-transport update depending on divergence-cleaning method
+      if (divB_0_method == DIVB_HDC) then
+         ! Hyperbolic divergence cleaning uses standard flux-difference update for magnetic field
+         call apply_flux(cg,istep,.true.)
+      else
+         ! Constrained-transport schemes update B using the curl of edge-centred EMFs
+         call update_B_CT(cg, istep)
+      endif
+      ! Always update fluid variables using flux-difference
       call apply_flux(cg,istep,.false.)
-      call update_psi(cg,istep)
+      ! Update psi only for HDC; in CT modes psi is not evolved
+      if (divB_0_method == DIVB_HDC) then
+         call update_psi(cg,istep)
+      endif
       call apply_source(cg,istep)
       nullify(cs2)
 
@@ -202,8 +368,6 @@ contains
          if (associated(eflx%ri)) bflx(eflx%ri%index, :) = eflx%ri%bflx
          if (associated(eflx%lo)) eflx%lo%bflx = bflx(eflx%lo%index, :)
          if (associated(eflx%ro)) eflx%ro%bflx = bflx(eflx%ro%index, :)
-      else
-         call die("[unsplit_mag_modules:solve] Unplit method is only implemented with Hyperbolic Divergence Cleaning")
       endif
 
    end subroutine solve

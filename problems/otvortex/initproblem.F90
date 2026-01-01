@@ -98,71 +98,172 @@ contains
 
    subroutine problem_initial_conditions
 
-      use cg_leaves,   only: leaves
-      use cg_list,     only: cg_list_element
-      use constants,   only: pi, dpi, fpi, xdim, ydim, zdim, LO, HI
-      use fluidindex,  only: flind
-      use fluidtypes,  only: component_fluid
-      use func,        only: ekin, emag
-      use global,      only: smallei
-      use grid_cont,   only: grid_container
+   use cg_leaves,   only: leaves
+   use cg_list,     only: cg_list_element
+   use constants,   only: pi, dpi, fpi, xdim, ydim, zdim, LO, HI
+   use fluidindex,  only: flind
+   use fluidtypes,  only: component_fluid
+   use func,        only: ekin
+   use global,      only: smallei, cc_mag
+   use domain,      only: dom
+   use grid_cont,   only: grid_container
 
-      implicit none
+   implicit none
 
-      class(component_fluid), pointer    :: fl
-      integer                            :: i, j
-      real                               :: xi, yj, vx, vy, vz, rho, pre, bx, by, bz, b0, e0
-      type(cg_list_element),  pointer    :: cgl
-      type(grid_container),   pointer    :: cg
+   class(component_fluid), pointer    :: fl
+   integer                            :: i, j, k
+   real                               :: xi, yj, vx, vy, vz
+   real                               :: rho, pre, b0, e0
+   real                               :: bx_face, by_face, bz_face
+   real                               :: bx_cc, by_cc, bz_cc
+   type(cg_list_element),  pointer    :: cgl
+   type(grid_container),   pointer    :: cg
 
-!   Secondary parameters
-      fl => flind%ion
+   ! Secondary parameters
+   fl => flind%ion
 
-      rho = 25.0/(36.0*pi)
-      pre =  5.0/(12.0*pi)
-      b0  = 1./sqrt(fpi)
-      vz  = 0.0
-      bz  = 0.0
-      e0  = max(pre/fl%gam_1, smallei)
+   rho = 25.0/(36.0*pi)
+   pre =  5.0/(12.0*pi)
+   b0  = 1./sqrt(fpi)
+   vz  = 0.0
+   e0  = max(pre/fl%gam_1, smallei)
 
-      cgl => leaves%first
-      do while (associated(cgl))
-         cg => cgl%cg
+   cgl => leaves%first
+   do while (associated(cgl))
+      cg => cgl%cg
 
-         cg%u(fl%idn, :, :, :) = rho
-         cg%u(fl%imz, :, :, :) = vz * cg%u(fl%idn, :, :, :)
-         cg%b(zdim,   :, :, :) = bz
+      !---------------------------
+      ! Cell-centred hydro state
+      !---------------------------
+      cg%u(fl%idn, :, :, :) = rho
+      cg%u(fl%imz, :, :, :) = vz * cg%u(fl%idn, :, :, :)
+
+      !=========================================================
+      ! Magnetic field init: branch on cc_mag
+      !=========================================================
+      if (cc_mag) then
+         !---------------------------
+         ! Cell-centred B (legacy)
+         !---------------------------
+         cg%b(zdim, :, :, :) = 0.0
 
          do j = cg%lhn(ydim,LO), cg%lhn(ydim,HI)
-
             yj = cg%y(j)
-            vx  = -sin(dpi*yj)
-            bx  = b0*vx
+            vx = -sin(dpi*yj)
+            bx_face = b0*vx
 
             do i = cg%lhn(xdim,LO), cg%lhn(xdim,HI)
-
                xi = cg%x(i)
-               vy  = sin(dpi*xi)
-               by  = b0*sin(fpi*xi)
+               vy =  sin(dpi*xi)
+               by_face = b0*sin(fpi*xi)
 
-               cg%u(fl%imx,i,j,:) = vx*cg%u(fl%idn,i,j,:)
-               cg%u(fl%imy,i,j,:) = vy*cg%u(fl%idn,i,j,:)
-               cg%b(xdim,  i,j,:) = bx
-               cg%b(ydim,  i,j,:) = by
+               cg%u(fl%imx,i,j,:) = vx * cg%u(fl%idn,i,j,:)
+               cg%u(fl%imy,i,j,:) = vy * cg%u(fl%idn,i,j,:)
+
+               cg%b(xdim,i,j,:) = bx_face
+               cg%b(ydim,i,j,:) = by_face
+            enddo
+         enddo
 #ifndef ISO
-               cg%u(fl%ien,i,j,:) = e0 + ekin(cg%u(fl%imx,i,j,:), cg%u(fl%imy,i,j,:), cg%u(fl%imz,i,j,:), cg%u(fl%idn,i,j,:)) + &
-                    emag(cg%b(xdim,i,j,:), cg%b(ydim,i,j,:), cg%b(zdim,i,j,:))
-
-               ! BEWARE: The formula above ignores the fact that we have staggered grid for b
-               ! It gives correct values only because initial Bx does not depend on x and By does not depend on y
-               ! This should be addressed soon by reshape_b branch
+         ! Magnetic energy is straightforward for cell-centred B
+         do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
+            do j = cg%lhn(ydim,LO), cg%lhn(ydim,HI)
+               do i = cg%lhn(xdim,LO), cg%lhn(xdim,HI)
+                  cg%u(fl%ien,i,j,k) = e0 + ekin(cg%u(fl%imx,i,j,k), cg%u(fl%imy,i,j,k), cg%u(fl%imz,i,j,k), cg%u(fl%idn,i,j,k)) &
+                        + 0.5*( cg%b(xdim,i,j,k)**2 + cg%b(ydim,i,j,k)**2 + cg%b(zdim,i,j,k)**2 )
+               enddo
+            enddo
+         enddo
 #endif /* !ISO */
+
+      else
+         !---------------------------------------------------------
+         ! Face-centred B for CT (staggered):
+         !   Bx on x-faces   -> index i is face index, coord cg%xf(i)
+         !   By on y-faces   -> index j is face index, coord cg%yf(j)
+         !   Bz on z-faces   -> index k is face index, coord cg%zf(k)
+         !---------------------------------------------------------
+
+         ! 1) Set velocities on cell centres (same as before)
+         do j = cg%lhn(ydim,LO), cg%lhn(ydim,HI)
+            yj = cg%y(j)
+            vx = -sin(dpi*yj)
+            do i = cg%lhn(xdim,LO), cg%lhn(xdim,HI)
+               xi = cg%x(i)
+               vy =  sin(dpi*xi)
+               cg%u(fl%imx,i,j,:) = vx * cg%u(fl%idn,i,j,:)
+               cg%u(fl%imy,i,j,:) = vy * cg%u(fl%idn,i,j,:)
             enddo
          enddo
 
-         cgl => cgl%nxt
-      enddo
+         ! 2) Bx on x-faces:
+         !    Bx depends only on y (OT setup), but we still write on faces.
+         if (dom%has_dir(xdim)) then
+            do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
+               do j = cg%lhn(ydim,LO), cg%lhn(ydim,HI)
+                  yj = cg%y(j)
+                  vx = -sin(dpi*yj)
+                  bx_face = b0*vx
+                  do i = cg%lhn(xdim,LO), cg%lhn(xdim,HI) + 1
+                     ! i is x-face index -> cg%xf(i) available if you want nontrivial x-dependence
+                     cg%b(xdim,i,j,k) = bx_face
+                  enddo
+               enddo
+            enddo
+         endif
+
+         ! 3) By on y-faces:
+         if (dom%has_dir(ydim)) then
+            do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
+               do j = cg%lhn(ydim,LO), cg%lhn(ydim,HI) + 1
+                  do i = cg%lhn(xdim,LO), cg%lhn(xdim,HI)
+                     xi = cg%x(i)
+                     by_face = b0*sin(fpi*xi)
+                     cg%b(ydim,i,j,k) = by_face
+                  enddo
+               enddo
+            enddo
+         endif
+
+         ! 4) Bz on z-faces (zero here)
+         if (dom%has_dir(zdim)) then
+            do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI) + 1
+               cg%b(zdim, cg%lhn(xdim,LO):cg%lhn(xdim,HI), cg%lhn(ydim,LO):cg%lhn(ydim,HI), k) = 0.0
+            enddo
+         else
+            cg%b(zdim, :, :, :) = 0.0
+         endif
+
+#ifndef ISO
+         !---------------------------------------------------------
+         ! Energy: compute B^2 at cell centres from face averages
+         !---------------------------------------------------------
+         do k = cg%lhn(zdim,LO), cg%lhn(zdim,HI)
+            do j = cg%lhn(ydim,LO), cg%lhn(ydim,HI)
+               do i = cg%lhn(xdim,LO), cg%lhn(xdim,HI)
+
+                  bx_cc = 0.0
+                  by_cc = 0.0
+                  bz_cc = 0.0
+
+                  if (dom%has_dir(xdim)) bx_cc = 0.5*( cg%b(xdim,i,  j,k) + cg%b(xdim,i+1,j,k) )
+                  if (dom%has_dir(ydim)) by_cc = 0.5*( cg%b(ydim,i,  j,k) + cg%b(ydim,i,  j+1,k) )
+                  if (dom%has_dir(zdim)) bz_cc = 0.5*( cg%b(zdim,i,  j,k) + cg%b(zdim,i,  j,k+1) )
+
+                  cg%u(fl%ien,i,j,k) = e0 + ekin(cg%u(fl%imx,i,j,k), cg%u(fl%imy,i,j,k), cg%u(fl%imz,i,j,k), cg%u(fl%idn,i,j,k)) &
+                        + 0.5*( bx_cc*bx_cc + by_cc*by_cc + bz_cc*bz_cc )
+
+               enddo
+            enddo
+         enddo
+#endif
+
+      endif
+
+      cgl => cgl%nxt
+   enddo
 
    end subroutine problem_initial_conditions
+
 
 end module initproblem

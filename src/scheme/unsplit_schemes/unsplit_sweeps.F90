@@ -73,11 +73,12 @@ contains
       else
          call all_fluid_boundaries(istep=istep)
       endif
-      if (divB_0_method == DIVB_HDC) then
+      ! Magnetic boundary update is required both for Hyperbolic Divergence Cleaning and
+      ! constrained‑transport schemes.  Psi boundaries (for HDC) are handled inside
+      ! all_mag_boundaries; in CT modes psi is not present.
 #ifdef MAGNETIC
-         call all_mag_boundaries(istep) ! ToDo: take care of psi boundaries
+      call all_mag_boundaries(istep)
 #endif /* MAGNETIC */
-      endif
 
    end subroutine update_boundaries
 

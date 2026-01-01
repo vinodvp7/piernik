@@ -253,6 +253,9 @@ module constants
    character(len=dsetnamelen), parameter :: zbflx_n    = "zbflx"    !< main Z face-flux array of magnetic field
    character(len=dsetnamelen), parameter :: psiflx_n   = "psiflx"   !< main array carrying the flux of the auxillary scalar psi
 
+   ! electromotive force (EMF) field – edge-centred electric field used by CT solver
+   character(len=dsetnamelen), parameter :: emf_n      = "emf"
+
    ! gravitational potential
    character(len=dsetnamelen), parameter :: gp_n    = "gp"      !< static, external field, must be explicitly set to 0. if no external fields are applied
    character(len=dsetnamelen), parameter :: sgp_n   = "sgp"     !< current field from self-gravity
@@ -349,8 +352,10 @@ module constants
 
    ! divB=0 constraining method
    enum, bind(C)
-      enumerator :: DIVB_CT   ! Constrained Transport
-      enumerator :: DIVB_HDC  ! Hyperbolic Divergence Cleaning (div(B) diffusion, GLM)
+      enumerator :: DIVB_CT        !< Classical constrained transport (Pen et al.)
+      enumerator :: DIVB_FLUX_CT   !< Flux–CT scheme (arithmetic averaging of face-centred EMFs)
+      enumerator :: DIVB_CTU       !< Corner transport upwind (Gardiner–Stone)
+      enumerator :: DIVB_HDC       !< Hyperbolic divergence cleaning (div(B) diffusion, GLM)
    end enum
    integer(kind=4), parameter :: psidim = zdim + 1
 

@@ -187,7 +187,8 @@ contains
       use bcast,      only: piernik_MPI_Bcast
       use constants,  only: big_float, one, PIERNIK_INIT_DOMAIN, INVALID, DIVB_CT, DIVB_HDC, &
            &                BND_INVALID, BND_ZERO, BND_REF, BND_OUT, I_ZERO, O_INJ, O_LIN, O_I2, INVALID, &
-           &                RTVD_SPLIT, HLLC_SPLIT, RIEMANN_SPLIT, RIEMANN_UNSPLIT, GEO_XYZ, V_INFO, V_DEBUG, V_ESSENTIAL
+           &                RTVD_SPLIT, HLLC_SPLIT, RIEMANN_SPLIT, RIEMANN_UNSPLIT, GEO_XYZ, V_INFO, V_DEBUG, V_ESSENTIAL,&
+           &                DIVB_FLUX_CT, DIVB_CTU
       use dataio_pub, only: die, msg, warn, code_progress, printinfo, nh
       use domain,     only: dom
       use mpisetup,   only: cbuff, ibuff, lbuff, rbuff, master, slave
@@ -463,6 +464,10 @@ contains
       select case (divB_0)
          case ("CT", "ct", "constrained transport", "Constrained Transport")
             divB_0_method = DIVB_CT
+         case ("flux_CT", "flux_ct", "Flux_CT", "Flux_Ct", "Flux-CT", "flux-ct", "Flux CT", "flux CT")
+            divB_0_method = DIVB_FLUX_CT
+         case ("CTU", "ctu", "CTU-CT", "ctu-ct", "CornerUpwind", "corner upwind")
+            divB_0_method = DIVB_CTU
          case ("HDC", "hdc", "GLM", "glm", "divergence cleaning", "divergence diffusion")
             divB_0_method = DIVB_HDC
             if (master .and. .false.) call warn("[global:init_global] In case of problems with stability connected with checkerboard pattern in the psi field consider reducing CFL parameter (or just CFL_GLM). This solver also doesn't like sudden changes of timestep length.")
@@ -474,12 +479,8 @@ contains
             call die("[global:init_global] unrecognized divergence cleaning description.")
       end select
 
-      if ((which_solver == RTVD_SPLIT) .and. (divB_0_method /= DIVB_CT)) then
-         if (master) call warn("[global:init_global] RTVD works only with Constrained Transport. Enforcing.")
-         divB_0_method = DIVB_CT
-      endif
-
-      if ((which_solver == RTVD_SPLIT) .and. (divB_0_method /= DIVB_CT)) then
+      if ((which_solver == RTVD_SPLIT) .and. &
+          (divB_0_method == DIVB_HDC)) then
          if (master) call warn("[global:init_global] RTVD works only with Constrained Transport. Enforcing.")
          divB_0_method = DIVB_CT
       endif
@@ -489,7 +490,7 @@ contains
       select case (divB_0_method)
          case (DIVB_HDC)
             cc_mag = .true.
-         case (DIVB_CT)
+         case (DIVB_CT, DIVB_FLUX_CT, DIVB_CTU)
             cc_mag = .false.
          case default
             call die("[global:init_global] unrecognized divergence cleaning method.")
@@ -538,7 +539,7 @@ contains
          select case (divB_0_method)
             case (DIVB_HDC)
                call printinfo("    The div(B) constraint is maintained by Hyperbolic Cleaning (GLM).", V_INFO)
-            case (DIVB_CT)
+            case (DIVB_CT, DIVB_FLUX_CT, DIVB_CTU)
                call printinfo("    The div(B) constraint is maintained by Constrained Transport (2nd order).", V_INFO)
             case default
                call die("    The div(B) constraint is maintained by Uknown Something.")

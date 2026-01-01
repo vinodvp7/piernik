@@ -237,8 +237,8 @@ contains
       use constants,  only: cs_i2_n
 #endif /* ISO */
 #ifdef MAGNETIC
-      use constants,  only: mag_n, magh_n, ndims, AT_OUT_B, VAR_XFACE, VAR_YFACE, VAR_ZFACE, VAR_CENTER,&
-      &                     psi_n, psih_n, xbflx_n, ybflx_n, zbflx_n, psiflx_n
+      use constants,  only: mag_n, magh_n, ndims, AT_OUT_B, VAR_XFACE, VAR_YFACE, VAR_ZFACE, VAR_XEDGE, VAR_YEDGE, VAR_ZEDGE, VAR_CENTER,&
+      &                     psi_n, psih_n, xbflx_n, ybflx_n, zbflx_n, psiflx_n, emf_n, O_INJ
       use global,     only: cc_mag, ord_mag_prolong
 #endif /* MAGNETIC */
 
@@ -284,9 +284,20 @@ contains
          call this%reg_var(ybflx_n,   vital = .false.,  dim4 = ndims, ord_prolong = ord_mag_prolong, restart_mode = AT_OUT_B)  !! Main array of magnetic field's components, "b"
          call this%reg_var(zbflx_n,   vital = .false.,  dim4 = ndims, ord_prolong = ord_mag_prolong, restart_mode = AT_OUT_B)  !! Main array of magnetic field's components, "b"
          call this%reg_var(psiflx_n,  vital = .false.,  dim4 = ndims, ord_prolong = ord_mag_prolong, restart_mode = AT_OUT_B)  !! Main array of magnetic field's components, "b"
+
+         ! Register electromotive force (EMF) array on edges for constrained transport schemes
+         if (.not. cc_mag) then
+            call this%reg_var(emf_n, vital = .false., dim4 = ndims, ord_prolong = O_INJ, restart_mode = AT_OUT_B, position=[VAR_XEDGE, VAR_YEDGE, VAR_ZEDGE])
+         endif
+
       endif
 
       call set_magnetic_names
+
+      ! Set component names for electromotive force (EMF) arrays when using edge-centred CT schemes
+      if (which_solver == RIEMANN_UNSPLIT .and. .not. cc_mag) then
+         call set_emf_names
+      endif
 
       if (cc_mag) then
          call this%reg_var(psi_n,  vital = .true., ord_prolong = ord_mag_prolong, restart_mode = AT_OUT_B)  !! an array for div B cleaning
@@ -440,6 +451,27 @@ contains
          end select
 
       end subroutine set_magnetic_names
+
+      !> \brief Set names of the edge-centred electromotive force (EMF) components
+      !!
+      !! When constrained transport (CT) is enabled on a staggered grid (cc_mag = .false.), the solver
+      !! requires edge-centred electric field components to update the magnetic field.  This helper
+      !! assigns human‑readable names to the EMF components stored in the w array.
+      subroutine set_emf_names
+
+         use constants,        only: xdim, ydim, zdim
+         use named_array_list, only: wna, na_var_4d
+
+         implicit none
+
+         select type (lst => wna%lst)
+            type is (na_var_4d)
+               call lst(wna%ind(emf_n))%set_compname(xdim, "emfx")
+               call lst(wna%ind(emf_n))%set_compname(ydim, "emfy")
+               call lst(wna%ind(emf_n))%set_compname(zdim, "emfz")
+         end select
+
+      end subroutine set_emf_names
 #endif /* MAGNETIC */
 
    end subroutine register_fluids

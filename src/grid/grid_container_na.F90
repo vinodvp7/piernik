@@ -250,7 +250,8 @@ contains
 
    subroutine set_constant_b_field(this, b)
 
-      use constants, only: xdim, zdim
+      use constants, only: xdim, ydim, zdim
+      use global, only: cc_mag
 
       implicit none
 
@@ -260,9 +261,21 @@ contains
       integer :: d
 
       if (associated(this%b)) then
-         do d = xdim, zdim
-            this%b(d, this%is:this%ie, this%js:this%je, this%ks:this%ke) = b(d)
-         enddo
+         ! If the magnetic field is cell-centered (cc_mag=.true.) then simply fill the cell-centered region.
+         ! Otherwise, for face-centered fields (cc_mag=.false.), extend the assignment along the normal
+         ! direction by one index to cover all faces.  The cc_mag flag is defined in global.
+         if (cc_mag) then
+            do d = xdim, zdim
+               this%b(d, this%is:this%ie, this%js:this%je, this%ks:this%ke) = b(d)
+            enddo
+         else
+            ! Bx is face-centred in x-direction: extend index range along x
+            this%b(xdim, this%is:this%ie+1, this%js:this%je, this%ks:this%ke) = b(xdim)
+            ! By is face-centred in y-direction: extend index range along y
+            this%b(ydim, this%is:this%ie, this%js:this%je+1, this%ks:this%ke) = b(ydim)
+            ! Bz is face-centred in z-direction: extend index range along z
+            this%b(zdim, this%is:this%ie, this%js:this%je, this%ks:this%ke+1) = b(zdim)
+         endif
       endif
 
    end subroutine set_constant_b_field

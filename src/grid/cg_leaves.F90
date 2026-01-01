@@ -300,8 +300,9 @@ contains
 
       use cg_level_connected, only: cg_level_connected_t
       use cg_level_finest,    only: finest
-      use constants,          only: O_INJ
+      use constants,          only: O_INJ, ndims, xdim, ydim, zdim, mag_n
       use named_array_list,   only: wna
+      use global,             only: cc_mag
       use ppp,                only: ppp_main
 
       implicit none
@@ -328,8 +329,31 @@ contains
 
       curl => finest%level
       do while (associated(curl))
-         if (this%coarsest_leaves%l%id <= curl%l%id) &
-              call curl%level_4d_boundaries(ind, area_type=area_type, dir=dir, nocorners=nocorners)
+         if (this%coarsest_leaves%l%id <= curl%l%id) then
+            call curl%level_4d_boundaries(ind, area_type=area_type, dir=dir, nocorners=nocorners)
+            !
+            ! Apply external boundary conditions for magnetic fields on this level when fields are face‐centred.
+            ! The generic level_4d_boundaries routine only exchanges MPI guard cells.  For face‐centred
+            ! magnetics we need to update the external guard cells using bnd_b.  We detect the magnetic
+            ! field via the named array list index and call bnd_b for each spatial direction.
+            if (present(dir)) then
+               ! if a specific direction is requested, apply only that boundary; otherwise apply all
+            endif
+            ! Check if the current 4D array is the magnetic field
+            if (wna%lst(ind)%name == mag_n) then
+               ! Only apply when not cell‐centred; cc_mag resides in module global, imported via use global in bnd_b
+               if (.not. cc_mag) then
+                  ! apply external magnetic boundary conditions for each direction allowed by dir argument
+                  if (present(dir)) then
+                     call curl%bnd_b(dir)
+                  else
+                     call curl%bnd_b(xdim)
+                     if (ndims >= ydim) call curl%bnd_b(ydim)
+                     if (ndims >= zdim) call curl%bnd_b(zdim)
+                  endif
+               endif
+            endif
+         endif
          curl => curl%coarser
       enddo
 

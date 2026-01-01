@@ -31,6 +31,7 @@
 module grid_cont_fcflx
 
    use constants,       only: xdim, zdim, LO, HI
+   use global,         only: cc_mag
    use grid_cont_ref,   only: grid_container_ref_t
    use flx_cell,        only: fluxpoint
    use flx_arr,         only: fluxarray
@@ -79,13 +80,35 @@ contains
       ! For simplicity we allocate all possible buffers for f/c fluxes.
       ! Some of this memory remains unused and may get swapped out.
       ! Index values outside of the block mark no flux to process.
+      !
+      ! When the magnetic field is staggered (cc_mag == .false.), we need to
+      ! allocate an extra cell in both transverse directions of each face
+      ! centered flux array.  This extra cell stores the EMF (edge-based
+      ! electric field) used by the constrained transport scheme.  For
+      ! cell-centred magnetics (cc_mag == .true.), the original allocation is
+      ! retained.  Note: we enlarge both orthogonal dimensions by 1 even
+      ! though only magnetic components make use of them – unused entries
+      ! remain unused for hydrodynamic fluxes.
       do i = LO, HI
-         call this%finebnd  (xdim, i)%init([ this%js, this%je ], [ this%ks, this%ke ])
-         call this%finebnd  (ydim, i)%init([ this%ks, this%ke ], [ this%is, this%ie ])
-         call this%finebnd  (zdim, i)%init([ this%is, this%ie ], [ this%js, this%je ])
-         call this%coarsebnd(xdim, i)%init([ this%js, this%je ], [ this%ks, this%ke ])
-         call this%coarsebnd(ydim, i)%init([ this%ks, this%ke ], [ this%is, this%ie ])
-         call this%coarsebnd(zdim, i)%init([ this%is, this%ie ], [ this%js, this%je ])
+         if (.not. cc_mag) then
+            ! X‑faces have transverse directions (y,z)
+            call this%finebnd  (xdim, i)%init([ this%js, this%je + 1 ], [ this%ks, this%ke + 1 ])
+            call this%coarsebnd(xdim, i)%init([ this%js, this%je + 1 ], [ this%ks, this%ke + 1 ])
+            ! Y‑faces have transverse directions (z,x)
+            call this%finebnd  (ydim, i)%init([ this%ks, this%ke + 1 ], [ this%is, this%ie + 1 ])
+            call this%coarsebnd(ydim, i)%init([ this%ks, this%ke + 1 ], [ this%is, this%ie + 1 ])
+            ! Z‑faces have transverse directions (x,y)
+            call this%finebnd  (zdim, i)%init([ this%is, this%ie + 1 ], [ this%js, this%je + 1 ])
+            call this%coarsebnd(zdim, i)%init([ this%is, this%ie + 1 ], [ this%js, this%je + 1 ])
+         else
+            ! Standard cell‑centred allocation
+            call this%finebnd  (xdim, i)%init([ this%js, this%je ], [ this%ks, this%ke ])
+            call this%coarsebnd(xdim, i)%init([ this%js, this%je ], [ this%ks, this%ke ])
+            call this%finebnd  (ydim, i)%init([ this%ks, this%ke ], [ this%is, this%ie ])
+            call this%coarsebnd(ydim, i)%init([ this%ks, this%ke ], [ this%is, this%ie ])
+            call this%finebnd  (zdim, i)%init([ this%is, this%ie ], [ this%js, this%je ])
+            call this%coarsebnd(zdim, i)%init([ this%is, this%ie ], [ this%js, this%je ])
+         endif
       enddo
       do i = xdim, zdim
          this%finebnd  (i, LO)%index = this%lhn(i, LO) - 1

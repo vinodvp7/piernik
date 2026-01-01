@@ -1100,23 +1100,43 @@ contains
          ! Expect div(B) growing proportionally to the distance from the domain boundary.
 
          select case (dir)
+            !
+            ! For face‐centred magnetic fields (cc_mag==.false.) the primary face index along the normal
+            ! direction is shifted by one cell compared to cell‐centred indexing.  Without this shift,
+            ! the external boundary would overwrite the wrong face, leading to unphysical jumps in B.
+            ! We therefore adjust the guard–cell index "it" by (side-LO) when cc_mag is false.
+            ! When cc_mag is true (cell‐centred magnetics) we retain the original indexing.
             case (xdim)
                do i = 1, dom%nb
-                  it = cg%ijkse(dir, side) - pm_one * i
+                  if (cc_mag) then
+                     it = cg%ijkse(dir, side) - pm_one * i
+                  else
+                     it = cg%ijkse(dir, side) - pm_one * i + (side - LO)
+                  endif
+                  ! Normal component
                   cg%b(xdim, it, :, :) = 2.0 * cg%b(xdim, it + pm_one, :, :) - cg%b(xdim, it + pm_two, :, :)
+                  ! Transverse components copy the values from the nearest interior cell
                   cg%b(ydim, it, :, :) = cg%b(ydim, it + pm_one, :, :)
                   cg%b(zdim, it, :, :) = cg%b(zdim, it + pm_one, :, :)
                enddo
             case (ydim)
                do i = 1, dom%nb
-                  it = cg%ijkse(dir, side) - pm_one * i
+                  if (cc_mag) then
+                     it = cg%ijkse(dir, side) - pm_one * i
+                  else
+                     it = cg%ijkse(dir, side) - pm_one * i + (side - LO)
+                  endif
                   cg%b(ydim, :, it, :) = 2.0 * cg%b(ydim, :, it + pm_one, :) - cg%b(ydim, :, it + pm_two, :)
                   cg%b(xdim, :, it, :) = cg%b(xdim, :, it + pm_one, :)
                   cg%b(zdim, :, it, :) = cg%b(zdim, :, it + pm_one, :)
                enddo
             case (zdim)
                do i = 1, dom%nb
-                  it = cg%ijkse(dir, side) - pm_one * i
+                  if (cc_mag) then
+                     it = cg%ijkse(dir, side) - pm_one * i
+                  else
+                     it = cg%ijkse(dir, side) - pm_one * i + (side - LO)
+                  endif
                   cg%b(zdim, :, :, it) = 2.0 * cg%b(zdim, :, :, it + pm_one) - cg%b(zdim, :, :, it + pm_two)
                   cg%b(xdim, :, :, it) = cg%b(xdim, :, :, it + pm_one)
                   cg%b(ydim, :, :, it) = cg%b(ydim, :, :, it + pm_one)

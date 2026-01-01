@@ -49,6 +49,9 @@ module grid_cont_prolong
       procedure :: init_gc_prolong  !< Initialization
       procedure :: cleanup_prolong  !< Deallocate all internals
       procedure :: prolong          !< perform prolongation of the data stored in this%prolong_
+      ! Divergence-free restriction and prolongation for face-centred magnetic field
+      procedure :: restrict_mhd    !< Restrict magnetic field components from fine to coarse grid while preserving solenoidality
+      procedure :: prolong_mhd     !< Prolong magnetic field components from coarse to fine grid while preserving solenoidality
 
    end type grid_container_prolong_t
 
@@ -451,5 +454,393 @@ contains
       ! Alternatively, an FFT convolution may be employed after injection. No idea at what stencil size the FFT is faster. It is finite size for sure :-)
 
    end subroutine prolong
+
+!> \brief Restrict face-centred magnetic field from fine to coarse grid.
+!!
+!! This routine computes the coarse magnetic field components by averaging the fine
+!! values over the transverse directions only.  The magnetic field is stored
+!! in a 4D array with the first index enumerating the spatial components
+!! (1=Bx, 2=By, 3=Bz) and the remaining three indices corresponding to grid
+!! coordinates.  Because the field is face-centred the restriction needs to
+!! respect that Bx is defined on x-faces, By on y-faces and Bz on z-faces.  In
+!! consequence, when forming a coarse Bx value one should average only over
+!! the fine faces that subtend the same coarse face (i.e. average over the
+!! directions transverse to x).  The same holds for the other components.
+!!
+!! The inputs are:
+!!   * iv   – index into this%w(:) corresponding to the magnetic field (mag_n).
+!!   * fse  – fine segment indices.  This 2×ndims array gives the start and
+!!     end indices of the fine grid region that is being restricted.
+!!   * buf4 – real array of size (ndims, n_cx, n_cy, n_cz) where the computed
+!!     coarse values will be stored.  The second, third and fourth dimensions
+!!     correspond to the coarse grid indices in x, y and z directions.
+!!
+!! Note that this routine performs a simple averaging over the transverse
+!! directions and does not attempt any high–order interpolation.  This choice
+!! preserves the solenoidal constraint exactly at the coarse level because
+!! flux through the coarse face is the sum of fluxes through the fine faces.
+!!
+   subroutine restrict_mhd(this, iv, fse, buf4)
+
+      use constants, only: xdim, ydim, zdim, ndims, LO, HI, refinement_factor
+      use domain,    only: dom
+
+      implicit none
+
+      class(grid_container_prolong_t), intent(inout) :: this
+      integer(kind=4),                    intent(in)    :: iv
+      integer(kind=8), dimension(ndims, LO:HI), intent(in) :: fse
+      real, dimension(:,:,:,:),           intent(inout) :: buf4
+
+      integer(kind=8), dimension(ndims) :: off1
+      integer(kind=8) :: n_cx, n_cy, n_cz
+      integer(kind=8) :: ic, jc, kc
+      integer(kind=8) :: i_f, j_f, k_f
+      integer :: comp
+      integer :: m1, m2
+      real :: tmp_sum
+      real :: norm
+      integer :: d
+      real, dimension(:,:,:,:), pointer :: arr
+      integer :: eff_dim
+
+      ! Compute the offset of the fine segment within a coarse cell.  This
+      ! ensures that the coarse indices are aligned with the fine indices.
+      off1(xdim) = mod(fse(xdim, LO), refinement_factor)
+      off1(ydim) = mod(fse(ydim, LO), refinement_factor)
+      off1(zdim) = mod(fse(zdim, LO), refinement_factor)
+
+      ! Determine the size of the coarse buffer along each spatial direction.
+      n_cx = size(buf4, dim=2)
+      n_cy = size(buf4, dim=3)
+      n_cz = size(buf4, dim=4)
+
+      ! Pointer to the magnetic field on the fine grid.  The field lives
+      ! in this%w(iv)%arr and has dimensions (component, i, j, k).
+      arr => this%w(iv)%arr
+
+      ! Effective dimension of the simulation determines the number of
+      ! transverse directions to average over.  In 3D the number of
+      ! contributions is refinement_factor^(eff_dim - 1).
+      eff_dim = dom%eff_dim
+      if (eff_dim > 1) then
+         norm = 1.0 / real(refinement_factor, kind=kind(norm)) ** real(eff_dim - 1, kind=kind(norm))
+      else
+         norm = 1.0
+      end if
+
+      ! Zero the buffer before accumulation.
+      buf4 = 0.0
+
+      ! Loop over all components (Bx, By, Bz).  The component index defines
+      ! which direction is the normal direction for the face-centred field.
+      do comp = xdim, zdim
+         d = comp
+         ! Loop over coarse grid indices and accumulate fine data.
+         do kc = 1, n_cz
+            ! Compute the starting fine index in z for this coarse index.  We
+            ! subtract off1 to align with the first fine cell within the
+            ! coarse block.  Subsequent coarse indices step by refinement_factor.
+            k_f = fse(zdim, LO) - off1(zdim) + (kc - 1) * refinement_factor
+            do jc = 1, n_cy
+               j_f = fse(ydim, LO) - off1(ydim) + (jc - 1) * refinement_factor
+               do ic = 1, n_cx
+                  i_f = fse(xdim, LO) - off1(xdim) + (ic - 1) * refinement_factor
+                  tmp_sum = 0.0
+                  select case (d)
+                  case (xdim)
+                     ! For Bx average over y and z.  Do not iterate over the
+                     ! normal (x) direction.
+                     do m2 = 0, refinement_factor - 1
+                        do m1 = 0, refinement_factor - 1
+                           tmp_sum = tmp_sum + arr(comp, i_f, j_f + m1, k_f + m2)
+                        end do
+                     end do
+                  case (ydim)
+                     ! For By average over x and z.
+                     do m2 = 0, refinement_factor - 1
+                        do m1 = 0, refinement_factor - 1
+                           tmp_sum = tmp_sum + arr(comp, i_f + m1, j_f, k_f + m2)
+                        end do
+                     end do
+                  case (zdim)
+                     ! For Bz average over x and y.
+                     do m2 = 0, refinement_factor - 1
+                        do m1 = 0, refinement_factor - 1
+                           tmp_sum = tmp_sum + arr(comp, i_f + m1, j_f + m2, k_f)
+                        end do
+                     end do
+                  end select
+                  buf4(comp, ic, jc, kc) = tmp_sum * norm
+               end do
+            end do
+         end do
+      end do
+
+   end subroutine restrict_mhd
+
+!> \brief Prolong face-centred magnetic field from coarse to fine grid.
+!!
+!! This routine fills the fine magnetic field array on the child grid using
+!! simple injection from the coarse field.  For each coarse value the
+!! corresponding fine faces are assigned the same value in the directions
+!! transverse to the face normal.  This preserves the divergence-free
+!! condition exactly but does not attempt any high–order interpolation.  The
+!! arguments are:
+!!   * buf4  – coarse magnetic field values for the current segment.  The
+!!             dimensions are (ndims, n_cx, n_cy, n_cz).
+!!   * cse   – coarse segment indices.
+!!   * fse   – fine segment indices corresponding to c2f(cse).
+!!   * fine_arr – pointer to the fine magnetic field array (component,i,j,k)
+!!                on the receiving grid.
+!!
+   subroutine prolong_mhd(this, buf4, cse, fse, fine_arr)
+
+      use constants, only: xdim, ydim, zdim, ndims, LO, HI, refinement_factor
+
+      implicit none
+
+      class(grid_container_prolong_t), intent(inout) :: this
+      real, dimension(:,:,:,:),       intent(in)    :: buf4
+      integer(kind=8), dimension(ndims, LO:HI), intent(in) :: cse
+      integer(kind=8), dimension(ndims, LO:HI), intent(in) :: fse
+      real, dimension(:,:,:,:), pointer, intent(inout) :: fine_arr
+
+      integer(kind=8), dimension(ndims) :: off1
+      integer(kind=8) :: n_cx, n_cy, n_cz
+      integer(kind=8) :: ic, jc, kc
+      integer(kind=8) :: i_f, j_f, k_f
+      integer(kind=8) :: i_fp1, j_fp1, k_fp1
+      integer :: comp
+      integer :: mx, my, mz
+      integer :: mx_sel, my_sel, mz_sel
+      integer :: rf
+      real :: a, b, sl_x, sl_y, sl_z
+      real :: delta_x, delta_y, delta_z
+      real :: Bx_in, By_in, Bz_in
+      real :: By_high, By_low, Bz_high, Bz_low, Bx_high, Bx_low
+
+      !
+      ! Monotonized Central limiter.  Given two one-sided differences a and b
+      ! returns a limited slope that preserves monotonicity.  This function
+      ! is defined separately at the module level (see end of this file).
+      !
+
+      ! Compute the offset of the fine segment relative to the coarse grid.
+      off1(xdim) = mod(fse(xdim, LO), refinement_factor)
+      off1(ydim) = mod(fse(ydim, LO), refinement_factor)
+      off1(zdim) = mod(fse(zdim, LO), refinement_factor)
+
+      ! Extract coarse buffer sizes.
+      n_cx = size(buf4, dim=2)
+      n_cy = size(buf4, dim=3)
+      n_cz = size(buf4, dim=4)
+
+      ! Short-cut refinement factor
+      rf = refinement_factor
+
+      ! Prolongation: first compute face values on coarse boundaries ("skin")
+      ! using linear interpolation with slope limiting in the transverse
+      ! directions.  Then compute the interior faces by enforcing
+      ! solenoidality.  This implementation assumes a refinement factor of
+      ! two in each direction.  Extensions to higher refinement factors
+      ! would require more elaborate orientation patterns.
+
+      do kc = 1, n_cz
+         k_f   = fse(zdim, LO) - off1(zdim) + (kc - 1) * rf
+         k_fp1 = k_f + 1
+         do jc = 1, n_cy
+            j_f   = fse(ydim, LO) - off1(ydim) + (jc - 1) * rf
+            j_fp1 = j_f + 1
+            do ic = 1, n_cx
+               i_f   = fse(xdim, LO) - off1(xdim) + (ic - 1) * rf
+               i_fp1 = i_f + 1
+
+               ! ---- Bx: slope-limited interpolation in y and z ----
+               ! Compute slopes along y and z for Bx at this coarse cell
+               ! Use one-sided differences at boundaries
+               ! Slope in y
+               if (jc > 1) then
+                  a = buf4(xdim, ic, jc, kc) - buf4(xdim, ic, jc - 1, kc)
+               else
+                  a = 0.0
+               end if
+               if (jc < n_cy) then
+                  b = buf4(xdim, ic, jc + 1, kc) - buf4(xdim, ic, jc, kc)
+               else
+                  b = 0.0
+               end if
+               sl_y = 0.5 * limiter_mc(a, b)
+               ! Slope in z
+               if (kc > 1) then
+                  a = buf4(xdim, ic, jc, kc) - buf4(xdim, ic, jc, kc - 1)
+               else
+                  a = 0.0
+               end if
+               if (kc < n_cz) then
+                  b = buf4(xdim, ic, jc, kc + 1) - buf4(xdim, ic, jc, kc)
+               else
+                  b = 0.0
+               end if
+               sl_z = 0.5 * limiter_mc(a, b)
+
+               ! Deposit Bx skin values on fine faces at i_f
+               do my = 0, rf - 1
+                  delta_y = (real(my) + 0.5) / real(rf) - 0.5
+                  do mz = 0, rf - 1
+                     delta_z = (real(mz) + 0.5) / real(rf) - 0.5
+                     fine_arr(xdim, i_f,  j_f + my, k_f + mz) = buf4(xdim, ic, jc, kc) + sl_y * delta_y + sl_z * delta_z
+                  end do
+               end do
+
+               ! ---- By: slope-limited interpolation in x and z ----
+               ! Compute slopes along x and z for By at this coarse cell
+               ! Slope in x
+               if (ic > 1) then
+                  a = buf4(ydim, ic, jc, kc) - buf4(ydim, ic - 1, jc, kc)
+               else
+                  a = 0.0
+               end if
+               if (ic < n_cx) then
+                  b = buf4(ydim, ic + 1, jc, kc) - buf4(ydim, ic, jc, kc)
+               else
+                  b = 0.0
+               end if
+               sl_x = 0.5 * limiter_mc(a, b)
+               ! Slope in z
+               if (kc > 1) then
+                  a = buf4(ydim, ic, jc, kc) - buf4(ydim, ic, jc, kc - 1)
+               else
+                  a = 0.0
+               end if
+               if (kc < n_cz) then
+                  b = buf4(ydim, ic, jc, kc + 1) - buf4(ydim, ic, jc, kc)
+               else
+                  b = 0.0
+               end if
+               sl_z = 0.5 * limiter_mc(a, b)
+
+               ! Deposit By skin values on fine faces at j_f
+               do mx = 0, rf - 1
+                  delta_x = (real(mx) + 0.5) / real(rf) - 0.5
+                  do mz = 0, rf - 1
+                     delta_z = (real(mz) + 0.5) / real(rf) - 0.5
+                     fine_arr(ydim, i_f + mx, j_f, k_f + mz) = buf4(ydim, ic, jc, kc) + sl_x * delta_x + sl_z * delta_z
+                  end do
+               end do
+
+               ! ---- Bz: slope-limited interpolation in x and y ----
+               ! Compute slopes along x and y for Bz at this coarse cell
+               ! Slope in x
+               if (ic > 1) then
+                  a = buf4(zdim, ic, jc, kc) - buf4(zdim, ic - 1, jc, kc)
+               else
+                  a = 0.0
+               end if
+               if (ic < n_cx) then
+                  b = buf4(zdim, ic + 1, jc, kc) - buf4(zdim, ic, jc, kc)
+               else
+                  b = 0.0
+               end if
+               sl_x = 0.5 * limiter_mc(a, b)
+               ! Slope in y
+               if (jc > 1) then
+                  a = buf4(zdim, ic, jc, kc) - buf4(zdim, ic, jc - 1, kc)
+               else
+                  a = 0.0
+               end if
+               if (jc < n_cy) then
+                  b = buf4(zdim, ic, jc + 1, kc) - buf4(zdim, ic, jc, kc)
+               else
+                  b = 0.0
+               end if
+               sl_y = 0.5 * limiter_mc(a, b)
+
+               ! Deposit Bz skin values on fine faces at k_f
+               do mx = 0, rf - 1
+                  delta_x = (real(mx) + 0.5) / real(rf) - 0.5
+                  do my = 0, rf - 1
+                     delta_y = (real(my) + 0.5) / real(rf) - 0.5
+                     fine_arr(zdim, i_f + mx, j_f + my, k_f) = buf4(zdim, ic, jc, kc) + sl_x * delta_x + sl_y * delta_y
+                  end do
+               end do
+
+               ! ---- Compute internal faces to enforce divergence-free constraint (rf=2 only) ----
+               if (rf == 2) then
+                  ! Compute internal Bx at i_f+1 for each (my,mz)
+                  do my = 0, 1
+                     do mz = 0, 1
+                        ! Orientation: choose mx_sel based on (my + mz) mod 2
+                        mx_sel = mod(my + mz, 2)
+                        Bx_in = fine_arr(xdim, i_f,   j_f + my, k_f + mz)
+                        ! Difference of By across j at j_f+1 - j_f using i index mx_sel
+                        By_high = fine_arr(ydim, i_f + mx_sel, j_fp1, k_f + mz)
+                        By_low  = fine_arr(ydim, i_f + mx_sel, j_f  , k_f + mz)
+                        ! Difference of Bz across k at k_f+1 - k_f using i index mx_sel and j index my
+                        Bz_high = fine_arr(zdim, i_f + mx_sel, j_f + my, k_fp1)
+                        Bz_low  = fine_arr(zdim, i_f + mx_sel, j_f + my, k_f  )
+                        fine_arr(xdim, i_fp1, j_f + my, k_f + mz) = Bx_in - (By_high - By_low) - (Bz_high - Bz_low)
+                     end do
+                  end do
+
+                  ! Compute internal By at j_f+1 for each (mx,mz)
+                  do mx = 0, 1
+                     do mz = 0, 1
+                        ! Orientation: choose my_sel based on (mx + mz) mod 2
+                        my_sel = mod(mx + mz, 2)
+                        By_in = fine_arr(ydim, i_f + mx, j_f, k_f + mz)
+                        ! Difference of Bz across k using j index my_sel
+                        Bz_high = fine_arr(zdim, i_f + mx, j_f + my_sel, k_fp1)
+                        Bz_low  = fine_arr(zdim, i_f + mx, j_f + my_sel, k_f  )
+                        ! Difference of Bx across i using j index my_sel
+                        Bx_high = fine_arr(xdim, i_fp1, j_f + my_sel, k_f + mz)
+                        Bx_low  = fine_arr(xdim, i_f  , j_f + my_sel, k_f + mz)
+                        fine_arr(ydim, i_f + mx, j_fp1, k_f + mz) = By_in - (Bz_high - Bz_low) - (Bx_high - Bx_low)
+                     end do
+                  end do
+
+                  ! Compute internal Bz at k_f+1 for each (mx,my)
+                  do mx = 0, 1
+                     do my = 0, 1
+                        ! Orientation: choose mz_sel based on (mx + my) mod 2
+                        mz_sel = mod(mx + my, 2)
+                        Bz_in = fine_arr(zdim, i_f + mx, j_f + my, k_f)
+                        ! Difference of Bx across i using k index mz_sel
+                        Bx_high = fine_arr(xdim, i_fp1, j_f + my, k_f + mz_sel)
+                        Bx_low  = fine_arr(xdim, i_f  , j_f + my, k_f + mz_sel)
+                        ! Difference of By across j using k index mz_sel
+                        By_high = fine_arr(ydim, i_f + mx, j_fp1, k_f + mz_sel)
+                        By_low  = fine_arr(ydim, i_f + mx, j_f  , k_f + mz_sel)
+                        fine_arr(zdim, i_f + mx, j_f + my, k_fp1) = Bz_in - (Bx_high - Bx_low) - (By_high - By_low)
+                     end do
+                  end do
+               end if  ! rf==2
+
+            end do  ! ic
+         end do     ! jc
+      end do        ! kc
+
+   end subroutine prolong_mhd
+
+!>
+!! \brief Monotonized Central (MC) slope limiter
+!!
+!! This helper function returns a limited slope that preserves monotonicity.
+!! It takes two one‑sided differences \(a\) and \(b\) and returns a slope
+!! between them.  If the differences have opposite signs the function
+!! returns zero.  Otherwise it returns the minimum of the absolute
+!! differences and half of their sum, preserving the sign of \(a+b\).
+!!
+   pure real function limiter_mc(a, b) result(lim)
+      real, intent(in) :: a, b
+      real             :: s
+      if (a * b <= 0.0) then
+         lim = 0.0
+      else
+         s = 0.5 * (abs(a) + abs(b))
+         ! Use sign(1.0, a+b) to preserve the sign of (a+b) but with magnitude unity
+         lim = sign(1.0, a + b) * min(min(abs(a), abs(b)), s)
+      end if
+   end function limiter_mc
 
 end module grid_cont_prolong

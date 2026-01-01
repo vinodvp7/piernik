@@ -936,7 +936,8 @@ contains
 
       use cg_cost_data,     only: I_REFINE
       use cg_list,          only: cg_list_element
-      use constants,        only: xdim, ydim, zdim, LO, HI, I_ZERO, ndims, PPP_AMR  !, dirtyH1
+      use constants,        only: xdim, ydim, zdim, LO, HI, I_ZERO, ndims, PPP_AMR, mag_n  !, dirtyH1
+      use global,           only: cc_mag
       use dataio_pub,       only: msg, warn
       use grid_cont,        only: grid_container
       use grid_helpers,     only: f2c, c2f
@@ -1057,30 +1058,43 @@ contains
          call cg%costs%start
 
          if (allocated(cg%pi_tgt%seg) .and. .not. cg%ignore_prolongation) then
-
             box_8 = int(cg%ijkse, kind=8)
             cse = f2c(box_8)
             fse = c2f(cse)  ! what about odd-sized or odd-offset cg?
 
             if (d4) then
-               qna%lst(qna%wai)%ord_prolong = 0  !> QUIRKY \todo implement high order conservative prolongation and use wna%lst(i)%ord_prolong here
-               do iw = 1, wna%get_dim4(iv)
+               ! Determine whether the current variable is the magnetic field and face-centred (cc_mag == .false.).
+               if (iv == wna%ind(mag_n) .and. .not. cc_mag) then
+                  ! Divergence-free prolongation for face-centred magnetic field.
                   do g = lbound(cg%pi_tgt%seg(:), dim=1), ubound(cg%pi_tgt%seg(:), dim=1)
-
                      associate (csep => cg%pi_tgt%seg(g)%se)
-                        cg%prolong_(csep(xdim, LO):csep(xdim, HI), csep(ydim, LO):csep(ydim, HI), csep(zdim, LO):csep(zdim, HI)) = cg%pi_tgt%seg(g)%buf4(iw, :, :, :)
+                        ! Compute fine segment corresponding to this coarse segment.
+                        fse = c2f(csep)
+                        ! Perform divergence-preserving prolongation on this segment.
+                        call cg%prolong_mhd(cg%pi_tgt%seg(g)%buf4, csep, fse, cg%w(iv)%arr)
                      end associate
                   enddo
-                  call cg%prolong(qna%wai, cse, p_xyz = .true.) ! prolong to auxiliary array cg%prolong_xyz
-                  cg%w(iv)%arr(iw,       fse(xdim, LO):fse(xdim, HI), fse(ydim, LO):fse(ydim, HI), fse(zdim, LO):fse(zdim, HI)) = &
-                       &  cg%prolong_xyz(fse(xdim, LO):fse(xdim, HI), fse(ydim, LO):fse(ydim, HI), fse(zdim, LO):fse(zdim, HI))
-
-               enddo
+               else
+                  ! Generic high-order prolongation for 4D arrays.
+                  qna%lst(qna%wai)%ord_prolong = 0  !> QUIRKY \todo implement high order conservative prolongation and use wna%lst(i)%ord_prolong here
+                  do iw = 1, wna%get_dim4(iv)
+                     do g = lbound(cg%pi_tgt%seg(:), dim=1), ubound(cg%pi_tgt%seg(:), dim=1)
+                        associate (csep => cg%pi_tgt%seg(g)%se)
+                           cg%prolong_(csep(xdim, LO):csep(xdim, HI), csep(ydim, LO):csep(ydim, HI), csep(zdim, LO):csep(zdim, HI)) = &
+                                cg%pi_tgt%seg(g)%buf4(iw, :, :, :)
+                        end associate
+                     enddo
+                     call cg%prolong(qna%wai, cse, p_xyz = .true.) ! prolong to auxiliary array cg%prolong_xyz
+                     cg%w(iv)%arr(iw,       fse(xdim, LO):fse(xdim, HI), fse(ydim, LO):fse(ydim, HI), fse(zdim, LO):fse(zdim, HI)) = &
+                          &  cg%prolong_xyz(fse(xdim, LO):fse(xdim, HI), fse(ydim, LO):fse(ydim, HI), fse(zdim, LO):fse(zdim, HI))
+                  enddo
+               endif
             else
                do g = lbound(cg%pi_tgt%seg(:), dim=1), ubound(cg%pi_tgt%seg(:), dim=1)
 
                   associate (csep => cg%pi_tgt%seg(g)%se)
-                     cg%prolong_(csep(xdim, LO):csep(xdim, HI), csep(ydim, LO):csep(ydim, HI), csep(zdim, LO):csep(zdim, HI)) = cg%pi_tgt%seg(g)%buf(:,:,:)
+                     cg%prolong_(csep(xdim, LO):csep(xdim, HI), csep(ydim, LO):csep(ydim, HI), csep(zdim, LO):csep(zdim, HI)) = &
+                          cg%pi_tgt%seg(g)%buf(:,:,:)
                   end associate
 
                   !> When this%ord_prolong_set /= I_ZERO, the received cg%pi_tgt%seg(:)%buf(:,:,:) may overlap
@@ -1152,13 +1166,14 @@ contains
       use cg_cost_data,     only: I_REFINE
       use cg_list,          only: cg_list_element
       use cg_list_global,   only: all_cg
-      use constants,        only: xdim, ydim, zdim, LO, HI, base_level_id, PPP_AMR  !, dirtyH1
+      use constants,        only: xdim, ydim, zdim, LO, HI, base_level_id, PPP_AMR, mag_n  !, dirtyH1
       use dataio_pub,       only: warn, die
       use domain,           only: dom
       use grid_cont,        only: grid_container
       use grid_helpers,     only: c2f
       use mpisetup,         only: master
       use named_array_list, only: qna, wna
+      use global,           only: cc_mag
       use ppp,              only: ppp_main
       use pppmpi,           only: req_ppp
 
@@ -1296,16 +1311,37 @@ contains
                   !> When this%ord_prolong_set /= I_ZERO, the incoming data thus must contain valid guardcells
 
                   if (present(arr4d)) then
-                     qna%lst(qna%wai)%ord_prolong = wna%lst(ind)%ord_prolong  ! QUIRKY
-                     do iw = 1, wna%get_dim4(ind)
-                        cg%prolong_(cse(xdim, LO):cse(xdim, HI), cse(ydim, LO):cse(ydim, HI), cse(zdim, LO):cse(zdim, HI)) = seg(g)%buf4(iw, :, :, :)
-                        call cg%prolong(qna%wai, seg(g)%se, p_xyz=.true.)  ! prolong rank-4 to auxiliary array cg%prolong_xyz.
-                        ! qna%wai is required only for indirect determination of prolongation order (TOO QUIRKY)
-                        cg%w(ind)%arr(iw,               fse(xdim, LO):fse(xdim, HI), fse(ydim, LO):fse(ydim, HI), fse(zdim, LO):fse(zdim, HI)) = &
-                             &           cg%prolong_xyz(fse(xdim, LO):fse(xdim, HI), fse(ydim, LO):fse(ydim, HI), fse(zdim, LO):fse(zdim, HI))
-                     enddo
+                     ! Check if we are prolonging the face-centred magnetic field.  In that case use the
+                     ! divergence-preserving prolongation implemented in prolong_mhd.  Otherwise fall back
+                     ! to the generic scalar prolongation routine.
+                     if (ind == wna%ind(mag_n) .and. .not. cc_mag) then
+                        ! Divergence-free prolongation for magnetic field.  Use the received buffer
+                        ! directly; slopes in transverse directions at the boundary are zero when no
+                        ! ghost-cell data are available.
+                        call cg%prolong_mhd(seg(g)%buf4, seg(g)%se, fse, cg%w(ind)%arr)
+                     else
+                        ! Generic prolongation path for 4D variables.  First copy the received coarse
+                        ! data into the prolongation buffer and then call the standard prolongation.
+                        qna%lst(qna%wai)%ord_prolong = wna%lst(ind)%ord_prolong  ! QUIRKY
+                        do iw = 1, wna%get_dim4(ind)
+                           cg%prolong_(cse(xdim, LO):cse(xdim, HI), &
+                                        cse(ydim, LO):cse(ydim, HI), &
+                                        cse(zdim, LO):cse(zdim, HI)) = seg(g)%buf4(iw, :, :, :)
+                           call cg%prolong(qna%wai, seg(g)%se, p_xyz=.true.)  ! prolong rank-4 to auxiliary array cg%prolong_xyz.
+                           ! qna%wai is required only for indirect determination of prolongation order (TOO QUIRKY)
+                           cg%w(ind)%arr(iw, fse(xdim, LO):fse(xdim, HI), &
+                                               fse(ydim, LO):fse(ydim, HI), &
+                                               fse(zdim, LO):fse(zdim, HI)) = &
+                                cg%prolong_xyz(fse(xdim, LO):fse(xdim, HI), &
+                                               fse(ydim, LO):fse(ydim, HI), &
+                                               fse(zdim, LO):fse(zdim, HI))
+                        enddo
+                     endif
                   else
-                     cg%prolong_(cse(xdim, LO):cse(xdim, HI), cse(ydim, LO):cse(ydim, HI), cse(zdim, LO):cse(zdim, HI)) = seg(g)%buf(:,:,:)
+                     ! Rank-3 arrays: use standard prolongation.
+                     cg%prolong_(cse(xdim, LO):cse(xdim, HI), &
+                                  cse(ydim, LO):cse(ydim, HI), &
+                                  cse(zdim, LO):cse(zdim, HI)) = seg(g)%buf(:,:,:)
                      call cg%prolong(ind, seg(g)%se, p_xyz=.false.)
                   endif
 
@@ -1480,13 +1516,14 @@ contains
    subroutine restrict_1var(this, iv, dim4)
 
       use cg_cost_data,     only: I_REFINE
-      use constants,        only: xdim, ydim, zdim, ndims, LO, HI, refinement_factor, GEO_XYZ, GEO_RPZ
+      use constants,        only: xdim, ydim, zdim, ndims, LO, HI, refinement_factor, GEO_XYZ, GEO_RPZ, mag_n
       use dataio_pub,       only: msg, warn, die
       use domain,           only: dom
       use cg_list,          only: cg_list_element
       use grid_cont,        only: grid_container
       use named_array,      only: p3, p4
       use named_array_list, only: wna
+      use global,           only: cc_mag
       use pppmpi,           only: req_ppp
 
       implicit none
@@ -1555,7 +1592,15 @@ contains
             associate (seg => cg%ro_tgt%seg(g))
                if (d4) then
                   allocate(seg%buf4(wna%get_dim4(iv), size(seg%buf, dim=1), size(seg%buf, dim=2), size(seg%buf, dim=3)))
-                  seg%buf4(:, :, :, :) = 0.
+                  ! Divergence-free restriction for face-centred magnetic field
+                  if (iv == wna%ind(mag_n) .and. .not. cc_mag) then
+                     ! Use specialized MHD restriction that preserves solenoidality.
+                     call cg%restrict_mhd(iv, seg%se, seg%buf4)
+                     call seg%send_buf4(req)
+                     cycle
+                  else
+                     seg%buf4(:, :, :, :) = 0.
+                  endif
                else
                   seg%buf(:, :, :) = 0.
                endif

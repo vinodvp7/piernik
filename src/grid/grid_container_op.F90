@@ -696,8 +696,6 @@ contains
          call die(msg)
       endif
 
-      allocate(fcc2bcc(xdim : zdim, ilo : ihi, jlo : jhi, klo : khi))
-
       do concurrent (k = klo : khi, j = jlo : jhi, i = ilo : ihi)
          fcc2bcc(xdim, i, j, k) = half * (this%w(iw)%arr(xdim, i, j, k) + this%w(iw)%arr(xdim, i + 1, j, k))
          fcc2bcc(ydim, i, j, k) = half * (this%w(iw)%arr(ydim, i, j, k) + this%w(iw)%arr(ydim, i, j + 1, k))

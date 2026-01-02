@@ -187,9 +187,9 @@ contains
       endif
 
       if (present(dim4)) then
-         call wna%add2lst(na_var_4d(name, vit, rm, op, mg, dim4=d4))
+         call wna%add2lst(na_var_4d(name, vit, rm, op, mg, pos, dim4=d4))
       else
-         call qna%add2lst(na_var(name, vit, rm, op, mg))
+         call qna%add2lst(na_var(name, vit, rm, op, mg, pos))
       endif
 
       select case (op)
@@ -213,9 +213,9 @@ contains
       cgl => this%first
       do while (associated(cgl))
          if (present(dim4)) then
-            call cgl%cg%add_na_4d(d4)  ! Strange: passing dim4 here resulted in an access to already freed memory. Possibly a gfortran bug.
+            call cgl%cg%add_na_4d(d4, pos)  ! Strange: passing dim4 here resulted in an access to already freed memory. Possibly a gfortran bug.
          else
-            call cgl%cg%add_na(mg)
+            call cgl%cg%add_na(mg, pos) ! So we only pass the first index of pos because all other variable will have the same dimensional box.
          endif
          cgl => cgl%nxt
       enddo
@@ -237,7 +237,7 @@ contains
       use constants,  only: cs_i2_n
 #endif /* ISO */
 #ifdef MAGNETIC
-      use constants,  only: mag_n, magh_n, ndims, AT_OUT_B, VAR_XFACE, VAR_YFACE, VAR_ZFACE, VAR_CENTER,&
+      use constants,  only: mag_n, magh_n, magf_n, magfh_n, ndims, AT_OUT_B, VAR_XFACE, VAR_YFACE, VAR_ZFACE, VAR_CENTER,&
       &                     psi_n, psih_n, xbflx_n, ybflx_n, zbflx_n, psiflx_n
       use global,     only: cc_mag, ord_mag_prolong
 #endif /* MAGNETIC */
@@ -251,7 +251,7 @@ contains
       integer(kind=4), dimension(ndims), parameter :: xyz_center = [ VAR_CENTER, VAR_CENTER, VAR_CENTER ]
       integer(kind=4), dimension(ndims) :: pia
 
-      pia = merge(xyz_center, xyz_face, cc_mag)
+      pia = merge(xyz_center, xyz_center, cc_mag)
 #endif /* MAGNETIC */
 
       if (code_progress < PIERNIK_INIT_FLUIDS) call die("[cg_list_global:register_fluids] Fluids are not yet initialized")
@@ -278,7 +278,10 @@ contains
 #ifdef MAGNETIC
       call this%reg_var(mag_n,  vital = .true.,  dim4 = ndims, ord_prolong = ord_mag_prolong, restart_mode = AT_OUT_B, position=pia)  !! Main array of magnetic field's components, "b"
       call this%reg_var(magh_n, vital = .false., dim4 = ndims) !! Array for copy of magnetic field's components, "b" used in half-timestep in RK2
-
+      if (.not. cc_mag) then
+         call this%reg_var(magf_n,  vital = .true.,  dim4 = ndims, ord_prolong = ord_mag_prolong, restart_mode = AT_OUT_B, position=xyz_face)  !! Main array of magnetic field's components, "b"
+         call this%reg_var(magfh_n, vital = .false., dim4 = ndims) !! Array for copy of magnetic field's components, "b" used in half-timestep in RK2
+      endif
       if (which_solver == RIEMANN_UNSPLIT) then
          call this%reg_var(xbflx_n,   vital = .false.,  dim4 = ndims, ord_prolong = ord_mag_prolong, restart_mode = AT_OUT_B)  !! Main array of magnetic field's components, "b"
          call this%reg_var(ybflx_n,   vital = .false.,  dim4 = ndims, ord_prolong = ord_mag_prolong, restart_mode = AT_OUT_B)  !! Main array of magnetic field's components, "b"
@@ -405,7 +408,7 @@ contains
       subroutine set_magnetic_names
 
          use constants,        only: xdim, ydim, zdim, RIEMANN_UNSPLIT
-         use global,           only: which_solver
+         use global,           only: which_solver, cc_mag
          use named_array_list, only: wna, na_var_4d
 
          implicit none
@@ -416,6 +419,12 @@ contains
                call lst(wna%bi)%set_compname(xdim, "magx")
                call lst(wna%bi)%set_compname(ydim, "magy")
                call lst(wna%bi)%set_compname(zdim, "magz")
+
+               if (.not. cc_mag) then
+                  call lst(wna%bfi)%set_compname(xdim, "magfx")
+                  call lst(wna%bfi)%set_compname(ydim, "magfy")
+                  call lst(wna%bfi)%set_compname(zdim, "magfz")
+               endif
 
                if (which_solver == RIEMANN_UNSPLIT) then
 

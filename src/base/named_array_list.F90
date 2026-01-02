@@ -51,6 +51,8 @@ module named_array_list
                                                                   !< AT_OUT_B write with ext. boundaries
       integer(kind=4)                            :: ord_prolong   !< Prolongation order for the variable
       logical                                    :: multigrid     !< .true. for variables that may exist below base level (e.g. work fields for multigrid solver)
+      integer(kind=4), allocatable               :: position(:)   !< To indicate whether the cg in this list is cell/face/edge centered
+         
    contains
       procedure :: copy_base
    end type na_var_base
@@ -96,6 +98,7 @@ module named_array_list
    type, extends(na_var_list) :: na_var_list_w
       integer(kind=4) :: fi     = INVALID                            !< fluid                                     : cg%w(wna%fi)
       integer(kind=4) :: bi     = INVALID                            !< magnetic field                            : cg%w(wna%bi)
+      integer(kind=4) :: bfi     = INVALID                           !< magnetic field on face                    : cg%w(wna%bfi)
       integer(kind=4) :: xflx   = INVALID                            !< X face-flux field                         : cg%w(wna%xflx)
       integer(kind=4) :: yflx   = INVALID                            !< Y face-flux field                         : cg%w(wna%yflx)
       integer(kind=4) :: zflx   = INVALID                            !< Z face-flux field                         : cg%w(wna%zflx)
@@ -235,7 +238,7 @@ contains
    end subroutine add2lst_q
 
    subroutine add2lst_w(this, element)
-      use constants,  only: fluid_n, mag_n, xflx_n, yflx_n, zflx_n, xbflx_n, ybflx_n, zbflx_n, psiflx_n
+      use constants,  only: fluid_n, mag_n, magf_n, xflx_n, yflx_n, zflx_n, xbflx_n, ybflx_n, zbflx_n, psiflx_n
       use dataio_pub, only: die, msg
 
       implicit none
@@ -275,6 +278,7 @@ contains
       end select
       if (element%name == fluid_n)   this%fi      = ubound(this%lst(:), dim=1, kind=4)
       if (element%name == mag_n)     this%bi      = ubound(this%lst(:), dim=1, kind=4)
+      if (element%name == magf_n)    this%bfi     = ubound(this%lst(:), dim=1, kind=4)
       if (element%name == xflx_n)    this%xflx    = ubound(this%lst(:), dim=1, kind=4)
       if (element%name == yflx_n)    this%yflx    = ubound(this%lst(:), dim=1, kind=4)
       if (element%name == zflx_n)    this%zflx    = ubound(this%lst(:), dim=1, kind=4)
@@ -342,7 +346,7 @@ contains
             call die("[named_array_list:print_vars] Unknown type of named array list")
       end select
       call printinfo(msg, v)
-
+!> Need to add a print description for position whether center/face/edge ?
       do i = lbound(this%lst(:), dim=1, kind=4), ubound(this%lst(:), dim=1, kind=4)
          select type (lst => this%lst)
             type is (na_var)
@@ -385,6 +389,10 @@ contains
       this%restart_mode = other%restart_mode
       this%ord_prolong = other%ord_prolong
       this%multigrid = other%multigrid
+      if (allocated(other%position)) then
+          allocate(this%position(size(other%position)))
+          this%position = other%position
+      end if
 
    end subroutine copy_base
 

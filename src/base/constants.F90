@@ -239,8 +239,8 @@ module constants
 
    ! 3D and 4D array names
    ! fluids
-   character(len=dsetnamelen), parameter :: fluid_n = "fluid"   !< main fluid array
-   character(len=dsetnamelen), parameter :: uh_n    = "uh"      !< auxiliary array for half-step values
+   character(len=dsetnamelen), parameter :: fluid_n  = "fluid"   !< main fluid array
+   character(len=dsetnamelen), parameter :: uh_n     = "uh"      !< auxiliary array for half-step values
    character(len=dsetnamelen), parameter :: xflx_n   = "xflx"   !< main X face-flux array
    character(len=dsetnamelen), parameter :: yflx_n   = "yflx"   !< main Y face-flux array
    character(len=dsetnamelen), parameter :: zflx_n   = "zflx"   !< main Z face-flux array
@@ -248,6 +248,8 @@ module constants
    ! magnetic field
    character(len=dsetnamelen), parameter :: mag_n      = "mag"      !< main magnetic field array
    character(len=dsetnamelen), parameter :: magh_n     = "magh"     !< auxiliary array for half-step values
+   character(len=dsetnamelen), parameter :: magf_n     = "magf"    !< main magnetic field array of face centered B 
+   character(len=dsetnamelen), parameter :: magfh_n    = "magfh"   !< auxiliary array for half-step values of face centered B
    character(len=dsetnamelen), parameter :: xbflx_n    = "xbflx"    !< main X face-flux array of magnetic field
    character(len=dsetnamelen), parameter :: ybflx_n    = "ybflx"    !< main Y face-flux array of magnetic field
    character(len=dsetnamelen), parameter :: zbflx_n    = "zbflx"    !< main Z face-flux array of magnetic field

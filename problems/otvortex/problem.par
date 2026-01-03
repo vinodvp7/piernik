@@ -49,7 +49,9 @@
  /
 
  $NUMERICAL_SETUP
-    cfl    = 0.8
+    cfl    = 0.3
+    cfl_glm = 0.3
+    solver_str = 'riemann_unsplit'
     smalld = 1.e-3
     smallei= 1.e-5
     limiter= 'vanleer'

@@ -130,9 +130,9 @@ contains
 
       use cg_leaves,        only: leaves
 !!$      use cg_list_global,   only: all_cg
-      use constants,        only: xdim, zdim, psi_n, BND_INVALID, PPP_MAG, psih_n, magh_n, first_stage
+      use constants,        only: xdim, zdim, psi_n, BND_INVALID, PPP_MAG, psih_n, magh_n, first_stage, magfh_n
       use domain,           only: dom
-      use global,           only: psi_bnd, integration_order
+      use global,           only: psi_bnd, integration_order, cc_mag
       use named_array_list, only: wna, qna
       use ppp,              only: ppp_main
 
@@ -145,16 +145,25 @@ contains
 
       call ppp_main%start(abm_label, PPP_MAG)
 
-
-      do dir = xdim, zdim
-         if (dom%has_dir(dir)) call leaves%bnd_b(dir)
-      enddo
-
-      ind = wna%bi
-      if (present(istep)) then
-         if (istep == first_stage(integration_order)) ind = wna%ind(magh_n)
+      if (cc_mag) then
+         do dir = xdim, zdim
+            if (dom%has_dir(dir)) call leaves%bnd_b(dir)
+         enddo
+         ind = wna%bi
+         if (present(istep)) then
+            if (istep == first_stage(integration_order)) ind = wna%ind(magh_n)
+         endif
+         call leaves%leaf_arr4d_boundaries(ind)
+      else
+         do dir = xdim, zdim
+            if (dom%has_dir(dir)) call leaves%bnd_b(dir)
+         enddo
+         ind = wna%bfi
+         if (present(istep)) then
+            if (istep == first_stage(integration_order)) ind = wna%ind(magfh_n)
+         endif
+         call leaves%leaf_arr4d_boundaries(ind,nocorners=.false.)
       endif
-      call leaves%leaf_arr4d_boundaries(ind)
 
       if (qna%exists(psi_n)) then  ! assumed that qna%exists(psih_n) too
          ind = qna%ind(psi_n)

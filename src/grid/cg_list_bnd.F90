@@ -168,11 +168,12 @@ contains
 
    subroutine internal_boundaries(this, ind, tgt3d, dir, nocorners)
 
-      use constants,  only: xdim, zdim, cor_dim, PPP_AMR, base_level_id
-      use dataio_pub, only: die
-      use domain,     only: dom
-      use global,     only: prefer_merged_MPI
-      use ppp,        only: ppp_main
+      use constants,          only: xdim, zdim, cor_dim, PPP_AMR, base_level_id, VAR_CENTER
+      use dataio_pub,         only: die
+      use domain,             only: dom
+      use global,             only: prefer_merged_MPI
+      use ppp,                only: ppp_main
+      use named_array_list,   only: wna
 
       implicit none
 
@@ -184,6 +185,14 @@ contains
 
       logical, dimension(xdim:cor_dim) :: dmask
       character(len=*), parameter :: ib_label = "internal_boundaries", ibl_label = "internal_boundaries_local", ibm_label = "internal_boundaries_MPI_merged", ib1_label = "internal_boundaries_MPI_1by1"
+      logical :: is_not_staggered = .true.
+
+      !> Face centered fields needs one extra index at HI side. 
+      !> Using merged call means that cg_list_neighbours would need to be altered significantly.
+      !> On the other hand 1by1 is easier to modify here so for some extra cost we go with that one for now.
+      if (.not. tgt3d) then
+         if (any(wna%lst(ind)%position == VAR_CENTER)) is_not_staggered = .false. 
+      endif
 
       call ppp_main%start(ib_label)
 
@@ -208,7 +217,7 @@ contains
       !
       ! In some non-periodic setups internal_boundaries_MPI_1by1 can have tag collisions on refinements at the boundary, so MPI_merged is currently safer.
 
-      if (this%ms%valid .and. (prefer_merged_MPI .or. tgt3d) .and. this%l%id >= base_level_id) then
+      if (this%ms%valid .and. (prefer_merged_MPI .or. tgt3d) .and. this%l%id >= base_level_id .and. is_not_staggered) then
          call ppp_main%start(ibl_label)
          call internal_boundaries_local(this, ind, tgt3d, dmask)
          call ppp_main%stop(ibl_label)
@@ -250,12 +259,14 @@ contains
 
    subroutine internal_boundaries_local(this, ind, tgt3d, dmask)
 
-      use cg_cost_data,   only: I_OTHER
-      use cg_list,        only: cg_list_element
-      use constants,      only: xdim, ydim, zdim, LO, HI, cor_dim, INVALID
-      use dataio_pub,     only: die
-      use grid_cont,      only: grid_container
-      use grid_cont_bseg, only: segment
+      use cg_cost_data,       only: I_OTHER
+      use cg_list,            only: cg_list_element
+      use constants,          only: xdim, ydim, zdim, LO, HI, cor_dim, INVALID, VAR_CENTER, LONG, I_ONE
+      use dataio_pub,         only: die
+      use grid_cont,          only: grid_container
+      use grid_cont_bseg,     only: segment
+      use named_array_list,   only: wna
+      use domain,             only: dom
 
       implicit none
 
@@ -270,6 +281,15 @@ contains
       type(cg_list_element),    pointer :: cgl
       real, dimension(:,:,:),   pointer :: pa3d, pa3d_o
       type(segment), pointer            :: i_seg, o_seg !< shortcuts
+
+      integer(kind=LONG), dimension(xdim:zdim, LO:HI) :: sei, seo
+      integer(kind=LONG) :: ub
+      integer :: dd
+      logical :: is_staggered = .false.
+
+      if (.not. tgt3d) then
+         if (any(wna%lst(ind)%position /= VAR_CENTER)) is_staggered = .true. 
+      endif
 
       cgl => this%first
       do while (associated(cgl))
@@ -301,12 +321,23 @@ contains
                            pa3d_o => i_seg%local%q(ind)%span(o_seg%se(:,:))
                            pa3d(:,:,:) = pa3d_o(:,:,:)
                         else
-                           ! BEWARE: manual optimisation ... but it works (at least in gfortran)
-                           do j = o_seg%se(zdim, LO), o_seg%se(zdim, HI)
-                              cg%w(ind)%arr(:, i_seg%se(xdim, LO):i_seg%se(xdim, HI), &
-                                   &           i_seg%se(ydim, LO):i_seg%se(ydim, HI), &
-                                   &           j - o_seg%se(zdim, LO) + i_seg%se(zdim, LO)) = &
-                                   i_seg%local%w(ind)%arr(:, o_seg%se(xdim, LO):o_seg%se(xdim, HI), o_seg%se(ydim, LO):o_seg%se(ydim, HI), j)
+                           sei = i_seg%se
+                           seo = o_seg%se
+                           if (is_staggered) then
+                              do dd = xdim, zdim
+                                 if (dom%has_dir(dd) .and. dmask(dd)) then
+                                    ub = int(ubound(cg%w(ind)%arr, dd+1), kind=LONG)
+                                    sei(dd,HI) = min(sei(dd,HI) + int(I_ONE, kind=LONG), ub)
+                                    ub = int(ubound(i_seg%local%w(ind)%arr, dd+1), kind=LONG)
+                                    seo(dd,HI) = min(seo(dd,HI) + int(I_ONE, kind=LONG), ub)
+                                 endif
+                              enddo
+                           endif
+                              ! BEWARE: manual optimisation ... but it works (at least in gfortran)
+                           do j = seo(zdim, LO), seo(zdim, HI)
+                              cg%w(ind)%arr(:, sei(xdim, LO):sei(xdim, HI), sei(ydim, LO):sei(ydim, HI), &
+                              &            (j - seo(zdim, LO) + sei(zdim, LO)) ) = &
+                              &            i_seg%local%w(ind)%arr(:, seo(xdim, LO):seo(xdim, HI), seo(ydim, LO):seo(ydim, HI), j)
                            enddo
                         endif
                      endif
@@ -469,7 +500,7 @@ contains
 
       use cg_cost_data,     only: I_OTHER
       use cg_list,          only: cg_list_element
-      use constants,        only: xdim, cor_dim, LO, HI, I_ONE, I_THREE, I_FOUR
+      use constants,        only: xdim, ydim, zdim, cor_dim, LO, HI, I_ONE, I_THREE, I_FOUR, LONG, VAR_CENTER
       use dataio_pub,       only: die
       use grid_cont,        only: grid_container
       use grid_cont_bseg,   only: segment
@@ -478,6 +509,7 @@ contains
       use mpisetup,         only: err_mpi
       use named_array_list, only: wna
       use pppmpi,           only: req_ppp
+      use domain,           only: dom
 
       implicit none
 
@@ -494,6 +526,15 @@ contains
       integer(kind=4), parameter        :: rank3 = I_THREE, rank4 = I_FOUR
       integer(kind=4), dimension(rank3) :: b3sz, b3su, b3st
       integer(kind=4), dimension(rank4) :: b4sz, b4su, b4st
+
+      integer(kind=LONG), dimension(xdim:zdim, LO:HI) :: sei, seo
+      integer(kind=LONG) :: ub
+      logical :: is_staggered = .false.
+      integer :: dd
+
+      if (.not. tgt3d) then
+         if (any(wna%lst(ind)%position /= VAR_CENTER)) is_staggered = .true. 
+      endif
 
       call req%init(owncomm = .true., label = "clb:ib.1by1")
       cgl => this%first
@@ -521,6 +562,18 @@ contains
                      i_seg => cg%i_bnd(d)%seg(g)
                      o_seg => cg%o_bnd(d)%seg(g)
 
+                     sei = i_seg%se
+                     seo = o_seg%se
+                     if (is_staggered) then
+                        do dd = xdim, zdim
+                           if (dom%has_dir(dd)) then
+                              ub = int(ubound(cg%w(ind)%arr, dd+1), kind=LONG)
+                              sei(dd,HI) = min(sei(dd,HI) + int(I_ONE, kind=LONG), ub)
+                              seo(dd,HI) = min(seo(dd,HI) + int(I_ONE, kind=LONG), ub)
+                           endif
+                        enddo
+                     endif
+
                      !> \deprecated: A lot of semi-duplicated code below
                      ! array_of_starts has to be C-like, so b3st(:) = 0  points to lbound(cg%q(ind)%arr)
                      !
@@ -543,14 +596,14 @@ contains
 
                      else
 
-                        b4su = [ int(wna%get_dim4(ind), kind=4), int(i_seg%se(:, HI) - i_seg%se(:, LO) + I_ONE, kind=4) ]
-                        b4st = [ I_ONE, int(i_seg%se(:, LO), kind=4) ] - lbound(cg%w(ind)%arr, kind=4)
+                        b4su = [ int(wna%get_dim4(ind), kind=4), int(sei(:, HI) - sei(:, LO) + I_ONE, kind=4) ]
+                        b4st = [ I_ONE, int(sei(:, LO), kind=4) ] - lbound(cg%w(ind)%arr, kind=4)
                         call MPI_Type_create_subarray(rank4, b4sz, b4su, b4st, MPI_ORDER_FORTRAN, MPI_DOUBLE_PRECISION, i_seg%sub_type, err_mpi)
                         call MPI_Type_commit(i_seg%sub_type, err_mpi)
                         call piernik_Irecv(cg%w(ind)%arr(lbound(cg%w(ind)%arr, 1):, lbound(cg%w(ind)%arr, 2):, lbound(cg%w(ind)%arr, 3):, lbound(cg%w(ind)%arr, 4):), I_ONE, i_seg%sub_type, i_seg%proc, i_seg%tag, req)
-
-                        b4su = [ int(wna%get_dim4(ind), kind=4), int(o_seg%se(:, HI) - o_seg%se(:, LO) + I_ONE, kind=4) ]
-                        b4st = [ I_ONE, int(o_seg%se(:, LO), kind=4) ] - lbound(cg%w(ind)%arr, kind=4)
+                        
+                        b4su = [ int(wna%get_dim4(ind), kind=4), int(seo(:, HI) - seo(:, LO) + I_ONE, kind=4) ]
+                        b4st = [ I_ONE, int(seo(:, LO), kind=4) ] - lbound(cg%w(ind)%arr, kind=4)
                         call MPI_Type_create_subarray(rank4, b4sz, b4su, b4st, MPI_ORDER_FORTRAN, MPI_DOUBLE_PRECISION, o_seg%sub_type, err_mpi)
                         call MPI_Type_commit(o_seg%sub_type, err_mpi)
                         call piernik_Isend(cg%w(ind)%arr(lbound(cg%w(ind)%arr, 1):, lbound(cg%w(ind)%arr, 2):, lbound(cg%w(ind)%arr, 3):, lbound(cg%w(ind)%arr, 4):), I_ONE, o_seg%sub_type, o_seg%proc, o_seg%tag, req)

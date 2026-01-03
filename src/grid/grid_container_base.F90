@@ -131,6 +131,9 @@ module grid_cont_base
       real, pointer, dimension(:) :: x                             !< array of x-positions of %grid cells centers
       real, pointer, dimension(:) :: y                             !< array of x-positions of %grid cells centers
       real, pointer, dimension(:) :: z                             !< array of x-positions of %grid cells centers
+      real, pointer, dimension(:) :: xf                            !< array of x-positions of %grid cells left face
+      real, pointer, dimension(:) :: yf                            !< array of x-positions of %grid cells left face
+      real, pointer, dimension(:) :: zf                            !< array of x-positions of %grid cells left face
       real, pointer, dimension(:) :: inv_x                         !< array of invert x-positions of %grid cells centers
       real, pointer, dimension(:) :: inv_y                         !< array of invert y-positions of %grid cells centers
       real, pointer, dimension(:) :: inv_z                         !< array of invert z-positions of %grid cells centers
@@ -410,6 +413,10 @@ contains
       this%x     => this%coord(CENTER,     xdim)%r
       this%y     => this%coord(CENTER,     ydim)%r
       this%z     => this%coord(CENTER,     zdim)%r
+
+      this%xf    => this%coord(LEFT,     xdim)%r
+      this%yf    => this%coord(LEFT,     ydim)%r
+      this%zf    => this%coord(LEFT,     zdim)%r
 
       this%inv_x => this%coord(INV_CENTER, xdim)%r
       this%inv_y => this%coord(INV_CENTER, ydim)%r

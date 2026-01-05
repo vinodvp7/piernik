@@ -40,7 +40,7 @@ module ct
    implicit none
 
    private
-   public  :: magfield
+   public  :: magfield, emf_to_bf
 
 contains
 
@@ -473,5 +473,215 @@ contains
       endif
 
    end function mshift
+
+   subroutine emf_to_bf(istep)
+      use cg_list,           only: cg_list_element
+      use cg_leaves,         only: leaves
+      use grid_cont,         only: grid_container
+      use named_array_list,  only: wna
+      use constants,         only: xdim, ydim, zdim, oneq, I_ONE, &
+                                   xbflx_n, ybflx_n, zbflx_n, emf_n, magfh_n, &
+                                   first_stage, rk_coef, magh_n
+      use global,            only: integration_order, dt
+      use domain,            only: dom
+      use unsplit_source,   only: apply_source
+
+      implicit none
+      integer, intent(in) :: istep
+
+      type(cg_list_element), pointer :: cgl
+      type(grid_container),  pointer :: cg
+
+      integer :: bfi_main, bfi_half, bfi_upd, bi_upd, bi_half, bi_main
+      integer :: emfi, xbflxi, ybflxi, zbflxi
+      integer :: is, ie, js, je, ks, ke
+      integer :: i, j, k
+      real    :: dtr, idx, idy, idz
+      logical :: ax, ay, az
+
+      bfi_main = wna%bfi
+      bfi_half = wna%ind(magfh_n)
+
+      bi_main = wna%bi
+      bi_half = wna%ind(magh_n)
+
+      emfi   = wna%ind(emf_n)
+      xbflxi = wna%ind(xbflx_n)
+      ybflxi = wna%ind(ybflx_n)
+      zbflxi = wna%ind(zbflx_n)
+
+      ax = dom%has_dir(xdim)
+      ay = dom%has_dir(ydim)
+      az = dom%has_dir(zdim)
+
+      dtr = dt * rk_coef(istep)
+
+      call leaves%level_4d_boundaries(xbflxi,nocorners=.false.)
+      call leaves%level_4d_boundaries(ybflxi,nocorners=.false.)
+      call leaves%level_4d_boundaries(zbflxi,nocorners=.false.)
+
+      cgl => leaves%first
+      do while (associated(cgl))
+         cg => cgl%cg
+
+         is = cg%is;  ie = cg%ie
+         js = cg%js;  je = cg%je
+         ks = cg%ks;  ke = cg%ke
+
+         idx = 1.0 / cg%dl(xdim)
+         idy = 1.0 / cg%dl(ydim)
+         idz = 1.0 / cg%dl(zdim)
+
+         ! Stage storage (RK2): update magfh at stage 1, magf at final stage
+         if (istep == first_stage(integration_order) .or. integration_order < 2) then
+            bfi_upd = bfi_half
+            bi_upd  = bi_half 
+            cg%w(bfi_upd)%arr(:,:,:,:) = cg%w(bfi_main)%arr(:,:,:,:)   ! copy before update
+         else
+            bi_upd = bi_main
+            bfi_upd = bfi_main
+         end if
+
+         cg%w(emfi)%arr(:,:,:,:) = 0.0
+
+         ! ============================================================
+         ! Flux-CT (Tóth) edge EMFs
+         ! IMPORTANT: use PHYSICAL face extents, ignore transverse HI+1 padding.
+         !
+         ! Face extents:
+         !   xbflx : i=is..ie+1, j=js..je,   k=ks..ke
+         !   ybflx : i=is..ie,   j=js..je+1, k=ks..ke
+         !   zbflx : i=is..ie,   j=js..je,   k=ks..ke+1
+         !
+         ! Edge extents (stored in emf scratch):
+         !   Ez : i=is..ie+1, j=js..je+1, k=ks..ke
+         !   Ex : i=is..ie,   j=js..je+1, k=ks..ke+1
+         !   Ey : i=is..ie+1, j=js..je,   k=ks..ke+1
+         ! ============================================================
+
+         ! Ez(i, j, k) at (x-face i, y-face j, z-cell k)
+         ! Ez^(x) = -Fx(By) = -xbflx(y)  on x-faces
+         ! Ez^(y) = +Fy(Bx) = +ybflx(x)  on y-faces
+if (ax .and. ay) then
+            do k = ks, ke
+               do j = js, je+1
+                  do i = is, ie+1
+                     cg%w(emfi)%arr(zdim,i,j,k) = oneq * ( &
+                        (-cg%w(xbflxi)%arr(ydim,i,j,  k)) + (-cg%w(xbflxi)%arr(ydim,i,j+1,k)) + &
+                        (+cg%w(ybflxi)%arr(xdim,i,  j,k)) + (+cg%w(ybflxi)%arr(xdim,i+1,j,k)) )
+                  end do
+               end do
+            end do
+         end if
+
+         ! Ex at corner (i, j+1/2, k+1/2)
+         ! Requires By flux (zbflx) interpolated to y_j+1/2 -> Use j and j+1
+         ! Requires Bz flux (ybflx) interpolated to z_k+1/2 -> Use k and k+1
+         if (ay .and. az) then
+            do k = ks, ke+1
+               do j = js, je+1
+                  do i = is, ie
+                     cg%w(emfi)%arr(xdim,i,j,k) = oneq * ( &
+                        (-cg%w(ybflxi)%arr(zdim,i,j,k  )) + (-cg%w(ybflxi)%arr(zdim,i,j,k+1)) + &
+                        (+cg%w(zbflxi)%arr(ydim,i,j,  k)) + (+cg%w(zbflxi)%arr(ydim,i,j+1,k)) )
+                  end do
+               end do
+            end do
+         end if
+
+         ! Ey at corner (i+1/2, j, k+1/2)
+         ! Requires Bz flux (xbflx) interpolated to z_k+1/2 -> Use k and k+1
+         ! Requires Bx flux (zbflx) interpolated to x_i+1/2 -> Use i and i+1
+         if (ax .and. az) then
+            do k = ks, ke+1
+               do j = js, je
+                  do i = is, ie+1
+                     cg%w(emfi)%arr(ydim,i,j,k) = oneq * ( &
+                        (+cg%w(xbflxi)%arr(zdim,i,j,k  )) + (+cg%w(xbflxi)%arr(zdim,i,j,k+1)) + &
+                        (-cg%w(zbflxi)%arr(xdim,i,  j,k)) + (-cg%w(zbflxi)%arr(xdim,i+1,j,k)) )
+                  end do
+               end do
+            end do
+         end if
+
+         cgl => cgl%nxt
+      end do
+
+      ! CRITICAL: Communicate EMF boundaries before the update!
+      ! The update loop (which follows this code) needs emfi(j) and emfi(j+1).
+      ! At the edge of the tile, emfi(j+1) is a ghost value. 
+      ! If you don't fill it, you use 0.0 or garbage, breaking div(B)=0.
+      call leaves%level_4d_boundaries(emfi, nocorners=.false.)
+
+         ! ============================================================
+         ! CT update of face-centered bf
+         ! dB/dt = -curl(E)
+         ! ============================================================
+
+      cgl => leaves%first
+      do while (associated(cgl))
+         cg => cgl%cg
+         ! Bx on x-faces: i=is..ie+1, j=js..je, k=ks..ke
+         if (ay .or. az) then
+            do k = ks, ke
+               do j = js, je
+                  do i = is, ie+1
+                     if (ay) cg%w(bfi_upd)%arr(xdim,i,j,k) = cg%w(bfi_upd)%arr(xdim,i,j,k) &
+                        - dtr*idy * (cg%w(emfi)%arr(zdim,i,j+1,k) - cg%w(emfi)%arr(zdim,i,j,k))
+                     if (az) cg%w(bfi_upd)%arr(xdim,i,j,k) = cg%w(bfi_upd)%arr(xdim,i,j,k) &
+                        + dtr*idz * (cg%w(emfi)%arr(ydim,i,j,k+1) - cg%w(emfi)%arr(ydim,i,j,k))
+                  end do
+               end do
+            end do
+         end if
+
+         ! By on y-faces: i=is..ie, j=js..je+1, k=ks..ke
+         if (az .or. ax) then
+            do k = ks, ke
+               do j = js, je+1
+                  do i = is, ie
+                     if (az) cg%w(bfi_upd)%arr(ydim,i,j,k) = cg%w(bfi_upd)%arr(ydim,i,j,k) &
+                        - dtr*idz * (cg%w(emfi)%arr(xdim,i,j,k+1) - cg%w(emfi)%arr(xdim,i,j,k))
+                     if (ax) cg%w(bfi_upd)%arr(ydim,i,j,k) = cg%w(bfi_upd)%arr(ydim,i,j,k) &
+                        + dtr*idx * (cg%w(emfi)%arr(zdim,i+1,j,k) - cg%w(emfi)%arr(zdim,i,j,k))
+                  end do
+               end do
+            end do
+         end if
+
+         ! Bz on z-faces: i=is..ie, j=js..je, k=ks..ke+1
+         if (ax .or. ay) then
+            do k = ks, ke+1
+               do j = js, je
+                  do i = is, ie
+                     if (ax) cg%w(bfi_upd)%arr(zdim,i,j,k) = cg%w(bfi_upd)%arr(zdim,i,j,k) &
+                        - dtr*idx * (cg%w(emfi)%arr(ydim,i+1,j,k) - cg%w(emfi)%arr(ydim,i,j,k))
+                     if (ay) cg%w(bfi_upd)%arr(zdim,i,j,k) = cg%w(bfi_upd)%arr(zdim,i,j,k) &
+                        + dtr*idy * (cg%w(emfi)%arr(xdim,i,j+1,k) - cg%w(emfi)%arr(xdim,i,j,k))
+                  end do
+               end do
+            end do
+         end if
+
+         cgl => cgl%nxt
+      end do
+
+      call leaves%leaf_arr4d_boundaries(bfi_upd,nocorners=.false.)
+      do i = xdim, zdim
+            !if (dom%has_dir(i)) call leaves%bnd_b(i)
+      enddo
+
+      cgl => leaves%first
+      do while (associated(cgl))
+         cg => cgl%cg
+         cg%w(bi_upd)%arr(:,:,:,:) = cg%face_to_center(bfi_upd)
+
+         call apply_source(cg, istep)
+
+         cgl => cgl%nxt
+      end do
+
+   end subroutine emf_to_bf
+
 
 end module ct

@@ -185,13 +185,13 @@ contains
 
       logical, dimension(xdim:cor_dim) :: dmask
       character(len=*), parameter :: ib_label = "internal_boundaries", ibl_label = "internal_boundaries_local", ibm_label = "internal_boundaries_MPI_merged", ib1_label = "internal_boundaries_MPI_1by1"
-      logical :: is_not_staggered = .true.
+      logical :: is_not_staggered = .false.
 
       !> Face centered fields needs one extra index at HI side. 
       !> Using merged call means that cg_list_neighbours would need to be altered significantly.
       !> On the other hand 1by1 is easier to modify here so for some extra cost we go with that one for now.
       if (.not. tgt3d) then
-         if (any(wna%lst(ind)%position == VAR_CENTER)) is_not_staggered = .false. 
+         if (any(wna%lst(ind)%position == VAR_CENTER)) is_not_staggered = .true. 
       endif
 
       call ppp_main%start(ib_label)

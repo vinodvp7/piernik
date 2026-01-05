@@ -238,7 +238,7 @@ contains
 #endif /* ISO */
 #ifdef MAGNETIC
       use constants,  only: mag_n, magh_n, magf_n, magfh_n, ndims, AT_OUT_B, VAR_XFACE, VAR_YFACE, VAR_ZFACE, VAR_CENTER,&
-      &                     psi_n, psih_n, xbflx_n, ybflx_n, zbflx_n, psiflx_n
+      &                     psi_n, psih_n, xbflx_n, ybflx_n, zbflx_n, psiflx_n, emf_n, AT_IGNORE
       use global,     only: cc_mag, ord_mag_prolong
 #endif /* MAGNETIC */
 
@@ -251,7 +251,7 @@ contains
       integer(kind=4), dimension(ndims), parameter :: xyz_center = [ VAR_CENTER, VAR_CENTER, VAR_CENTER ]
       integer(kind=4), dimension(ndims) :: pia
 
-      pia = merge(xyz_center, xyz_center, cc_mag)
+      pia = merge(xyz_face, xyz_center, cc_mag)
 #endif /* MAGNETIC */
 
       if (code_progress < PIERNIK_INIT_FLUIDS) call die("[cg_list_global:register_fluids] Fluids are not yet initialized")
@@ -276,16 +276,18 @@ contains
 #endif /* CRESP */
 
 #ifdef MAGNETIC
-      call this%reg_var(mag_n,  vital = .true.,  dim4 = ndims, ord_prolong = ord_mag_prolong, restart_mode = AT_OUT_B, position=pia)  !! Main array of magnetic field's components, "b"
-      call this%reg_var(magh_n, vital = .false., dim4 = ndims) !! Array for copy of magnetic field's components, "b" used in half-timestep in RK2
+      call this%reg_var(mag_n,  vital = .true.,  dim4 = ndims, ord_prolong = ord_mag_prolong, restart_mode = AT_OUT_B, position=xyz_center)  !! Main array of magnetic field's components, "b"
+      call this%reg_var(magh_n, vital = .false., dim4 = ndims, position=xyz_center) !! Array for copy of magnetic field's components, "b" used in half-timestep in RK2
       if (.not. cc_mag) then
          call this%reg_var(magf_n,  vital = .true.,  dim4 = ndims, ord_prolong = ord_mag_prolong, restart_mode = AT_OUT_B, position=xyz_face)  !! Main array of magnetic field's components, "b"
-         call this%reg_var(magfh_n, vital = .false., dim4 = ndims) !! Array for copy of magnetic field's components, "b" used in half-timestep in RK2
+         call this%reg_var(magfh_n, vital = .false., dim4 = ndims, position=xyz_face) !! Array for copy of magnetic field's components, "b" used in half-timestep in RK2
+         call this%reg_var(emf_n,   vital = .false., dim4 = ndims, ord_prolong = ord_mag_prolong, restart_mode = AT_IGNORE, position=xyz_face)  !! Main array of emf component for CT 
+
       endif
-      if (which_solver == RIEMANN_UNSPLIT) then
-         call this%reg_var(xbflx_n,   vital = .false.,  dim4 = ndims, ord_prolong = ord_mag_prolong, restart_mode = AT_OUT_B)  !! Main array of magnetic field's components, "b"
-         call this%reg_var(ybflx_n,   vital = .false.,  dim4 = ndims, ord_prolong = ord_mag_prolong, restart_mode = AT_OUT_B)  !! Main array of magnetic field's components, "b"
-         call this%reg_var(zbflx_n,   vital = .false.,  dim4 = ndims, ord_prolong = ord_mag_prolong, restart_mode = AT_OUT_B)  !! Main array of magnetic field's components, "b"
+      if (which_solver == RIEMANN_UNSPLIT .or. .not. cc_mag) then
+         call this%reg_var(xbflx_n,   vital = .false.,  dim4 = ndims, ord_prolong = ord_mag_prolong, restart_mode = AT_OUT_B, position=pia)  !! Main array of magnetic field's components, "b"
+         call this%reg_var(ybflx_n,   vital = .false.,  dim4 = ndims, ord_prolong = ord_mag_prolong, restart_mode = AT_OUT_B, position=pia)  !! Main array of magnetic field's components, "b"
+         call this%reg_var(zbflx_n,   vital = .false.,  dim4 = ndims, ord_prolong = ord_mag_prolong, restart_mode = AT_OUT_B, position=pia)  !! Main array of magnetic field's components, "b"
          call this%reg_var(psiflx_n,  vital = .false.,  dim4 = ndims, ord_prolong = ord_mag_prolong, restart_mode = AT_OUT_B)  !! Main array of magnetic field's components, "b"
       endif
 

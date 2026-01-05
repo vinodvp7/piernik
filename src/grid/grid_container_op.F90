@@ -228,7 +228,7 @@ contains
 
    function cg_get_divergence(this, ord, iw, vec) result(cg_div)
 
-      use constants,          only: xdim, ydim, zdim, LO, HI, ndims, VAR_XFACE
+      use constants,          only: xdim, ydim, zdim, LO, HI, ndims, VAR_CENTER
       use domain,             only: dom
       use named_array_list,   only: wna
 
@@ -258,7 +258,7 @@ contains
       allocate(cg_div(ilo : ihi, jlo : jhi, klo : khi))
       cg_div = 0.0
 
-      if (any(wna%lst(iw)%position == VAR_XFACE)) is_staggered = .true.
+      if (any(wna%lst(iw)%position /= VAR_CENTER)) is_staggered = .true.
 
       if (is_staggered) then
 
@@ -310,51 +310,52 @@ contains
 
          endif
 
-      endif
 
-      if (dom%has_dir(ydim)) then
+         if (dom%has_dir(ydim)) then
 
-         do concurrent (k = klo : khi, j = jlo + ord/2 : jhi - ord/2, i = ilo : ihi)
-            do s = 1, ord/2
-               cg_div(i, j, k) = cg_div(i, j, k) + &
-               &                        cfc(s) * (this%w(iw)%arr(v1(ydim), i, j + s, k) - this%w(iw)%arr(v1(ydim), i, j - s, k)) * this%idl(ydim)
+            do concurrent (k = klo : khi, j = jlo + ord/2 : jhi - ord/2, i = ilo : ihi)
+               do s = 1, ord/2
+                  cg_div(i, j, k) = cg_div(i, j, k) + &
+                  &                        cfc(s) * (this%w(iw)%arr(v1(ydim), i, j + s, k) - this%w(iw)%arr(v1(ydim), i, j - s, k)) * this%idl(ydim)
+               enddo
             enddo
-         enddo
 
-         do concurrent (k = klo : khi, j = jlo : jlo + ord/2 - 1, i = ilo : ihi)
-            do s = 0, ord
-               cg_div(i, j, k) = cg_div(i, j, k) + cfo(s) * this%w(iw)%arr(v1(ydim), i, j + s, k) * this%idl(ydim)
+            do concurrent (k = klo : khi, j = jlo : jlo + ord/2 - 1, i = ilo : ihi)
+               do s = 0, ord
+                  cg_div(i, j, k) = cg_div(i, j, k) + cfo(s) * this%w(iw)%arr(v1(ydim), i, j + s, k) * this%idl(ydim)
+               enddo
             enddo
-         enddo
 
-         do concurrent (k = klo : khi, j = jhi - ord/2 + 1 : jhi, i = ilo : ihi)
-            do s = 0, ord
-               cg_div(i, j, k) = cg_div(i, j, k) - cfo(s) * this%w(iw)%arr(v1(ydim), i, j - s, k) * this%idl(ydim)
+            do concurrent (k = klo : khi, j = jhi - ord/2 + 1 : jhi, i = ilo : ihi)
+               do s = 0, ord
+                  cg_div(i, j, k) = cg_div(i, j, k) - cfo(s) * this%w(iw)%arr(v1(ydim), i, j - s, k) * this%idl(ydim)
+               enddo
             enddo
-         enddo
 
-      endif
+         endif
 
-      if (dom%has_dir(zdim)) then
+         if (dom%has_dir(zdim)) then
 
-         do concurrent (k = klo + ord/2 : khi - ord/2, j = jlo : jhi, i = ilo : ihi)
-            do s = 1, ord/2
-               cg_div(i, j, k) = cg_div(i, j, k) + &
-               &                        cfc(s) * (this%w(iw)%arr(v1(zdim), i, j, k + s) - this%w(iw)%arr(v1(zdim), i, j, k - s)) * this%idl(zdim)
+            do concurrent (k = klo + ord/2 : khi - ord/2, j = jlo : jhi, i = ilo : ihi)
+               do s = 1, ord/2
+                  cg_div(i, j, k) = cg_div(i, j, k) + &
+                  &                        cfc(s) * (this%w(iw)%arr(v1(zdim), i, j, k + s) - this%w(iw)%arr(v1(zdim), i, j, k - s)) * this%idl(zdim)
+               enddo
             enddo
-         enddo
 
-         do concurrent (k = klo : klo + ord/2 - 1, j = jlo : jhi, i = ilo : ihi)
-            do s = 0, ord
-               cg_div(i, j, k) = cg_div(i, j, k) + cfo(s) * this%w(iw)%arr(v1(zdim), i, j, k + s) * this%idl(zdim)
+            do concurrent (k = klo : klo + ord/2 - 1, j = jlo : jhi, i = ilo : ihi)
+               do s = 0, ord
+                  cg_div(i, j, k) = cg_div(i, j, k) + cfo(s) * this%w(iw)%arr(v1(zdim), i, j, k + s) * this%idl(zdim)
+               enddo
             enddo
-         enddo
 
-         do concurrent (k = khi - ord/2 + 1 : khi, j = jlo  : jhi, i = ilo  : ihi)
-            do s = 0, ord
-               cg_div(i, j, k) = cg_div(i, j, k) - cfo(s) * this%w(iw)%arr(v1(zdim), i, j, k - s) * this%idl(zdim)
+            do concurrent (k = khi - ord/2 + 1 : khi, j = jlo  : jhi, i = ilo  : ihi)
+               do s = 0, ord
+                  cg_div(i, j, k) = cg_div(i, j, k) - cfo(s) * this%w(iw)%arr(v1(zdim), i, j, k - s) * this%idl(zdim)
+               enddo
             enddo
-         enddo
+         
+         endif 
 
       endif
 

@@ -53,6 +53,7 @@ contains
       use global,         only: sweeps_mgu, integration_order, divB_0_method
 #ifdef MAGNETIC
       use all_boundaries, only: all_mag_boundaries
+      use global,         only: cc_mag
 #endif /* MAGNETIC */
 
       implicit none
@@ -75,7 +76,7 @@ contains
       endif
       if (divB_0_method == DIVB_HDC) then
 #ifdef MAGNETIC
-         call all_mag_boundaries(istep) ! ToDo: take care of psi boundaries
+         if (cc_mag) call all_mag_boundaries(istep) ! ToDo: take care of psi boundaries
 #endif /* MAGNETIC */
       endif
 
@@ -90,7 +91,7 @@ contains
       use constants,         only: first_stage, last_stage, INVALID, PPP_CG, RIEMANN_UNSPLIT
       use dataio_pub,        only: die
       use fc_fluxes_unsplit, only: initiate_flx_recv, recv_cg_finebnd, send_cg_coarsebnd
-      use global,            only: integration_order, which_solver
+      use global,            only: integration_order, which_solver, nstep
       use grid_cont,         only: grid_container
       use MPIF,              only: MPI_STATUS_IGNORE
       use MPIFUN,            only: MPI_Waitany
@@ -99,6 +100,13 @@ contains
       use pppmpi,            only: req_ppp
       use sources,           only: prepare_sources
       use solvecg_unsplit,   only: solve_cg_unsplit
+#ifdef MAGNETIC
+      use ct,                only: emf_to_bf
+      use named_array_list,  only: wna, qna
+      use global,            only: cc_mag
+      use cg_list_global,    only: all_cg
+      use constants,         only: dsetnamelen
+#endif /* MAGNETIC */
 
       implicit none
 
@@ -111,6 +119,10 @@ contains
       integer                          :: blocks_done
       integer(kind=4)                  :: n_recv, g
       character(len=*), parameter      :: solve_cgs_label = "solve_bunch_of_cg", cg_label = "solve_cg", init_src_label = "init_src"
+      real :: divvbb = tiny(1.)
+      
+      character(len=dsetnamelen), parameter :: abcc      = "abcc"      !< main emf array
+      if(nstep ==0) call all_cg%reg_var(abcc)
 
       call ppp_main%start("unsplit_sweep")
 
@@ -185,10 +197,20 @@ contains
          call req%waitall("sweeps")
 
          call update_boundaries(istep)
+
+         if (.not. cc_mag) call emf_to_bf(istep)
       enddo
 
       call sl%delete
       deallocate(sl)
+
+      cgl => leaves%first
+      do while (associated(cgl))
+         cgl%cg%q(qna%ind(abcc))%arr = cgl%cg%get_divergence(2,wna%bfi)
+         divvbb = max(divvbb,maxval(cgl%cg%q(qna%ind(abcc))%arr))
+         cgl => cgl%nxt
+      enddo
+      write(*,*) divvbb
 
       call ppp_main%stop("unsplit_sweep")
 

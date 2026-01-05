@@ -41,8 +41,8 @@ contains
       use grid_cont,        only: grid_container
       use named_array_list, only: wna, qna
       use constants,        only: pdims, ORTHO1, ORTHO2, I_ONE, LO, HI, magh_n, uh_n, &
-                                  psi_n, psih_n, psidim, cs_i2_n, first_stage, xdim, ydim, zdim, I_ONE
-      use global,           only: integration_order
+                                  psi_n, psih_n, psidim, cs_i2_n, first_stage, xdim, ydim, zdim, I_ONE, magfh_n
+      use global,           only: integration_order, cc_mag
       use domain,           only: dom
       use fluidindex,       only: iarr_all_swp, iarr_mag_swp
       use fluxtypes,        only: ext_fluxes
@@ -61,8 +61,8 @@ contains
       real, dimension(:,:),allocatable           :: b_psi                ! This will carry both b and psi so it will have one extra size in dim=2
       real, dimension(:,:), pointer              :: pu, pb
       real, dimension(:), pointer                :: ppsi
-      real, dimension(:,:), pointer              :: pflux, pbflux,apsiflux
-      real, dimension(:), pointer                :: ppsiflux
+      real, dimension(:,:), pointer              :: pflux, pbflux,apsiflux, pbf
+      real, dimension(:), pointer                :: ppsiflux, bn
       real, dimension(:),   pointer              :: cs2
       real, dimension(:,:),allocatable           :: flux
       real, dimension(:,:),allocatable           :: bflux
@@ -70,12 +70,14 @@ contains
       real, dimension(:,:),allocatable           :: tbflux                ! to temporarily store transpose of bflux
       type(ext_fluxes)                           :: eflx
       integer                                    :: i_cs_iso2
+      integer :: bfi_bn
 
       uhi = wna%ind(uh_n)
       bhi = wna%ind(magh_n)
-
-      psii = qna%ind(psi_n)
-      psihi = qna%ind(psih_n)
+      if (cc_mag) then
+         psii = qna%ind(psi_n)
+         psihi = qna%ind(psih_n)
+      endif
 
       if (qna%exists(cs_i2_n)) then
          i_cs_iso2 = qna%ind(cs_i2_n)
@@ -83,6 +85,14 @@ contains
          i_cs_iso2 = -1
       endif
       cs2 => null()
+      bn => null()
+      if (.not. cc_mag) then
+         if (istep == first_stage(integration_order) .or. integration_order < 2) then
+            bfi_bn = wna%bfi
+         else
+            bfi_bn = wna%ind(magfh_n)
+         endif
+      endif
 
       do ddim = xdim, zdim
          if (.not. dom%has_dir(ddim)) cycle
@@ -93,7 +103,7 @@ contains
          call my_allocate(flux,   [size(u, 1, kind=4) - I_ONE, size(u, 2, kind=4)])
          call my_allocate(tflux,  [size(u, 2, kind=4),         size(u, 1, kind=4)])
          call my_allocate(bflux,  [size(b, 1, kind=4) - I_ONE, size(b_psi, 2, kind=4)])
-         call my_allocate(tbflux, [size(b_psi, 2, kind=4),     size(b, 1, kind=4)])
+         call my_allocate(tbflux, [size(b_psi, 2, kind=4), size(b, 1, kind=4) + I_ONE])
 
          do i2 = cg%ijkse(pdims(ddim, ORTHO2), LO), cg%ijkse(pdims(ddim, ORTHO2), HI)
             do i1 = cg%ijkse(pdims(ddim, ORTHO1), LO), cg%ijkse(pdims(ddim, ORTHO1), HI)
@@ -101,38 +111,55 @@ contains
                if (ddim==xdim) then
                   pflux => cg%w(wna%xflx)%get_sweep(xdim, i1, i2)
                   pbflux => cg%w(wna%xbflx)%get_sweep(xdim, i1, i2)
-                  apsiflux => cg%w(wna%psiflx)%get_sweep(xdim, i1, i2)
-                  ppsiflux => apsiflux(xdim,:)
+                  if (cc_mag) then
+                     apsiflux => cg%w(wna%psiflx)%get_sweep(xdim, i1, i2)
+                     ppsiflux => apsiflux(xdim,:)
+                  endif
                else if (ddim==ydim) then
                   pflux => cg%w(wna%yflx)%get_sweep(ydim, i1, i2)
                   pbflux => cg%w(wna%ybflx)%get_sweep(ydim, i1, i2)
-                  apsiflux => cg%w(wna%psiflx)%get_sweep(ydim, i1, i2)
-                  ppsiflux => apsiflux(ydim,:)
+                  if (cc_mag) then
+                     apsiflux => cg%w(wna%psiflx)%get_sweep(ydim, i1, i2)
+                     ppsiflux => apsiflux(ydim,:)
+                  endif
                else if (ddim==zdim) then
                   pflux => cg%w(wna%zflx)%get_sweep(zdim, i1, i2)
                   pbflux => cg%w(wna%zbflx)%get_sweep(zdim, i1, i2)
-                  apsiflux => cg%w(wna%psiflx)%get_sweep(zdim, i1, i2)
-                  ppsiflux => apsiflux(zdim,:)
+                  if (cc_mag) then
+                     apsiflux => cg%w(wna%psiflx)%get_sweep(zdim, i1, i2)
+                     ppsiflux => apsiflux(zdim,:)
+                  endif
                endif
                pu   => cg%w(uhi)%get_sweep(ddim, i1, i2)
                pb   => cg%w(bhi)%get_sweep(ddim, i1, i2)
-               ppsi => cg%q(psihi)%get_sweep(ddim, i1, i2)
+               if (cc_mag) ppsi => cg%q(psihi)%get_sweep(ddim, i1, i2)
                if (istep == first_stage(integration_order) .or. integration_order < 2 ) then
                   pu   => cg%w(wna%fi)%get_sweep(ddim, i1, i2)
                   pb   => cg%w(wna%bi)%get_sweep(ddim, i1, i2)
-                  ppsi => cg%q(psii)%get_sweep(ddim, i1, i2)
+                  if (cc_mag) ppsi => cg%q(psii)%get_sweep(ddim, i1, i2)
                endif
+
 
                u(:, iarr_all_swp(ddim,:)) = transpose(pu(:,:))
                b(:, iarr_mag_swp(ddim,:)) = transpose(pb(:,:))
 
-               b_psi(:, xdim:zdim) = b(:,:) ; b_psi(:,psidim) = ppsi(:)
+               b_psi(:, xdim:zdim) = b(:,:) 
+               if (cc_mag)  then
+                  b_psi(:,psidim) = ppsi(:)
+               else
+                  b_psi(:,psidim) = 0.0
+               endif
+
+               if (.not. cc_mag) then
+                  pbf => cg%w(bfi_bn)%get_sweep(ddim, i1, i2)
+                  bn  => pbf(ddim,:)
+               endif
 
                if (i_cs_iso2 > 0) cs2 => cg%q(i_cs_iso2)%get_sweep(ddim, i1, i2)
 
                call cg%set_fluxpointers(ddim, i1, i2, eflx)
 
-               call solve(u, b_psi ,cs2, eflx, flux, bflux)
+               call solve(u, b_psi ,cs2, eflx, flux, bflux, bn)
 
                call cg%save_outfluxes(ddim, i1, i2, eflx)
 
@@ -140,11 +167,19 @@ contains
                tflux(:,1) = 0.0
                pflux(:,:) = tflux
 
-               tbflux(:,2:) = transpose(bflux(:, iarr_mag_swp(ddim,:)))
-               tbflux(:,1) = 0
-               tbflux(psidim,2:) = bflux(:,psidim)
-               pbflux(:,:) = tbflux(xdim:zdim,:)
-               ppsiflux(:) =  tbflux(psidim,:)
+               tbflux(:,:) = 0.0
+
+               ! bflux is (N-1) x (ndims+psi)
+               ! transpose(bflux(:, iarr_mag_swp(ddim,:))) is (ndims) x (N-1)
+
+               tbflux(xdim:zdim, 2:size(b,1)) = transpose(bflux(:, iarr_mag_swp(ddim,:)))
+
+               ! psi flux, if you still carry it here:
+               tbflux(psidim, 2:size(b,1))    = bflux(:, psidim)
+               pbflux(:,:)    = tbflux(xdim:zdim, :)
+               if (cc_mag) then
+                  ppsiflux(:)    = tbflux(psidim, :)
+               endif
 
             enddo
          enddo
@@ -155,19 +190,21 @@ contains
 
       enddo
 
-      call apply_flux(cg,istep,.true.)
       call apply_flux(cg,istep,.false.)
-      call update_psi(cg,istep)
-      call apply_source(cg,istep)
+      if (cc_mag) then
+         call apply_flux(cg,istep,.true.)
+         call update_psi(cg,istep)
+         call apply_source(cg,istep)
+      endif
       nullify(cs2)
 
    end subroutine solve_cg_ub
 
-   subroutine solve(ui, bi, cs2, eflx, flx, bflx)
+   subroutine solve(ui, bi, cs2, eflx, flx, bflx, bn)
 
-      use constants,      only: DIVB_HDC
+      use constants,      only: DIVB_HDC, psidim, xdim
       use fluxtypes,      only: ext_fluxes
-      use global,         only: divB_0_method
+      use global,         only: divB_0_method, cc_mag
       use hlld,           only: riemann_wrap
       use interpolations, only: interpol
       use dataio_pub,     only: die
@@ -180,31 +217,39 @@ contains
       real, dimension(:,:),        intent(inout) :: bflx    !< cell-centered intermediate magnetic field states (including psi field when necessary)
       real, dimension(:), pointer, intent(in)    :: cs2     !< square of local isothermal sound speed
       type(ext_fluxes),            intent(inout) :: eflx    !< external fluxes
+      real, dimension(:), pointer, intent(in)    :: bn      !< square of local isothermal sound speed
 
       ! left and right states at interfaces 1 .. n-1
       real, dimension(size(ui, 1)-1, size(ui, 2)), target :: ql, qr
       real, dimension(size(bi, 1)-1, size(bi, 2)), target :: bl, br
+      integer :: nint, lo
 
       ! updates required for higher order of integration will likely have shorter length
 
       bflx = huge(1.)
 
       call interpol(ui, ql, qr, bi, bl, br)
+      if (associated(bn)) then
+         nint = size(bl,1)              ! number of interfaces
+         lo   = lbound(bn,1)            ! face array low bound
+         bl(:,xdim) = bn(lo+1 : lo+nint)
+         br(:,xdim) = bn(lo+1 : lo+nint)
+      endif
       call riemann_wrap(ql, qr, bl, br, cs2, flx, bflx) ! Now we advance the left and right states by a timestep.
+      if (.not. cc_mag) then
+         bflx(:, psidim) = 0.0
+      endif
 
       if (associated(eflx%li)) flx(eflx%li%index, :) = eflx%li%uflx
       if (associated(eflx%ri)) flx(eflx%ri%index, :) = eflx%ri%uflx
       if (associated(eflx%lo)) eflx%lo%uflx = flx(eflx%lo%index, :)
       if (associated(eflx%ro)) eflx%ro%uflx = flx(eflx%ro%index, :)
 
-      if (divB_0_method == DIVB_HDC) then
-         if (associated(eflx%li)) bflx(eflx%li%index, :) = eflx%li%bflx
-         if (associated(eflx%ri)) bflx(eflx%ri%index, :) = eflx%ri%bflx
-         if (associated(eflx%lo)) eflx%lo%bflx = bflx(eflx%lo%index, :)
-         if (associated(eflx%ro)) eflx%ro%bflx = bflx(eflx%ro%index, :)
-      else
-         call die("[unsplit_mag_modules:solve] Unplit method is only implemented with Hyperbolic Divergence Cleaning")
-      endif
+      if (associated(eflx%li)) bflx(eflx%li%index, :) = eflx%li%bflx
+      if (associated(eflx%ri)) bflx(eflx%ri%index, :) = eflx%ri%bflx
+      if (associated(eflx%lo)) eflx%lo%bflx = bflx(eflx%lo%index, :)
+      if (associated(eflx%ro)) eflx%ro%bflx = bflx(eflx%ro%index, :)
+
 
    end subroutine solve
 

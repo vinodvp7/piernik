@@ -103,8 +103,9 @@ contains
       use constants,   only: pi, dpi, fpi, xdim, ydim, zdim, LO, HI
       use fluidindex,  only: flind
       use fluidtypes,  only: component_fluid
+      use named_array_list,   only: wna
       use func,        only: ekin, emag
-      use global,      only: smallei
+      use global,      only: smallei, cc_mag
       use grid_cont,   only: grid_container
 
       implicit none
@@ -132,23 +133,46 @@ contains
          cg%u(fl%idn, :, :, :) = rho
          cg%u(fl%imz, :, :, :) = vz * cg%u(fl%idn, :, :, :)
          cg%b(zdim,   :, :, :) = bz
+         cg%bf(zdim,   :, :, :) = bz
 
          do j = cg%lhn(ydim,LO), cg%lhn(ydim,HI)
 
             yj = cg%y(j)
-            vx  = -sin(dpi*yj)
+            vx = -sin(dpi*cg%yf(j))
+            if (cc_mag) vx  = -sin(dpi*yj)
             bx  = b0*vx
 
             do i = cg%lhn(xdim,LO), cg%lhn(xdim,HI)
 
                xi = cg%x(i)
-               vy  = sin(dpi*xi)
+               vy = sin(dpi*cg%xf(i))
+               if (cc_mag) vy  = sin(dpi*xi)
                by  = b0*sin(fpi*xi)
 
                cg%u(fl%imx,i,j,:) = vx*cg%u(fl%idn,i,j,:)
                cg%u(fl%imy,i,j,:) = vy*cg%u(fl%idn,i,j,:)
-               cg%b(xdim,  i,j,:) = bx
-               cg%b(ydim,  i,j,:) = by
+               if (cc_mag) then
+                  cg%b(xdim,  i,j,:) = bx
+                  cg%b(ydim,  i,j,:) = by
+               else
+                  cg%bf(xdim,  i,j,:) = bx
+                  cg%bf(ydim,  i,j,:) = by
+               endif
+
+            enddo
+         enddo
+
+         cgl => cgl%nxt
+      enddo
+
+      cgl => leaves%first
+      do while (associated(cgl))
+         cg => cgl%cg
+         if (.not. cc_mag) then
+            cg%b(:,:,:,:) = cg%face_to_center(wna%bfi)
+         endif
+         do j = cg%lhn(ydim,LO), cg%lhn(ydim,HI)
+            do i = cg%lhn(xdim,LO), cg%lhn(xdim,HI)
 #ifndef ISO
                cg%u(fl%ien,i,j,:) = e0 + ekin(cg%u(fl%imx,i,j,:), cg%u(fl%imy,i,j,:), cg%u(fl%imz,i,j,:), cg%u(fl%idn,i,j,:)) + &
                     emag(cg%b(xdim,i,j,:), cg%b(ydim,i,j,:), cg%b(zdim,i,j,:))
@@ -157,12 +181,10 @@ contains
                ! It gives correct values only because initial Bx does not depend on x and By does not depend on y
                ! This should be addressed soon by reshape_b branch
 #endif /* !ISO */
-            enddo
-         enddo
-
+            end do
+         end do
          cgl => cgl%nxt
       enddo
-
    end subroutine problem_initial_conditions
 
 end module initproblem

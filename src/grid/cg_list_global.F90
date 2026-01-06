@@ -279,15 +279,14 @@ contains
       call this%reg_var(mag_n,  vital = .true.,  dim4 = ndims, ord_prolong = ord_mag_prolong, restart_mode = AT_OUT_B, position=xyz_center)  !! Main array of magnetic field's components, "b"
       call this%reg_var(magh_n, vital = .false., dim4 = ndims, position=xyz_center) !! Array for copy of magnetic field's components, "b" used in half-timestep in RK2
       if (.not. cc_mag) then
-         call this%reg_var(magf_n,  vital = .true.,  dim4 = ndims, ord_prolong = ord_mag_prolong, restart_mode = AT_OUT_B, position=xyz_face)  !! Main array of magnetic field's components, "b"
-         call this%reg_var(magfh_n, vital = .false., dim4 = ndims, position=xyz_face) !! Array for copy of magnetic field's components, "b" used in half-timestep in RK2
-         call this%reg_var(emf_n,   vital = .false., dim4 = ndims, ord_prolong = ord_mag_prolong, restart_mode = AT_IGNORE, position=xyz_face)  !! Main array of emf component for CT 
-
+         call this%reg_var(magf_n,  vital = .true.,  dim4 = ndims, ord_prolong = ord_mag_prolong, restart_mode = AT_OUT_B)  !! Main array of magnetic field's components, "b"
+         call this%reg_var(magfh_n, vital = .false., dim4 = ndims) !! Array for copy of magnetic field's components, "b" used in half-timestep in RK2
+         call this%reg_var(emf_n,   vital = .false., dim4 = ndims, ord_prolong = ord_mag_prolong, restart_mode = AT_IGNORE)  !! Main array of emf component for CT 
       endif
       if (which_solver == RIEMANN_UNSPLIT .or. .not. cc_mag) then
-         call this%reg_var(xbflx_n,   vital = .false.,  dim4 = ndims, ord_prolong = ord_mag_prolong, restart_mode = AT_OUT_B, position=pia)  !! Main array of magnetic field's components, "b"
-         call this%reg_var(ybflx_n,   vital = .false.,  dim4 = ndims, ord_prolong = ord_mag_prolong, restart_mode = AT_OUT_B, position=pia)  !! Main array of magnetic field's components, "b"
-         call this%reg_var(zbflx_n,   vital = .false.,  dim4 = ndims, ord_prolong = ord_mag_prolong, restart_mode = AT_OUT_B, position=pia)  !! Main array of magnetic field's components, "b"
+         call this%reg_var(xbflx_n,   vital = .false.,  dim4 = ndims, ord_prolong = ord_mag_prolong, restart_mode = AT_OUT_B)  !! Main array of magnetic field's components, "b"
+         call this%reg_var(ybflx_n,   vital = .false.,  dim4 = ndims, ord_prolong = ord_mag_prolong, restart_mode = AT_OUT_B)  !! Main array of magnetic field's components, "b"
+         call this%reg_var(zbflx_n,   vital = .false.,  dim4 = ndims, ord_prolong = ord_mag_prolong, restart_mode = AT_OUT_B)  !! Main array of magnetic field's components, "b"
          call this%reg_var(psiflx_n,  vital = .false.,  dim4 = ndims, ord_prolong = ord_mag_prolong, restart_mode = AT_OUT_B)  !! Main array of magnetic field's components, "b"
       endif
 

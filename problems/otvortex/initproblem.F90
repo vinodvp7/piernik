@@ -100,7 +100,7 @@ contains
 
       use cg_leaves,   only: leaves
       use cg_list,     only: cg_list_element
-      use constants,   only: pi, dpi, fpi, xdim, ydim, zdim, LO, HI
+      use constants,   only: pi, dpi, fpi, xdim, ydim, zdim, LO, HI, half
       use fluidindex,  only: flind
       use fluidtypes,  only: component_fluid
       use named_array_list,   only: wna
@@ -111,7 +111,7 @@ contains
       implicit none
 
       class(component_fluid), pointer    :: fl
-      integer                            :: i, j
+      integer                            :: i, j, ilo, ihi, jlo, jhi, klo, khi
       real                               :: xi, yj, vx, vy, vz, rho, pre, bx, by, bz, b0, e0
       type(cg_list_element),  pointer    :: cgl
       type(grid_container),   pointer    :: cg
@@ -168,8 +168,13 @@ contains
       cgl => leaves%first
       do while (associated(cgl))
          cg => cgl%cg
+         cg%b(:,:,:,:) = cg%bf(:,:,:,:)
          if (.not. cc_mag) then
-            cg%b(:,:,:,:) = cg%face_to_center(wna%bfi)
+            ilo = cg%lhn(xdim,LO); ihi = cg%lhn(xdim,HI)
+            jlo = cg%lhn(ydim,LO); jhi = cg%lhn(ydim,HI)
+            klo = cg%lhn(zdim,LO); khi = cg%lhn(zdim,HI)
+            cg%b(xdim,ilo+1:ihi-1,:,:) = half * ( cg%bf(xdim,ilo+2:ihi,:,:) + cg%bf(xdim,ilo+1:ihi-1,:,:))
+            cg%b(ydim,:,jlo+1:jhi-1,:) = half * ( cg%bf(ydim,:,jlo+2:jhi,:) + cg%bf(ydim,:,jlo+1:jhi-1,:))
          endif
          do j = cg%lhn(ydim,LO), cg%lhn(ydim,HI)
             do i = cg%lhn(xdim,LO), cg%lhn(xdim,HI)

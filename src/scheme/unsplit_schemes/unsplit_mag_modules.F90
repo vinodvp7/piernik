@@ -103,7 +103,7 @@ contains
          call my_allocate(flux,   [size(u, 1, kind=4) - I_ONE, size(u, 2, kind=4)])
          call my_allocate(tflux,  [size(u, 2, kind=4),         size(u, 1, kind=4)])
          call my_allocate(bflux,  [size(b, 1, kind=4) - I_ONE, size(b_psi, 2, kind=4)])
-         call my_allocate(tbflux, [size(b_psi, 2, kind=4), size(b, 1, kind=4) + I_ONE])
+         call my_allocate(tbflux, [size(b_psi, 2, kind=4),     size(b, 1, kind=4)])
 
          do i2 = cg%ijkse(pdims(ddim, ORTHO2), LO), cg%ijkse(pdims(ddim, ORTHO2), HI)
             do i1 = cg%ijkse(pdims(ddim, ORTHO1), LO), cg%ijkse(pdims(ddim, ORTHO1), HI)
@@ -167,18 +167,12 @@ contains
                tflux(:,1) = 0.0
                pflux(:,:) = tflux
 
-               tbflux(:,:) = 0.0
-
-               ! bflux is (N-1) x (ndims+psi)
-               ! transpose(bflux(:, iarr_mag_swp(ddim,:))) is (ndims) x (N-1)
-
-               tbflux(xdim:zdim, 2:size(b,1)) = transpose(bflux(:, iarr_mag_swp(ddim,:)))
-
-               ! psi flux, if you still carry it here:
-               tbflux(psidim, 2:size(b,1))    = bflux(:, psidim)
-               pbflux(:,:)    = tbflux(xdim:zdim, :)
+               tbflux(:,2:) = transpose(bflux(:, iarr_mag_swp(ddim,:)))
+               tbflux(:,1) = 0
+               pbflux(:,:) = tbflux(xdim:zdim,:)
                if (cc_mag) then
-                  ppsiflux(:)    = tbflux(psidim, :)
+                  tbflux(psidim,2:) = bflux(:,psidim)
+                  ppsiflux(:) =  tbflux(psidim,:)
                endif
 
             enddo
@@ -222,18 +216,13 @@ contains
       ! left and right states at interfaces 1 .. n-1
       real, dimension(size(ui, 1)-1, size(ui, 2)), target :: ql, qr
       real, dimension(size(bi, 1)-1, size(bi, 2)), target :: bl, br
-      integer :: nint, lo
 
       ! updates required for higher order of integration will likely have shorter length
 
-      bflx = huge(1.)
-
       call interpol(ui, ql, qr, bi, bl, br)
       if (associated(bn)) then
-         nint = size(bl,1)              ! number of interfaces
-         lo   = lbound(bn,1)            ! face array low bound
-         bl(:,xdim) = bn(lo+1 : lo+nint)
-         br(:,xdim) = bn(lo+1 : lo+nint)
+         bl(:,xdim) = bn(lbound(bn,1) + 1:)
+         br(:,xdim) = bn(lbound(bn,1) + 1:)
       endif
       call riemann_wrap(ql, qr, bl, br, cs2, flx, bflx) ! Now we advance the left and right states by a timestep.
       if (.not. cc_mag) then
@@ -245,10 +234,12 @@ contains
       if (associated(eflx%lo)) eflx%lo%uflx = flx(eflx%lo%index, :)
       if (associated(eflx%ro)) eflx%ro%uflx = flx(eflx%ro%index, :)
 
-      if (associated(eflx%li)) bflx(eflx%li%index, :) = eflx%li%bflx
-      if (associated(eflx%ri)) bflx(eflx%ri%index, :) = eflx%ri%bflx
-      if (associated(eflx%lo)) eflx%lo%bflx = bflx(eflx%lo%index, :)
-      if (associated(eflx%ro)) eflx%ro%bflx = bflx(eflx%ro%index, :)
+      if (divB_0_method == DIVB_HDC) then
+         if (associated(eflx%li)) bflx(eflx%li%index, :) = eflx%li%bflx
+         if (associated(eflx%ri)) bflx(eflx%ri%index, :) = eflx%ri%bflx
+         if (associated(eflx%lo)) eflx%lo%bflx = bflx(eflx%lo%index, :)
+         if (associated(eflx%ro)) eflx%ro%bflx = bflx(eflx%ro%index, :)
+      endif
 
 
    end subroutine solve

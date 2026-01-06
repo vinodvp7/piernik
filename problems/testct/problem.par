@@ -1,6 +1,6 @@
  $BASE_DOMAIN
     n_d = 256, 256, 1
-    nb = 4
+    nb = 8
     bnd_xl = 'per'
     bnd_xr = 'per'
     bnd_yl = 'per'
@@ -35,7 +35,7 @@
     dt_hdf  = 0.12
     dt_res  = 0.0
     dt_log  = 0.00001
-    dt_tsl  = 0.00001
+    dt_tsl  = 1e-50
     vars(1:) = 'magx', 'dens', 'magy', 'magz', 'pres', 'velx', 'vely', 'velz'
  /
 
@@ -52,9 +52,9 @@
  $NUMERICAL_SETUP
     cfl    = 0.3
     cfl_glm = 0.3
-    integration_order = 1
     divb_0 = 'ct'
-    print_divb = 1
+    integration_order = 1
+    print_divb = 100
     solver_str = 'riemann_unsplit'
     smalld = 1.e-3
     smallei= 1.e-5

@@ -104,8 +104,6 @@ contains
       use ct,                only: emf_to_bf
       use named_array_list,  only: wna, qna
       use global,            only: cc_mag
-      use cg_list_global,    only: all_cg
-      use constants,         only: dsetnamelen
 #endif /* MAGNETIC */
 
       implicit none
@@ -121,8 +119,6 @@ contains
       character(len=*), parameter      :: solve_cgs_label = "solve_bunch_of_cg", cg_label = "solve_cg", init_src_label = "init_src"
       real :: divvbb = tiny(1.)
       
-      character(len=dsetnamelen), parameter :: abcc      = "abcc"      !< main emf array
-      if(nstep ==0) call all_cg%reg_var(abcc)
 
       call ppp_main%start("unsplit_sweep")
 
@@ -195,22 +191,13 @@ contains
          enddo
 
          call req%waitall("sweeps")
-
          call update_boundaries(istep)
-
          if (.not. cc_mag) call emf_to_bf(istep)
+
       enddo
 
       call sl%delete
       deallocate(sl)
-
-      cgl => leaves%first
-      do while (associated(cgl))
-         cgl%cg%q(qna%ind(abcc))%arr = cgl%cg%get_divergence(2,wna%bfi)
-         divvbb = max(divvbb,maxval(cgl%cg%q(qna%ind(abcc))%arr))
-         cgl => cgl%nxt
-      enddo
-      write(*,*) divvbb
 
       call ppp_main%stop("unsplit_sweep")
 

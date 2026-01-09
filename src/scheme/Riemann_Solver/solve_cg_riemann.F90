@@ -126,6 +126,11 @@ contains
       use grid_cont,        only: grid_container
       use named_array_list, only: wna, qna
       use sources,          only: internal_sources, care_for_positives
+#ifdef RESISTIVE
+      use resistivity,           only: ejbn
+      use resistivity_helpers,   only: update_resistive_terms
+      use constants,             only: first_stage
+#endif /* RESISTIVE */
 
       implicit none
 
@@ -146,6 +151,12 @@ contains
       real, dimension(size(u,1), flind%fluids), target :: vx
       type(ext_fluxes)                           :: eflx
       integer                                    :: i_cs_iso2
+      real, dimension(:),   pointer              :: pres1d => null()
+#ifdef RESISTIVE
+      real, dimension(:,:), pointer              :: pres2d
+
+      if (integration_order > 1 .and. istep /= first_stage(integration_order)) call update_resistive_terms(cg,istep)   ! Refreshes J after first RK stage.
+#endif /* RESISTIVE */
 
       uhi = wna%ind(uh_n)
       bhi = wna%ind(magh_n)
@@ -210,10 +221,13 @@ contains
                b0(:, psidim) = ppsi0(:)
                b1(:, psidim) = ppsi(:)
 
-               call solve(u0, b0, u1, b1, cs2, rk_coef(istep) * dt/cg%dl(ddim), eflx)
-
+#if defined(RESISTIVE) && !defined(ISO) && defined(IONIZED)
+               pres2d => cg%w(wna%ind(ejbn))%get_sweep(ddim,i1,i2)
+               pres1d => pres2d(ddim,:)
+               call solve(u0, b0, u1, b1, cs2, rk_coef(istep) * dt/cg%dl(ddim), eflx, pres1d)
+#endif
             else
-               call solve(u0, b0(:, xdim:zdim), u1, b1(:, xdim:zdim), cs2, rk_coef(istep) * dt/cg%dl(ddim), eflx)
+               call solve(u0, b0(:, xdim:zdim), u1, b1(:, xdim:zdim), cs2, rk_coef(istep) * dt/cg%dl(ddim), eflx, pres1d)
             endif
 
             call internal_sources(size(u, 1, kind=4), u, u1, b, cg, istep, ddim, i1, i2, rk_coef(istep) * dt, vx)
@@ -315,13 +329,17 @@ contains
 !! We don't calculate n-th interface because it is as incomplete as 0-th interface
 !<
 
-   subroutine solve(u0, b0, u1, b1, cs2, dtodx, eflx)
+   subroutine solve(u0, b0, u1, b1, cs2, dtodx, eflx, pres1d)
 
       use constants,      only: DIVB_HDC, xdim, ydim, zdim
       use fluxtypes,      only: ext_fluxes
       use global,         only: divB_0_method
       use hlld,           only: riemann_wrap
       use interpolations, only: interpol
+#ifdef RESISTIVE
+      use fluidindex,     only: flind
+      use interpolations, only: interpol_generic
+#endif /* RESISTIVE */
 
       implicit none
 
@@ -332,6 +350,7 @@ contains
       real, dimension(:), pointer, intent(in)    :: cs2    !< square of local isothermal sound speed
       real,                        intent(in)    :: dtodx  !< timestep advance: RK-factor * timestep / cell length
       type(ext_fluxes),            intent(inout) :: eflx   !< external fluxes
+      real, dimension(:), pointer, intent(in)    :: pres1d !< resitive flux correction to fluid energy
 
       ! left and right states at interfaces 1 .. n-1
       real, dimension(size(u0, 1)-1, size(u0, 2)), target :: ql, qr
@@ -341,14 +360,26 @@ contains
       real, dimension(size(u0, 1)-1, size(u0, 2)), target :: flx
       real, dimension(size(b0, 1)-1, size(b0, 2)), target :: mag_flx
 
+      real, dimension(size(u0, 1), 2)          :: restemp
+      real, dimension(size(u0, 1) - 1, 2)      :: rl, rr
+
       ! updates required for higher order of integration will likely have shorter length
 
       integer, parameter :: in = 1  ! index for cells
 
       mag_flx = huge(1.)
 
+      restemp = 0.0
+      if (associated(pres1d)) then
+         restemp(:, 1) = pres1d(:)
+         call interpol_generic(restemp, rl, rr)
+      endif
+
       call interpol(u1, ql, qr, b1, bl, br)
       call riemann_wrap(ql, qr, bl, br, cs2, flx, mag_flx) ! Now we advance the left and right states by a timestep.
+
+!> We add the resisitve flux correction to energy in a simple manner using average of the face values
+      if (associated(pres1d)) flx(:,flind%ion%ien) = flx(:,flind%ion%ien) + 0.5 * (rl(:, 1) + rr(:, 1))
 
       if (associated(eflx%li)) flx(eflx%li%index, :) = eflx%li%uflx
       if (associated(eflx%ri)) flx(eflx%ri%index, :) = eflx%ri%uflx

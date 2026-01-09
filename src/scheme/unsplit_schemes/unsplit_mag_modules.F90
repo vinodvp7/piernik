@@ -48,6 +48,11 @@ contains
       use fluxtypes,        only: ext_fluxes
       use unsplit_source,   only: apply_source
       use diagnostics,      only: my_allocate, my_deallocate
+#ifdef RESISTIVE
+      use resistivity,           only: ejbn
+      use resistivity_helpers,   only: update_resistive_terms
+      use constants,             only: first_stage
+#endif /* RESISTIVE */
 
       implicit none
 
@@ -70,6 +75,11 @@ contains
       real, dimension(:,:),allocatable           :: tbflux                ! to temporarily store transpose of bflux
       type(ext_fluxes)                           :: eflx
       integer                                    :: i_cs_iso2
+      real, dimension(:),   pointer              :: pres1d => null()
+#ifdef RESISTIVE
+      real, dimension(:,:), pointer              :: pres2d
+      if (integration_order > 1 .and. istep /= first_stage(integration_order)) call update_resistive_terms(cg,istep)   ! Refreshes J after first RK stage.
+#endif /* RESISTIVE */
 
       uhi = wna%ind(uh_n)
       bhi = wna%ind(magh_n)
@@ -131,8 +141,11 @@ contains
                if (i_cs_iso2 > 0) cs2 => cg%q(i_cs_iso2)%get_sweep(ddim, i1, i2)
 
                call cg%set_fluxpointers(ddim, i1, i2, eflx)
-
-               call solve(u, b_psi ,cs2, eflx, flux, bflux)
+#if defined(RESISTIVE) && !defined(ISO) && defined(IONIZED)
+               pres2d => cg%w(wna%ind(ejbn))%get_sweep(ddim,i1,i2)
+               pres1d => pres2d(ddim,:)
+#endif /* !RESISTIVE && ISO && !IONZED */
+               call solve(u, b_psi ,cs2, eflx, flux, bflux, pres1d)
 
                call cg%save_outfluxes(ddim, i1, i2, eflx)
 
@@ -163,7 +176,7 @@ contains
 
    end subroutine solve_cg_ub
 
-   subroutine solve(ui, bi, cs2, eflx, flx, bflx)
+   subroutine solve(ui, bi, cs2, eflx, flx, bflx, pres1d)
 
       use constants,      only: DIVB_HDC
       use fluxtypes,      only: ext_fluxes
@@ -171,6 +184,10 @@ contains
       use hlld,           only: riemann_wrap
       use interpolations, only: interpol
       use dataio_pub,     only: die
+#ifdef RESISTIVE
+      use fluidindex,     only: flind
+      use interpolations, only: interpol_generic
+#endif /* RESISTIVE */
 
       implicit none
 
@@ -180,11 +197,19 @@ contains
       real, dimension(:,:),        intent(inout) :: bflx    !< cell-centered intermediate magnetic field states (including psi field when necessary)
       real, dimension(:), pointer, intent(in)    :: cs2     !< square of local isothermal sound speed
       type(ext_fluxes),            intent(inout) :: eflx    !< external fluxes
+      real, dimension(:), pointer, intent(in)    :: pres1d  !< resitive flux correction to fluid energy
 
       ! left and right states at interfaces 1 .. n-1
       real, dimension(size(ui, 1)-1, size(ui, 2)), target :: ql, qr
       real, dimension(size(bi, 1)-1, size(bi, 2)), target :: bl, br
 
+      real, dimension(size(ui, 1), 2)          :: restemp
+      real, dimension(size(ui, 1) - 1, 2)      :: rl, rr
+      restemp = 0.0
+      if (associated(pres1d)) then
+         restemp(:, 1) = pres1d(:)
+         call interpol_generic(restemp, rl, rr)
+      endif
       ! updates required for higher order of integration will likely have shorter length
 
       bflx = huge(1.)
@@ -192,6 +217,9 @@ contains
       call interpol(ui, ql, qr, bi, bl, br)
       call riemann_wrap(ql, qr, bl, br, cs2, flx, bflx) ! Now we advance the left and right states by a timestep.
 
+!> We add the resisitve flux correction to energy in a simple manner using average of the face values
+      if (associated(pres1d)) flx(:,flind%ion%ien) = flx(:,flind%ion%ien) + 0.5 * (rl(:, 1) + rr(:, 1))
+      
       if (associated(eflx%li)) flx(eflx%li%index, :) = eflx%li%uflx
       if (associated(eflx%ri)) flx(eflx%ri%index, :) = eflx%ri%uflx
       if (associated(eflx%lo)) eflx%lo%uflx = flx(eflx%lo%index, :)

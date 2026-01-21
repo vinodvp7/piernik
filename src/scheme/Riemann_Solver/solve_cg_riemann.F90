@@ -155,7 +155,10 @@ contains
 #ifdef RESISTIVE
       real, dimension(:,:), pointer              :: pres2d
 
-      if (integration_order > 1 .and. istep /= first_stage(integration_order)) call update_resistive_terms(cg,istep)   ! Refreshes J after first RK stage.
+      if (istep == first_stage(integration_order)) cg%w(wna%ind(magh_n))%arr = cg%b
+
+      call update_resistive_terms(cg,istep)   ! Refreshes J after first RK stage.
+
 #endif /* RESISTIVE */
 
       uhi = wna%ind(uh_n)
@@ -224,8 +227,8 @@ contains
 #if defined(RESISTIVE) && !defined(ISO) && defined(IONIZED)
                pres2d => cg%w(wna%ind(ejbn))%get_sweep(ddim,i1,i2)
                pres1d => pres2d(ddim,:)
-               call solve(u0, b0, u1, b1, cs2, rk_coef(istep) * dt/cg%dl(ddim), eflx, pres1d)
 #endif
+               call solve(u0, b0, u1, b1, cs2, rk_coef(istep) * dt/cg%dl(ddim), eflx, pres1d)
             else
                call solve(u0, b0(:, xdim:zdim), u1, b1(:, xdim:zdim), cs2, rk_coef(istep) * dt/cg%dl(ddim), eflx, pres1d)
             endif

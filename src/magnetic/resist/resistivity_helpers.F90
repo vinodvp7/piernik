@@ -85,51 +85,53 @@ contains
 !! strang split manner once before the transport and after as follows RES(dt/2) * Transport(dt) * RES(dt/2)
 !! for each time step. Basically it adds as a source term : dB/dt = - curl (eta J )
 
-   subroutine add_resistivity_source
+subroutine add_resistivity_source
 
-      use resistivity,           only: compute_resist, ejn
-      use cg_list,               only: cg_list_element
-      use cg_leaves,             only: leaves
-      use grid_cont,             only: grid_container
-      use named_array_list,      only: wna
-      use global,                only: dt, integration_order
-      use constants,             only: first_stage, rk_coef, last_stage, magh_n
-      use all_boundaries,        only: all_mag_boundaries
+   use resistivity,        only: compute_resist, ejn
+   use cg_list,            only: cg_list_element
+   use cg_leaves,          only: leaves
+   use grid_cont,          only: grid_container
+   use named_array_list,   only: wna
+   use global,             only: dt, integration_order
+   use constants,          only: first_stage
+   use dataio_pub,         only: halfstep
+   use all_boundaries,     only: all_mag_boundaries
 
-      implicit none
+   implicit none
 
-      type(cg_list_element),    pointer     :: cgl
-      type(grid_container),     pointer     :: cg
-      real, dimension(:,:,:,:), pointer     :: cej
-      real, dimension(:,:,:,:), pointer     :: pb, pbf
-      integer                               :: istep
+   type(cg_list_element), pointer :: cgl
+   type(grid_container),  pointer :: cg
 
-      ! We add resistive source term [curl of eta J] to B in a RK2 manner as well. Is this an overkill ?
-      do istep = first_stage(integration_order), last_stage(integration_order)
-         call compute_resist                               ! Update resistivity eta. Needed if eta varies in space
-         cgl => leaves%first
-         do while (associated(cgl))
-            cg => cgl%cg
-            pb   => cg%w(wna%bi)%arr
-            pbf  => cg%w(wna%bi)%arr
-            if (istep == first_stage(integration_order) .or. integration_order < 2 ) then
-               pb   => cg%w(wna%bi)%arr
-               pbf  => cg%w(wna%ind(magh_n))%arr
-            endif
-            call update_resistive_terms(cg,istep)         ! Refreshes curl of eta J
-            cej => cg%w(wna%ind(ejn))%arr
-            pbf(:,:,:,:) = pb(:,:,:,:) - rk_coef(istep) * 0.5 * dt * cej(:,:,:,:)
-            cgl => cgl%nxt
-         enddo
-         call all_mag_boundaries(istep)                  ! Need to refresh magnetic boundaries as B has changed
-         call compute_resist                             ! Potential overkill to calculate eta/J again but useful if J marked for output I/O
-         cgl => leaves%first
-         do while (associated(cgl))
-            cg => cgl%cg
-            call update_resistive_terms(cg,istep)
-            cgl => cgl%nxt
-         enddo
-      enddo
-   end subroutine add_resistivity_source
+   ! Update resistivity eta (needed if eta varies in space)
+   call compute_resist
+
+   cgl => leaves%first
+   do while (associated(cgl))
+      cg => cgl%cg
+
+      ! Refresh curl(eta J) and eta*J^2 (or whatever you store in ejn/ej2)
+      call update_resistive_terms(cg, first_stage(integration_order))
+      ! Induction: dB/dt = -curl(eta J)
+      cg%b(:,:,:,:) = cg%b(:,:,:,:) - 0.5 * dt * cg%w(wna%ind(ejn))%arr(:,:,:,:)
+
+      cgl => cgl%nxt
+   end do
+
+   ! Refresh magnetic boundaries after changing B
+   call all_mag_boundaries
+
+   ! Optional: recompute eta/J for diagnostic output at halfstep
+   if (halfstep) then
+      call compute_resist
+      cgl => leaves%first
+      do while (associated(cgl))
+         cg => cgl%cg
+         call update_resistive_terms(cg, first_stage(integration_order))
+         cgl => cgl%nxt
+      end do
+   end if
+
+end subroutine add_resistivity_source
+
 
 end module resistivity_helpers

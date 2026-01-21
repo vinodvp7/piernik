@@ -10,12 +10,10 @@ Make a 2x2 figure in the xy-plane:
 Analytical (v=0, uniform eta):
   Bx(x,y,t) = B0*ky*sin(kx x)*cos(ky y)*exp(-eta*(kx^2+ky^2)*t)
   By(x,y,t) = -B0*kx*cos(kx x)*sin(ky y)*exp(-eta*(kx^2+ky^2)*t)
-
 Usage:
   python res2d_map.py --file res_tst_0005.h5 --eta 0.01 --field mag_field_x --out Bx_2d.png
   python res2d_map.py --eta 0.01 --field mag_field_y --time 0.5 --out By_2d.png
 """
-
 import os
 import glob
 import argparse
@@ -54,13 +52,13 @@ def load_and_stitch_data(fname):
         block_names = list(f["data"].keys())
 
         all_offsets = np.array([f["data"][bn].attrs["off"] for bn in block_names], dtype=int)
-        all_dims    = np.array([f["data"][bn].attrs["n_b"] for bn in block_names], dtype=int)
+        all_dims = np.array([f["data"][bn].attrs["n_b"] for bn in block_names], dtype=int)
 
         global_cell_dims = np.max(all_offsets + all_dims, axis=0).astype(int)  # (Nx,Ny,Nz)
 
         sp = f["simulation_parameters"].attrs
         origin = np.array(sp["domain_left_edge"], dtype=float)
-        right  = np.array(sp["domain_right_edge"], dtype=float)
+        right = np.array(sp["domain_right_edge"], dtype=float)
         domain_size = right - origin
         spacing = domain_size / np.maximum(1.0, global_cell_dims.astype(float))
 
@@ -146,7 +144,7 @@ def main():
 
     zi = int(args.z_index)
     if not (0 <= zi < Nz):
-        raise ValueError(f"z-index out of range: {zi} not in [0,{Nz-1}]")
+        raise ValueError(f"z-index out of range : {zi} not in [0,{Nz - 1}]")
 
     # Determine time
     t = args.time
@@ -215,24 +213,28 @@ def main():
 
     im0 = axs[0, 0].imshow(num, origin="lower", extent=extent, aspect="auto", vmin=vmin, vmax=vmax)
     axs[0, 0].set_title(f"Numerical {args.field}")
-    axs[0, 0].set_xlabel("x"); axs[0, 0].set_ylabel("y")
+    axs[0, 0].set_xlabel("x")
+    axs[0, 0].set_ylabel("y")
     fig.colorbar(im0, ax=axs[0, 0], fraction=0.046, pad=0.04)
 
     im1 = axs[0, 1].imshow(ana, origin="lower", extent=extent, aspect="auto", vmin=vmin, vmax=vmax)
     axs[0, 1].set_title("Analytical")
-    axs[0, 1].set_xlabel("x"); axs[0, 1].set_ylabel("y")
+    axs[0, 1].set_xlabel("x")
+    axs[0, 1].set_ylabel("y")
     fig.colorbar(im1, ax=axs[0, 1], fraction=0.046, pad=0.04)
 
     # Center error colormap around 0 for signed error
     emax = np.max(np.abs(err_plot))
     im2 = axs[1, 0].imshow(err_plot, origin="lower", extent=extent, aspect="auto", vmin=-emax, vmax=emax)
     axs[1, 0].set_title(err_label)
-    axs[1, 0].set_xlabel("x"); axs[1, 0].set_ylabel("y")
+    axs[1, 0].set_xlabel("x")
+    axs[1, 0].set_ylabel("y")
     fig.colorbar(im2, ax=axs[1, 0], fraction=0.046, pad=0.04)
 
     im3 = axs[1, 1].imshow(abs_err_plot, origin="lower", extent=extent, aspect="auto")
     axs[1, 1].set_title(abs_err_label)
-    axs[1, 1].set_xlabel("x"); axs[1, 1].set_ylabel("y")
+    axs[1, 1].set_xlabel("x")
+    axs[1, 1].set_ylabel("y")
     fig.colorbar(im3, ax=axs[1, 1], fraction=0.046, pad=0.04)
 
     # Annotate norms

@@ -27,7 +27,7 @@
 #include "piernik.h"
 
 !>
-!! This subroutine is a copy of the split fluid update subroutine adapted for unsplit MHD solver. 
+!! This subroutine is a copy of the split fluid update subroutine adapted for unsplit MHD solver.
 !<
 
 module unsplit_fluidupdate
@@ -63,7 +63,7 @@ contains
 
       call make_unsplitsweep(.true.)  ! Here forward argument is not useful for the MHD sweeps but other legacy subroutines need it
 
-      
+
 #ifdef CRESP
       call cresp_update_grid     ! updating number density and energy density of cosmic ray electrons via CRESP module
 #endif /* CRESP */
@@ -72,7 +72,7 @@ contains
       t = t + dt
       dtm = dt
 
-      call make_unsplitsweep(.false.) 
+      call make_unsplitsweep(.false.)
 
       call update_magic_mass
 #ifdef CRESP
@@ -87,7 +87,7 @@ contains
    subroutine make_unsplitsweep(forward)
 
       use cg_list_dataop,      only: expanded_domain
-      use global,              only: skip_sweep, use_fargo
+      use global,              only: use_fargo
       use hdc,                 only: glmdamping, eglm
       use ppp,                 only: ppp_main
       use sources,             only: external_sources
@@ -117,7 +117,7 @@ contains
 
       implicit none
 
-      logical, intent(in) :: forward  
+      logical, intent(in) :: forward
 
       character(len=*), parameter :: usw3_label = "usweeps"
 #ifdef SHEAR

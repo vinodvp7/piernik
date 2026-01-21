@@ -219,7 +219,7 @@ contains
 
 !> We add the resisitve flux correction to energy in a simple manner using average of the face values
       if (associated(pres1d)) flx(:,flind%ion%ien) = flx(:,flind%ion%ien) + 0.5 * (rl(:, 1) + rr(:, 1))
-      
+
       if (associated(eflx%li)) flx(eflx%li%index, :) = eflx%li%uflx
       if (associated(eflx%ri)) flx(eflx%ri%index, :) = eflx%ri%uflx
       if (associated(eflx%lo)) eflx%lo%uflx = flx(eflx%lo%index, :)

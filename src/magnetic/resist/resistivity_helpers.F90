@@ -115,7 +115,7 @@ subroutine add_resistivity_source
       cg%b(:,:,:,:) = cg%b(:,:,:,:) - 0.5 * dt * cg%w(wna%ind(ejn))%arr(:,:,:,:)
 
       cgl => cgl%nxt
-   end do
+   enddo
 
    ! Refresh magnetic boundaries after changing B
    call all_mag_boundaries
@@ -128,8 +128,8 @@ subroutine add_resistivity_source
          cg => cgl%cg
          call update_resistive_terms(cg, first_stage(integration_order))
          cgl => cgl%nxt
-      end do
-   end if
+      enddo
+   endif
 
 end subroutine add_resistivity_source
 

@@ -23,19 +23,19 @@ if len(sys.argv) < 2:
     print("Usage: python plot_energy_exchange.py file.tsl")
     sys.exit(1)
 df = pd.read_csv(sys.argv[1], sep=r'\s+')
-t  = df['time']
+t = df['time']
 ei = df['eint']
 ek = df['ekin']
 em = df['emag']
 et = df['ener']
 
-plt.plot(t,ei,label='eint',linewidth=1.5)
-plt.plot(t,ek,label='ekin',linewidth=1.5)
-plt.plot(t,em,label='emag',linewidth=1.5)
-plt.plot(t,ei + ek + em,label='etot',linestyle='dashed',linewidth=1.5)
-plt.plot(t,et,label='ener',linewidth=1.5)
+plt.plot(t, ei, label='eint', linewidth=1.5)
+plt.plot(t, ek, label='ekin', linewidth=1.5)
+plt.plot(t, em, label='emag', linewidth=1.5)
+plt.plot(t, ei + ek + em, label='etot', linestyle='dashed', linewidth=1.5)
+plt.plot(t, et, label='ener', linewidth=1.5)
 
 plt.xlabel('time')
 plt.ylabel('Energy')
 plt.legend()
-plt.savefig('energy.png',dpi=300)
+plt.savefig('energy.png', dpi=300)

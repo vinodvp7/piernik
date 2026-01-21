@@ -168,7 +168,7 @@ contains
       call all_cg%reg_var(dbx_n)
       call all_cg%reg_var(dby_n)
       call all_cg%reg_var(dbz_n)
-      call all_cg%reg_var(name=ejn,dim4=ndims)              !< Storage for the term curl of (eta J)  
+      call all_cg%reg_var(name=ejn,dim4=ndims)              !< Storage for the term curl of (eta J)
       call all_cg%reg_var(name=jn,dim4=ndims)               !< Storage for the current density
       call all_cg%reg_var(name=ejbn,dim4=ndims)             !< Storage for the term (eta J) x B
 

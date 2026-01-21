@@ -338,11 +338,8 @@ contains
       use fluxtypes,      only: ext_fluxes
       use global,         only: divB_0_method
       use hlld,           only: riemann_wrap
-      use interpolations, only: interpol
-#ifdef RESISTIVE
+      use interpolations, only: interpol, interpol_generic
       use fluidindex,     only: flind
-      use interpolations, only: interpol_generic
-#endif /* RESISTIVE */
 
       implicit none
 
@@ -382,7 +379,9 @@ contains
       call riemann_wrap(ql, qr, bl, br, cs2, flx, mag_flx) ! Now we advance the left and right states by a timestep.
 
 !> We add the resisitve flux correction to energy in a simple manner using average of the face values
-      if (associated(pres1d)) flx(:,flind%ion%ien) = flx(:,flind%ion%ien) + 0.5 * (rl(:, 1) + rr(:, 1))
+      if (associated(pres1d)) then
+         flx(:,flind%ion%ien) = flx(:,flind%ion%ien) + 0.5 * (rl(:, 1) + rr(:, 1))
+      endif
 
       if (associated(eflx%li)) flx(eflx%li%index, :) = eflx%li%uflx
       if (associated(eflx%ri)) flx(eflx%ri%index, :) = eflx%ri%uflx

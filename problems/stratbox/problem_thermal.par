@@ -1,0 +1,127 @@
+!===================================================================
+! CASE 4: Thermo-hydrostatic equilibrium in external linear gravity
+!
+! NO CLOSED-FORM SOLUTION.
+! Validated by checking pointwise residuals:
+!   Hydrostatic: |dP/dz + rho*g| / |rho*g| should be < 0.01
+!   Thermal:     |n^2 Lambda - n Gamma| / |n Gamma| should be < 0.01
+!
+! Physics:
+!   At each z, temperature and density satisfy simultaneously:
+!     1) dP/dz = -rho g(z)          (hydrostatic balance)
+!     2) n^2 Lambda(T) = n Gamma    (thermal equilibrium)
+!
+!   The density is slaved to temperature via (2), and the temperature
+!   profile is set by integrating (1)+(2) from the midplane outward.
+!
+!   With branch='pressure_track': the code starts at T0 (warm branch)
+!   at the midplane, integrates outward, and performs an isobaric
+!   jump if the cooling curve enters the thermally unstable zone.
+!
+! NOTE: Requires cool_Kobayashi.txt in the run directory.
+!===================================================================
+
+ $BASE_DOMAIN
+    n_d    = 4, 4, 256
+    nb     = 4
+    bnd_xl = 'per'
+    bnd_xr = 'per'
+    bnd_yl = 'per'
+    bnd_yr = 'per'
+    bnd_zl = 'outd'
+    bnd_zr = 'outd'
+    xmin   = -50.0
+    xmax   =  50.0
+    ymin   = -50.0
+    ymax   =  50.0
+    zmin   = -2000.0
+    zmax   =  2000.0
+ /
+
+ $MPI_BLOCKS
+    allow_uneven  = .true.
+    allow_noncart = .true.
+ /
+
+ $UNITS
+    units_set = "PSM"
+ /
+
+ $RESTART_CONTROL
+    restart = 'none'
+ /
+
+ $END_CONTROL
+    tend = 200.0
+    nend = 100000
+ /
+
+ $OUTPUT_CONTROL
+    problem_name = 'strat'
+    run_id       = 'c04'
+    dt_hdf       = 20.0
+    dt_res       = 100.0
+    dt_log       = 0.01
+    dt_tsl       = 1.0
+    vars(1:)     = 'dens', 'velz', 'ener', 'gpot', 'temp'
+ /
+
+ $FLUID_IONIZED
+    gamma    = 1.6667
+    selfgrav = .true.
+ /
+
+ $NUMERICAL_SETUP
+    cfl         = 0.3
+    smalld      = 1.e-10
+    smallei     = 1.e-10
+    limiter     = 'vanleer'
+    solver_str  = 'riemann'
+ /
+
+ $GRAVITY
+    external_gp   = "linear"
+    g_dir         = 0.0, 0.0, -3.0e-4
+    nsub          = 20
+    tune_zeq      = 1.0
+    gprofs_target = "extgp"
+ /
+
+ $THERMAL
+    thermal_active = .TRUE.
+    cool_model     = 'piecewise_power_law'
+    cool_curve     = 'tabulated'
+    cool_file      = 'cool_Kobayashi.txt'
+    heat_model     = 'G012'
+    scheme         = 'EE'
+    G0             = 0.0
+    G1             = 2.0e-25
+    G2             = 0.0
+    x_ion          = 1.0
+    cfl_coolheat   = 0.1
+    isochoric      = 1
+ /
+
+ $RESISTIVITY
+ /
+
+ $PROBLEM_CONTROL
+    test_case = 4
+    d0        = 0.002
+    T0        = 7000.0
+    B0        = 0.0
+    gz0       = -3.0e-4
+ /
+
+ $MULTIGRID_SOLVER
+ /
+
+ $MULTIGRID_GRAVITY
+    grav_bnd_str = "isolated"
+ /
+
+ $INTERACTIONS
+ /
+
+ $AMR
+ /

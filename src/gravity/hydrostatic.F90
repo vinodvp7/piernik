@@ -41,7 +41,7 @@ module hydrostatic
 
    private
 
-   public :: set_default_hsparams, hydrostatic_zeq_coldens, hydrostatic_zeq_densmid, cleanup_hydrostatic, outh_bnd, init_hydrostatic
+   public :: set_default_hsparams, hydrostatic_zeq_coldens, hydrostatic_zeq_densmid, cleanup_hydrostatic, outh_bnd, init_hydrostatic, establish_strat_box
    public :: dprof, gprofs, nstot, zs, dzs, hsmin, hsbn, hsl, hscg
 
    real, allocatable, dimension(:) :: zs        !< array of z-positions of subgrid cells centers
@@ -500,5 +500,908 @@ contains
       if (associated(hscg)) nullify(hscg)
 
    end subroutine cleanup_hydrostatic
+
+!>
+!! \brief Establish self-consistent stratified box equilibrium
+!!
+!! \details Unified routine that handles ALL combinations of:
+!!   - External gravitational potential (Φ_ext from gravity module)
+!!   - Self-gravity (Φ_sg via multigrid Poisson solver)
+!!   - Thermal equilibrium (cooling/heating balance, with branch selection)
+!!   - Magnetic pressure support (horizontal flux-frozen B-field)
+!!
+!! Uses Picard (fixed-point) iteration when self-gravity is active.
+!! Single-pass when only external potential is present.
+!!
+!! \param[in] d0           Midplane gas density [code units, typically n_H in cm^-3]
+!! \param[in] csim2        Square of isothermal sound speed [code units]; ignored when use_thermal=.true.
+!! \param[in] T0           Midplane temperature [K]; used when use_thermal=.true.
+!! \param[in] B0           Midplane horizontal magnetic field strength [code units]; 0 to disable
+!! \param[in] use_selfgrav .true. to include self-gravity via Picard iteration
+!! \param[in] use_thermal  .true. to use thermal equilibrium (requires THERM); .false. forces isothermal
+!! \param[in] use_magnetic .true. to include magnetic pressure (requires MAGNETIC); .false. ignores B
+!! \param[in] branch       Thermal branch selection: 'cold', 'warm', 'pressure_track', 'no_jump'
+!! \param[in] picard_tol   Convergence tolerance for Picard iteration (default 1.0e-6)
+!! \param[in] max_picard   Maximum Picard iterations (default 50)
+!! \param[in] omega        Under-relaxation parameter (default 0.5; 1.0 = no relaxation)
+!<
+
+   subroutine establish_strat_box(d0, csim2, T0, B0, use_selfgrav, use_thermal, use_magnetic, branch, picard_tol, max_picard, omega)
+
+      use cg_leaves,         only: leaves
+      use cg_list,           only: cg_list_element
+      use constants,         only: xdim, ydim, zdim, LO, HI, pi, half, small
+      use dataio_pub,        only: msg, printinfo, warn, die
+      use domain,            only: dom
+      use fluidindex,        only: flind, iarr_all_dn
+      use gravity,           only: tune_zeq, grav_pot_3d
+      use grid_cont,         only: grid_container
+      use mpisetup,          only: master, proc
+      use allreduce,         only: piernik_MPI_Allreduce
+      use constants,         only: pMAX
+#ifndef ISO
+      use fluidindex,        only: iarr_all_en
+      use func,              only: ekin, emag
+#endif /* !ISO */
+#ifdef SELF_GRAV
+      use fluidindex,        only: iarr_all_sg
+      use multigrid_gravity, only: multigrid_solve_grav
+      use named_array_list,  only: qna
+      use constants,         only: sgp_n
+#endif /* SELF_GRAV */
+#ifdef THERM
+      use thermal,           only: find_temp_bin, alpha, Tref, lambda0, G1_heat, G0_heat
+      use units,             only: kboltz, mH
+#endif /* THERM */
+
+      implicit none
+
+      real,              intent(in)           :: d0
+      real,              intent(in)           :: csim2
+      real,              intent(in), optional :: T0
+      real,              intent(in), optional :: B0
+      logical,           intent(in), optional :: use_selfgrav
+      logical,           intent(in), optional :: use_thermal
+      logical,           intent(in), optional :: use_magnetic
+      character(len=*),  intent(in), optional :: branch
+      real,              intent(in), optional :: picard_tol
+      integer(kind=4),   intent(in), optional :: max_picard
+      real,              intent(in), optional :: omega
+
+      ! Local variables
+      type(cg_list_element), pointer :: cgl
+      type(grid_container),  pointer :: cg
+      logical  :: do_selfgrav, do_thermal, do_magnetic
+      real     :: tol, relax_omega, Tmid_val, B0_val
+      integer(kind=4)  :: max_iter, iter
+      real     :: max_delta, prev_delta
+      character(len=16) :: branch_method
+      integer  :: i, j, k
+
+      ! ================================================================
+      ! Parse optional arguments with sensible defaults
+      ! ================================================================
+
+      do_selfgrav = .false.
+      if (present(use_selfgrav)) do_selfgrav = use_selfgrav
+
+      do_thermal = .false.
+      if (present(use_thermal)) do_thermal = use_thermal
+
+      do_magnetic = .false.
+      if (present(use_magnetic)) do_magnetic = use_magnetic
+
+      tol = 1.0e-6
+      if (present(picard_tol)) tol = picard_tol
+
+      max_iter = 50
+      if (present(max_picard)) max_iter = max_picard
+
+      relax_omega = 0.5
+      if (present(omega)) relax_omega = omega
+
+      Tmid_val = 0.0
+      if (present(T0)) Tmid_val = T0
+
+      B0_val = 0.0
+      if (present(B0)) B0_val = B0
+
+      branch_method = 'pressure_track'
+      if (present(branch)) branch_method = trim(branch)
+
+      ! ================================================================
+      ! Validate inputs
+      ! ================================================================
+
+      if (d0 <= small) call die("[hydrostatic:establish_strat_box] d0 must be > 0")
+
+#ifndef SELF_GRAV
+      if (do_selfgrav) then
+         call warn("[hydrostatic:establish_strat_box] SELF_GRAV not compiled; ignoring use_selfgrav=.true.")
+         do_selfgrav = .false.
+      endif
+#endif /* !SELF_GRAV */
+
+#ifndef THERM
+      if (do_thermal) then
+         call warn("[hydrostatic:establish_strat_box] THERM not compiled; ignoring use_thermal=.true.")
+         do_thermal = .false.
+      endif
+#endif /* !THERM */
+
+#ifndef MAGNETIC
+      if (do_magnetic) then
+         call warn("[hydrostatic:establish_strat_box] MAGNETIC not compiled; ignoring use_magnetic=.true.")
+         do_magnetic = .false.
+      endif
+#endif /* !MAGNETIC */
+
+      if (do_thermal .and. Tmid_val <= small) &
+         call die("[hydrostatic:establish_strat_box] T0 must be > 0 when use_thermal=.true.")
+
+      if (.not. dom%has_dir(zdim)) then
+         if (master) call warn("[hydrostatic:establish_strat_box] No z-direction; setting uniform density.")
+         call set_uniform_state(d0, csim2, Tmid_val, B0_val, do_thermal, do_magnetic)
+         return
+      endif
+
+      if (master) then
+         write(msg, '(a,L1,a,L1,a,L1,a,a)') &
+            "[establish_strat_box] selfgrav=", do_selfgrav, &
+            " thermal=", do_thermal, " magnetic=", do_magnetic, &
+            " branch=", trim(branch_method)
+         call printinfo(msg, .true.)
+      endif
+
+      ! ================================================================
+      ! Step -1: Ensure external gravitational potential is computed
+      ! ================================================================
+      ! NOTE: This routine may be called from problem_initial_conditions,
+      ! BEFORE init_terms_grav has run. So we must compute the external
+      ! potential ourselves. grav_pot_3d fills cg%gp for all leaves.
+      ! This is idempotent — calling it again in init_terms_grav is safe.
+
+      if (associated(grav_pot_3d)) then
+         call grav_pot_3d
+      else
+         if (master) call warn("[establish_strat_box] grav_pot_3d not associated; external potential may be zero.")
+      endif
+
+      ! ================================================================
+      ! Step 0: Initialize all grid containers with uniform midplane state
+      ! ================================================================
+
+      call set_uniform_state(d0, csim2, Tmid_val, B0_val, do_thermal, do_magnetic)
+
+      ! ================================================================
+      ! Picard iteration loop (trivially 1 pass when no self-gravity)
+      ! ================================================================
+
+      prev_delta = huge(1.0)
+
+      do iter = 1, merge(max_iter, 1, do_selfgrav)
+
+         ! ----------------------------------------------------------
+         ! Step A: Solve Poisson equation for self-gravitating potential
+         ! ----------------------------------------------------------
+#ifdef SELF_GRAV
+         if (do_selfgrav) then
+            call multigrid_solve_grav(iarr_all_sg)
+
+            ! Update gpot = gp (external) + sgp (self-gravity)
+            ! so that get_gprofs sees the total potential
+            cgl => leaves%first
+            do while (associated(cgl))
+               cg => cgl%cg
+               cg%gpot(:,:,:) = cg%gp(:,:,:) + cg%sgp(:,:,:)
+               cgl => cgl%nxt
+            enddo
+         endif
+#endif /* SELF_GRAV */
+
+         ! ----------------------------------------------------------
+         ! Step B: For each grid container, solve hydrostatic balance
+         !         column by column
+         ! ----------------------------------------------------------
+
+         max_delta = 0.0
+
+         cgl => leaves%first
+         do while (associated(cgl))
+            cg => cgl%cg
+
+            call set_default_hsparams(cg)
+
+            ! Allocate subcell arrays (required by get_gprofs and column solvers)
+            if (allocated(zs))     deallocate(zs)
+            if (allocated(gprofs)) deallocate(gprofs)
+            if (allocated(dprofs)) deallocate(dprofs)
+            allocate(zs(nstot), gprofs(nstot), dprofs(nstot))
+
+            ! Fill subcell positions
+            do k = 1, nstot
+               zs(k) = hsmin + (real(k) - half) * dzs
+            enddo
+
+            do j = cg%lhn(ydim, LO), cg%lhn(ydim, HI)
+               do i = cg%lhn(xdim, LO), cg%lhn(xdim, HI)
+
+                  ! Get gravity profile for this column
+                  ! Always compute from the potential arrays directly
+                  ! to avoid allocation mismatch issues with get_gprofs variants
+                  if (do_selfgrav) then
+                     ! Total potential = external + self-gravity
+                     call compute_gprofs_from_potential(i, j, cg, .true.)
+                  else
+                     ! External potential only (cg%gp)
+                     call compute_gprofs_from_potential(i, j, cg, .false.)
+                  endif
+
+                  ! Solve the 1D equilibrium along this column
+                  if (do_thermal) then
+#ifdef THERM
+                     call solve_column_thermal(i, j, cg, d0, Tmid_val, B0_val, &
+                                                do_magnetic, branch_method, max_delta)
+#endif /* THERM */
+                  else
+                     call solve_column_hydro(i, j, cg, d0, csim2, B0_val, &
+                                              do_magnetic, max_delta)
+                  endif
+
+               enddo
+            enddo
+
+            ! Deallocate subcell arrays for this grid container
+            if (allocated(zs))     deallocate(zs)
+            if (allocated(gprofs)) deallocate(gprofs)
+            if (allocated(dprofs)) deallocate(dprofs)
+
+            cgl => cgl%nxt
+         enddo
+
+         ! ----------------------------------------------------------
+         ! Step C: Check convergence (MPI global max)
+         ! ----------------------------------------------------------
+
+         call piernik_MPI_Allreduce(max_delta, pMAX)
+
+         if (master) then
+            write(msg, '(a,i3,a,es12.4)') &
+               "[establish_strat_box] Picard iter ", iter, " max(Δρ/ρ) = ", max_delta
+            call printinfo(msg, .true.)
+         endif
+
+         if (max_delta < tol) then
+            if (master) then
+               write(msg, '(a,i3,a)') "[establish_strat_box] Converged after ", iter, " iterations."
+               call printinfo(msg, .true.)
+            endif
+            exit
+         endif
+
+         ! Check for divergence
+         if (iter > 3 .and. max_delta > 2.0 * prev_delta) then
+            if (master) call warn("[establish_strat_box] Picard iteration DIVERGING — " // &
+               "system may be Jeans-unstable. Stopping iteration.")
+            exit
+         endif
+
+         prev_delta = max_delta
+
+         if (.not. do_selfgrav) exit  ! Only 1 pass needed without self-gravity
+
+      enddo
+
+      if (do_selfgrav .and. max_delta >= tol .and. iter > max_iter) then
+         if (master) call warn("[establish_strat_box] Did NOT converge. Increase max_picard or check Jeans stability.")
+      endif
+
+      ! ================================================================
+      ! Step D: Set energies consistently after final density is set
+      ! ================================================================
+
+      call finalize_energies(d0, csim2, Tmid_val, B0_val, do_thermal, do_magnetic)
+
+      ! ================================================================
+      ! Step E: Final self-gravity solve and potential assembly
+      ! ================================================================
+#ifdef SELF_GRAV
+      if (do_selfgrav) then
+         call multigrid_solve_grav(iarr_all_sg)
+      endif
+#endif /* SELF_GRAV */
+
+      ! Assemble total potential: gpot = gp + sgp (and hgpot = gpot for initial state)
+      cgl => leaves%first
+      do while (associated(cgl))
+         cg => cgl%cg
+#ifdef SELF_GRAV
+         if (do_selfgrav) then
+            cg%gpot(:,:,:)  = cg%gp(:,:,:) + cg%sgp(:,:,:)
+            cg%hgpot(:,:,:) = cg%gpot(:,:,:)
+            ! Copy sgp → sgpm (no history yet; pretend static)
+            cg%sgpm(:,:,:)  = cg%sgp(:,:,:)
+         else
+            cg%gpot(:,:,:)  = cg%gp(:,:,:)
+            cg%hgpot(:,:,:) = cg%gp(:,:,:)
+         endif
+#else /* !SELF_GRAV */
+         cg%gpot(:,:,:)  = cg%gp(:,:,:)
+         cg%hgpot(:,:,:) = cg%gp(:,:,:)
+#endif /* !SELF_GRAV */
+         cgl => cgl%nxt
+      enddo
+
+      if (master) call printinfo("[establish_strat_box] Done.", .true.)
+
+   contains
+
+      !================================================================
+      ! INTERNAL: Set uniform initial state on all grids
+      !================================================================
+
+      subroutine set_uniform_state(d0_u, cs2_u, T0_u, B0_u, therm, magn)
+
+         implicit none
+
+         real,    intent(in) :: d0_u, cs2_u, T0_u, B0_u
+         logical, intent(in) :: therm, magn
+         type(cg_list_element), pointer :: cgl_u
+         type(grid_container),  pointer :: cg_u
+         real :: pres0
+
+         if (therm) then
+#ifdef THERM
+            pres0 = d0_u * kboltz * T0_u / mH
+#else /* !THERM */
+            pres0 = d0_u * cs2_u / flind%ion%gam
+#endif /* !THERM */
+         else
+            pres0 = d0_u * cs2_u / flind%ion%gam
+         endif
+
+         cgl_u => leaves%first
+         do while (associated(cgl_u))
+            cg_u => cgl_u%cg
+            cg_u%u(flind%ion%idn,:,:,:) = d0_u
+            cg_u%u(flind%ion%imx:flind%ion%imz,:,:,:) = 0.0
+#ifndef ISO
+            cg_u%u(flind%ion%ien,:,:,:) = pres0 / flind%ion%gam_1
+#ifdef MAGNETIC
+            if (magn .and. B0_u > 0.0) then
+               call cg_u%set_constant_b_field([B0_u, 0.0, 0.0])
+               do k = cg_u%ks, cg_u%ke
+                  do j = cg_u%js, cg_u%je
+                     do i = cg_u%is, cg_u%ie
+                        cg_u%u(flind%ion%ien,i,j,k) = cg_u%u(flind%ion%ien,i,j,k) + &
+                           emag(cg_u%b(xdim,i,j,k), cg_u%b(ydim,i,j,k), cg_u%b(zdim,i,j,k))
+                     enddo
+                  enddo
+               enddo
+            endif
+#endif /* MAGNETIC */
+#endif /* !ISO */
+            cgl_u => cgl_u%nxt
+         enddo
+
+      end subroutine set_uniform_state
+
+      !================================================================
+      ! INTERNAL: Compute gravity profile from potential array
+      ! Uses cg%gpot (=gp+sgp) when use_total=.true., else cg%gp
+      !================================================================
+
+      subroutine compute_gprofs_from_potential(iia, jja, cg_t, use_total)
+
+         implicit none
+
+         integer,                        intent(in) :: iia, jja
+         type(grid_container), pointer, intent(in)  :: cg_t
+         logical,                       intent(in)  :: use_total
+         integer(kind=4)                            :: ks
+         real                                       :: pot_lo, pot_hi
+
+         ! gprofs(k) = -(Φ(z+dz/2) - Φ(z-dz/2)) / dz = -dΦ/dz (=acceleration)
+         ! Positive gprofs = acceleration toward negative z (i.e., toward midplane for z>0)
+
+         gprofs = 0.0
+         do ks = 1, nstot
+            if (use_total) then
+               pot_lo = interp_pot_z(cg_t%gpot, cg_t, iia, jja, zs(ks) - half*dzs)
+               pot_hi = interp_pot_z(cg_t%gpot, cg_t, iia, jja, zs(ks) + half*dzs)
+            else
+               pot_lo = interp_pot_z(cg_t%gp, cg_t, iia, jja, zs(ks) - half*dzs)
+               pot_hi = interp_pot_z(cg_t%gp, cg_t, iia, jja, zs(ks) + half*dzs)
+            endif
+            gprofs(ks) = (pot_lo - pot_hi) / dzs
+         enddo
+         gprofs(:) = tune_zeq * gprofs(:)
+
+      end subroutine compute_gprofs_from_potential
+
+      !================================================================
+      ! INTERNAL: Interpolate a 3D potential array at arbitrary z
+      !================================================================
+
+      real function interp_pot_z(pot_arr, cg_i, ii, jj, zval)
+
+         implicit none
+
+         real, dimension(:,:,:), pointer, intent(in)  :: pot_arr
+         type(grid_container), pointer,   intent(in)  :: cg_i
+         integer,                         intent(in)  :: ii, jj
+         real,                            intent(in)  :: zval
+         integer :: klo, khi
+         real    :: frac_z
+
+         ! Linear interpolation in z
+         klo = cg_i%ks
+         khi = cg_i%ke
+
+         if (zval <= cg_i%z(klo)) then
+            interp_pot_z = pot_arr(ii, jj, klo)
+            return
+         endif
+         if (zval >= cg_i%z(khi)) then
+            interp_pot_z = pot_arr(ii, jj, khi)
+            return
+         endif
+
+         do klo = cg_i%ks, cg_i%ke - 1
+            if (cg_i%z(klo+1) > zval) exit
+         enddo
+         khi = klo + 1
+
+         frac_z = (zval - cg_i%z(klo)) / (cg_i%z(khi) - cg_i%z(klo))
+         interp_pot_z = (1.0 - frac_z) * pot_arr(ii, jj, klo) + frac_z * pot_arr(ii, jj, khi)
+
+      end function interp_pot_z
+
+      !================================================================
+      ! INTERNAL: Solve isothermal/adiabatic hydrostatic column
+      !           (optionally with magnetic pressure)
+      !================================================================
+
+      subroutine solve_column_hydro(iia, jja, cg_h, d0_h, cs2_h, B0_h, magn, delta_max)
+
+         implicit none
+
+         integer,                        intent(in)    :: iia, jja
+         type(grid_container), pointer, intent(inout)  :: cg_h
+         real,                          intent(in)     :: d0_h, cs2_h, B0_h
+         logical,                       intent(in)     :: magn
+         real,                          intent(inout)  :: delta_max
+
+         integer :: ksub, ksmid, k_cell
+         real    :: cs2_eff, old_rho, new_rho, delta
+         real    :: rho_old_cell
+         real, allocatable :: dprof_sub(:)
+
+         allocate(dprof_sub(nstot))
+
+         ! Scale gprofs by dzs/cs2 for the Crank-Nicolson scheme
+         ! But when magnetic, cs2_eff depends on density, so we do it per-step
+
+         ! Find midplane subcell
+         ksmid = maxloc(zs, 1, mask=(zs < 0.0))
+         if (ksmid == 0) ksmid = nstot / 2
+
+         ! Integrate upward from midplane
+         dprof_sub(ksmid+1) = d0_h
+         if (ksmid < nstot) then
+            do ksub = ksmid+1, nstot-1
+               cs2_eff = cs2_h
+               if (magn .and. B0_h > 0.0) then
+                  ! v_A^2 = B^2/(4π ρ), with B = B0 * (ρ/ρ0)
+                  ! → v_A^2 = B0^2 * ρ / (4π ρ0^2) = B0^2/(4π ρ0) * (ρ/ρ0)
+                  cs2_eff = cs2_eff + B0_h**2 * dprof_sub(ksub) / (4.0 * pi * d0_h**2)
+               endif
+               dprof_sub(ksub+1) = dprof_sub(ksub) * &
+                  (2.0 + gprofs(ksub) * dzs / cs2_eff) / &
+                  (2.0 - gprofs(ksub) * dzs / cs2_eff)
+               dprof_sub(ksub+1) = max(dprof_sub(ksub+1), small)
+            enddo
+         endif
+
+         ! Integrate downward from midplane
+         dprof_sub(ksmid) = d0_h
+         if (ksmid > 1) then
+            do ksub = ksmid, 2, -1
+               cs2_eff = cs2_h
+               if (magn .and. B0_h > 0.0) then
+                  cs2_eff = cs2_eff + B0_h**2 * dprof_sub(ksub) / (4.0 * pi * d0_h**2)
+               endif
+               dprof_sub(ksub-1) = dprof_sub(ksub) * &
+                  (2.0 - gprofs(ksub) * dzs / cs2_eff) / &
+                  (2.0 + gprofs(ksub) * dzs / cs2_eff)
+               dprof_sub(ksub-1) = max(dprof_sub(ksub-1), small)
+            enddo
+         endif
+
+         ! Average subcells onto grid cells and track convergence
+         dprof(:) = 0.0
+         do k_cell = hsbn(LO), hsbn(HI)
+            do ksub = 1, nstot
+               if (zs(ksub) > hsl(k_cell) .and. zs(ksub) < hsl(k_cell+1)) then
+                  dprof(k_cell) = dprof(k_cell) + dprof_sub(ksub) / real(rnsub)
+               endif
+            enddo
+         enddo
+
+         ! Apply to grid with under-relaxation and track max change
+         do k_cell = hsbn(LO), hsbn(HI)
+            rho_old_cell = cg_h%u(flind%ion%idn, iia, jja, k_cell)
+            new_rho = relax_omega * dprof(k_cell) + (1.0 - relax_omega) * rho_old_cell
+            new_rho = max(new_rho, small)
+
+            if (rho_old_cell > small) then
+               delta = abs(new_rho - rho_old_cell) / rho_old_cell
+               delta_max = max(delta_max, delta)
+            endif
+
+            cg_h%u(flind%ion%idn, iia, jja, k_cell) = new_rho
+         enddo
+
+         deallocate(dprof_sub)
+
+      end subroutine solve_column_hydro
+
+      !================================================================
+      ! INTERNAL: Solve thermo-hydrostatic column with branch selection
+      !================================================================
+#ifdef THERM
+      subroutine solve_column_thermal(iia, jja, cg_th, d0_th, T0_th, B0_th, &
+                                       magn, bmethod, delta_max)
+
+         implicit none
+
+         integer,                        intent(in)    :: iia, jja
+         type(grid_container), pointer, intent(inout)  :: cg_th
+         real,                          intent(in)     :: d0_th, T0_th, B0_th
+         logical,                       intent(in)     :: magn
+         character(len=*),              intent(in)     :: bmethod
+         real,                          intent(inout)  :: delta_max
+
+         integer :: ksub, ksmid, k_cell, ii
+         real    :: T_here, T_next, n_here, cs2_eff, delta, rho_old_cell, new_rho
+         real    :: lambda_here, P_here
+         real, allocatable :: dprof_sub(:), Tprof_sub(:)
+
+         allocate(dprof_sub(nstot), Tprof_sub(nstot))
+
+         ! Find midplane subcell
+         ksmid = maxloc(zs, 1, mask=(zs < 0.0))
+         if (ksmid == 0) ksmid = nstot / 2
+
+         ! Set midplane values from thermal equilibrium
+         call find_temp_bin(T0_th, ii)
+         lambda_here = lambda0(ii) * (T0_th / Tref(ii))**alpha(ii)
+         n_here = G1_heat * mH / (lambda_here * mH**2 - G0_heat * mH**2)
+         n_here = max(n_here, small) * mH    ! convert to mass density
+
+         Tprof_sub(ksmid)   = T0_th
+         Tprof_sub(ksmid+1) = T0_th
+         dprof_sub(ksmid)   = n_here
+         dprof_sub(ksmid+1) = n_here
+
+         ! Integrate UPWARD from midplane
+         if (ksmid < nstot) then
+            do ksub = ksmid+1, nstot-1
+               call step_thermal(ksub, 1.0, Tprof_sub, dprof_sub, B0_th, d0_th, magn, bmethod)
+            enddo
+         endif
+
+         ! Integrate DOWNWARD from midplane
+         if (ksmid > 1) then
+            do ksub = ksmid, 2, -1
+               call step_thermal(ksub, -1.0, Tprof_sub, dprof_sub, B0_th, d0_th, magn, bmethod)
+            enddo
+         endif
+
+         ! Average subcells onto grid cells
+         dprof(:) = 0.0
+         Tprof(:) = 0.0
+         do k_cell = hsbn(LO), hsbn(HI)
+            do ksub = 1, nstot
+               if (zs(ksub) > hsl(k_cell) .and. zs(ksub) < hsl(k_cell+1)) then
+                  dprof(k_cell) = dprof(k_cell) + dprof_sub(ksub) / real(rnsub)
+                  Tprof(k_cell) = Tprof(k_cell) + Tprof_sub(ksub) / real(rnsub)
+               endif
+            enddo
+         enddo
+
+         ! Apply to grid with under-relaxation
+         do k_cell = hsbn(LO), hsbn(HI)
+            rho_old_cell = cg_th%u(flind%ion%idn, iia, jja, k_cell)
+            new_rho = relax_omega * dprof(k_cell) + (1.0 - relax_omega) * rho_old_cell
+            new_rho = max(new_rho, small)
+
+            if (rho_old_cell > small) then
+               delta = abs(new_rho - rho_old_cell) / rho_old_cell
+               delta_max = max(delta_max, delta)
+            endif
+
+            cg_th%u(flind%ion%idn, iia, jja, k_cell) = new_rho
+         enddo
+
+         ! Store temperature profile for use by other routines
+         if (associated(hscg)) then
+            hscg%q(i_teq)%arr(iia, jja, hsbn(LO):hsbn(HI)) = Tprof(hsbn(LO):hsbn(HI))
+         endif
+
+         deallocate(dprof_sub, Tprof_sub)
+
+      end subroutine solve_column_thermal
+
+      !================================================================
+      ! INTERNAL: Single step of thermo-hydrostatic integration
+      !================================================================
+
+      subroutine step_thermal(ksub_s, up, Tsub, dsub, B0_s, d0_s, magn_s, bm)
+
+         implicit none
+
+         integer,          intent(in)    :: ksub_s
+         real,             intent(in)    :: up         ! +1 upward, -1 downward
+         real, dimension(:), intent(inout) :: Tsub, dsub
+         real,             intent(in)    :: B0_s, d0_s
+         logical,          intent(in)    :: magn_s
+         character(len=*), intent(in)    :: bm
+
+         integer :: ii, jj, knext
+         real    :: T_cur, T_next, n_cur, n_next, lambda_cur
+         real    :: dT, cs2_eff, P_cur, P_next, lambda_next, T_jump
+         real    :: alpha_equi, factor_G0
+
+         knext = ksub_s + nint(up)
+         if (knext < 1 .or. knext > nstot) return
+
+         T_cur = Tsub(ksub_s)
+         n_cur = dsub(ksub_s)
+
+         call find_temp_bin(T_cur, ii)
+         lambda_cur = lambda0(ii) * (T_cur / Tref(ii))**alpha(ii)
+
+         ! Check if we're in the unstable zone and need a branch jump
+         if (trim(bm) == 'pressure_track' .and. is_unstable(T_cur)) then
+            ! Perform isobaric jump to the other stable branch
+            P_cur = kboltz * n_cur / mH * T_cur
+            call find_isobaric_jump(T_cur, P_cur, T_jump)
+            if (T_jump > 0.0) then
+               T_cur = T_jump
+               call find_temp_bin(T_cur, ii)
+               lambda_cur = lambda0(ii) * (T_cur / Tref(ii))**alpha(ii)
+               n_cur = G1_heat * mH / (lambda_cur * mH**2 - G0_heat * mH**2) * mH
+               n_cur = max(n_cur, small)
+            endif
+         endif
+
+         ! Compute dT/dz from combined hydrostatic + thermal equilibrium
+         ! Following the existing Tzeq_scheme logic but cleaner
+         alpha_equi = 1.0
+
+         ! Modified for magnetic pressure: effective sound speed
+         cs2_eff = kboltz * T_cur / mH
+         if (magn_s .and. B0_s > 0.0 .and. d0_s > small) then
+            cs2_eff = cs2_eff + B0_s**2 * n_cur / (4.0 * pi * d0_s**2)
+         endif
+
+         ! Temperature step from combined equilibrium:
+         ! dT/dz = -(mH / kB(1+α)) × g(z) × (Λ - G₀)/(Λ(α-1) + G₀)
+         ! Modified for MHD: additional pressure gradient contribution
+         factor_G0 = 1.0
+         if (lambda_cur * mH**2 - G0_heat * mH**2 * factor_G0 < 0.0) then
+            ! Heating dominates — force warm branch or clamp
+            if (trim(bm) == 'cold') then
+               Tsub(knext) = T_cur
+               dsub(knext) = n_cur
+               return
+            endif
+            factor_G0 = 0.9 * lambda_cur / G0_heat  ! reduce factor to keep positive
+         endif
+
+         dT = -mH / (kboltz * (1.0 + alpha_equi)) * gprofs(ksub_s) * &
+              (zs(knext) - zs(ksub_s)) * &
+              (lambda_cur * mH**2 - G0_heat * mH**2 * factor_G0) / &
+              (lambda_cur * (alpha(ii) - 1.0) * mH**2 + G0_heat * mH**2 * factor_G0)
+
+         dT = abs(dT)  ! Temperature increases away from midplane
+         T_next = T_cur + dT
+
+         ! Enforce branch selection
+         select case (trim(bm))
+            case ('cold')
+               T_next = min(T_next, 300.0)   ! Clamp to CNM
+            case ('warm')
+               T_next = max(T_next, 6000.0)  ! Clamp to WNM
+            case ('no_jump')
+               ! No clamping, just follow the integration
+            case default
+               ! pressure_track: jump already handled above
+         end select
+
+         ! Don't let T drop below midplane value
+         T_next = max(T_next, Tmid_val)
+
+         ! Safety clamp
+         T_next = min(T_next, 1.0e10)
+         T_next = max(T_next, 10.0)
+
+         ! Compute density from thermal equilibrium at T_next
+         call find_temp_bin(T_next, jj)
+         lambda_next = lambda0(jj) * (T_next / Tref(jj))**alpha(jj)
+         n_next = G1_heat * mH / (lambda_next * mH**2 - G0_heat * mH**2) * mH
+         n_next = max(n_next, small)
+
+         Tsub(knext) = T_next
+         dsub(knext) = n_next
+
+      end subroutine step_thermal
+
+      !================================================================
+      ! INTERNAL: Check if temperature is in the thermally unstable zone
+      !================================================================
+
+      logical function is_unstable(T_check)
+
+         implicit none
+
+         real, intent(in) :: T_check
+         integer :: ii_check
+
+         call find_temp_bin(T_check, ii_check)
+
+         ! Unstable if dΛ/dT < 0, i.e. α < 0 in the piecewise power-law
+         ! More precisely: unstable when α < 1 (for net cooling)
+         ! The standard Field criterion: ∂(nΛ)/∂T|_P < 0
+         ! For power-law Λ ∝ T^α: this gives instability when α < 1
+
+         is_unstable = (alpha(ii_check) < 1.0)
+
+      end function is_unstable
+
+      !================================================================
+      ! INTERNAL: Find isobaric jump temperature (Newton-Raphson)
+      !================================================================
+
+      subroutine find_isobaric_jump(T_from, P_target, T_to)
+
+         implicit none
+
+         real, intent(in)  :: T_from, P_target
+         real, intent(out) :: T_to
+
+         integer :: jj, newton_iter
+         real    :: T_try, lambda_try, n_try, P_try, dP_dT
+         real    :: T_lo, T_hi
+
+         T_to = -1.0  ! Signal: no jump found
+
+         ! If we're in CNM (T < 500), jump target is WNM (T > 6000)
+         ! If we're in WNM (T > 5000), jump target is CNM (T < 300)
+
+         if (T_from < 2000.0) then
+            T_lo = 6000.0
+            T_hi = 1.0e6
+         else
+            T_lo = 10.0
+            T_hi = 300.0
+         endif
+
+         ! Newton-Raphson: find T where P_eq(T) = P_target
+         T_try = 0.5 * (T_lo + T_hi)
+
+         do newton_iter = 1, 30
+            call find_temp_bin(T_try, jj)
+            lambda_try = lambda0(jj) * (T_try / Tref(jj))**alpha(jj)
+
+            if (lambda_try * mH**2 - G0_heat * mH**2 <= 0.0) then
+               ! Heating dominates at this T — shift search range
+               if (T_from < 2000.0) then
+                  T_lo = T_try
+               else
+                  T_hi = T_try
+               endif
+               T_try = 0.5 * (T_lo + T_hi)
+               cycle
+            endif
+
+            n_try = G1_heat * mH / (lambda_try * mH**2 - G0_heat * mH**2)
+            P_try = kboltz * n_try * T_try
+
+            if (abs(P_try - P_target) / P_target < 1.0e-4) then
+               T_to = T_try
+               return
+            endif
+
+            ! Bisection (more robust than Newton for this S-curve)
+            if (P_try > P_target) then
+               if (T_from < 2000.0) then
+                  T_lo = T_try
+               else
+                  T_hi = T_try
+               endif
+            else
+               if (T_from < 2000.0) then
+                  T_hi = T_try
+               else
+                  T_lo = T_try
+               endif
+            endif
+
+            T_try = 0.5 * (T_lo + T_hi)
+         enddo
+
+         ! If we didn't converge, don't jump
+         T_to = -1.0
+
+      end subroutine find_isobaric_jump
+#endif /* THERM */
+
+      !================================================================
+      ! INTERNAL: Set energies consistently after density convergence
+      !================================================================
+
+      subroutine finalize_energies(d0_f, cs2_f, T0_f, B0_f, therm_f, magn_f)
+
+         implicit none
+
+         real,    intent(in) :: d0_f, cs2_f, T0_f, B0_f
+         logical, intent(in) :: therm_f, magn_f
+
+         type(cg_list_element), pointer :: cgl_f
+         type(grid_container),  pointer :: cg_f
+         real :: rho_here, pres_here, T_here
+
+         cgl_f => leaves%first
+         do while (associated(cgl_f))
+            cg_f => cgl_f%cg
+
+#ifndef ISO
+            do k = cg_f%ks, cg_f%ke
+               do j = cg_f%js, cg_f%je
+                  do i = cg_f%is, cg_f%ie
+                     rho_here = cg_f%u(flind%ion%idn, i, j, k)
+
+                     if (therm_f) then
+#ifdef THERM
+                        ! Get temperature from stored equilibrium profile
+                        T_here = max(cg_f%q(i_teq)%arr(i, j, k), 10.0)
+                        pres_here = rho_here * kboltz * T_here / mH
+#else /* !THERM */
+                        pres_here = rho_here * cs2_f / flind%ion%gam
+#endif /* !THERM */
+                     else
+                        pres_here = rho_here * cs2_f / flind%ion%gam
+                     endif
+
+                     cg_f%u(flind%ion%ien, i, j, k) = pres_here / flind%ion%gam_1 + &
+                        ekin(cg_f%u(flind%ion%imx,i,j,k), cg_f%u(flind%ion%imy,i,j,k), &
+                             cg_f%u(flind%ion%imz,i,j,k), rho_here)
+#ifdef MAGNETIC
+                     cg_f%u(flind%ion%ien, i, j, k) = cg_f%u(flind%ion%ien, i, j, k) + &
+                        emag(cg_f%b(xdim,i,j,k), cg_f%b(ydim,i,j,k), cg_f%b(zdim,i,j,k))
+
+                     ! Scale B-field with density if magnetic equilibrium requested
+                     if (magn_f .and. B0_f > 0.0 .and. d0_f > small) then
+                        cg_f%b(xdim, i, j, k) = B0_f * rho_here / d0_f
+                        ! Recompute magnetic energy
+                        cg_f%u(flind%ion%ien, i, j, k) = pres_here / flind%ion%gam_1 + &
+                           ekin(cg_f%u(flind%ion%imx,i,j,k), cg_f%u(flind%ion%imy,i,j,k), &
+                                cg_f%u(flind%ion%imz,i,j,k), rho_here) + &
+                           emag(cg_f%b(xdim,i,j,k), cg_f%b(ydim,i,j,k), cg_f%b(zdim,i,j,k))
+                     endif
+#endif /* MAGNETIC */
+                  enddo
+               enddo
+            enddo
+#endif /* !ISO */
+
+            cgl_f => cgl_f%nxt
+         enddo
+
+      end subroutine finalize_energies
+
+   end subroutine establish_strat_box
 
 end module hydrostatic

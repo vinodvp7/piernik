@@ -451,9 +451,8 @@ contains
       use dataio_pub,   only: msg, printinfo
       use fluidindex,   only: flind
       use grid_cont,    only: grid_container
-      use hydrostatic,  only: i_teq
       use allreduce,    only: piernik_MPI_Allreduce
-      use thermal,      only: find_temp_bin, alpha, Tref, lambda0, G1_heat, G0_heat
+      use thermal,      only: find_temp_bin, alpha, Tref, lambda0, G1_heat, G0_heat, itemp
       use units,        only: kboltz, mH
 
       implicit none
@@ -482,8 +481,8 @@ contains
                   rho_km = cg%u(flind%ion%idn, i, j, k-1)
 
                   ! Pressure from density and temperature
-                  P_kp = rho_kp * kboltz * cg%q(i_teq)%arr(i, j, k+1) / mH
-                  P_km = rho_km * kboltz * cg%q(i_teq)%arr(i, j, k-1) / mH
+                  P_kp = rho_kp * kboltz * cg%q(itemp)%arr(i, j, k+1) / mH
+                  P_km = rho_km * kboltz * cg%q(itemp)%arr(i, j, k-1) / mH
 
                   ! Hydrostatic residual: dP/dz + rho*g = 0
                   dPdz  = (P_kp - P_km) / (2.0 * dz_cell)
@@ -497,7 +496,7 @@ contains
                   max_R_hydro = max(max_R_hydro, R_h)
 
                   ! Thermal residual: n^2 Lambda(T) - n Gamma1 - n^2 Gamma0 = 0
-                  T_k = cg%q(i_teq)%arr(i, j, k)
+                  T_k = cg%q(itemp)%arr(i, j, k)
                   n_k = rho_k / mH
                   call find_temp_bin(T_k, ii)
                   lambda_k = lambda0(ii) * (T_k / Tref(ii))**alpha(ii)

@@ -550,7 +550,7 @@ contains
       use constants,         only: sgp_n
 #endif /* SELF_GRAV */
 #ifdef THERM
-      use thermal,           only: find_temp_bin, alpha, Tref, lambda0, G1_heat, G0_heat
+      use thermal,           only: find_temp_bin, alpha, Tref, lambda0, G1_heat, G0_heat, itemp
       use units,             only: kboltz, mH
 #endif /* THERM */
 
@@ -608,6 +608,8 @@ contains
 
       branch_method = 'pressure_track'
       if (present(branch)) branch_method = trim(branch)
+
+      if (.not. do_selfgrav) relax_omega = 1.0
 
       ! ================================================================
       ! Validate inputs
@@ -868,8 +870,8 @@ contains
 #ifndef ISO
             cg_u%u(flind%ion%ien,:,:,:) = pres0 / flind%ion%gam_1
 #ifdef MAGNETIC
+            call cg_u%set_constant_b_field([B0_u, 0.0, 0.0])
             if (magn .and. B0_u > 0.0) then
-               call cg_u%set_constant_b_field([B0_u, 0.0, 0.0])
                do k = cg_u%ks, cg_u%ke
                   do j = cg_u%js, cg_u%je
                      do i = cg_u%is, cg_u%ie
@@ -923,8 +925,9 @@ contains
       ! INTERNAL: Interpolate a 3D potential array at arbitrary z
       !================================================================
 
-      real function interp_pot_z(pot_arr, cg_i, ii, jj, zval)
+real function interp_pot_z(pot_arr, cg_i, ii, jj, zval)
 
+         use constants, only: zdim, LO, HI
          implicit none
 
          real, dimension(:,:,:), pointer, intent(in)  :: pot_arr
@@ -934,9 +937,9 @@ contains
          integer :: klo, khi
          real    :: frac_z
 
-         ! Linear interpolation in z
-         klo = cg_i%ks
-         khi = cg_i%ke
+         ! Linear interpolation in z over the FULL allocated boundaries (including ghost zones)
+         klo = cg_i%lhn(zdim, LO)
+         khi = cg_i%lhn(zdim, HI)
 
          if (zval <= cg_i%z(klo)) then
             interp_pot_z = pot_arr(ii, jj, klo)
@@ -947,7 +950,7 @@ contains
             return
          endif
 
-         do klo = cg_i%ks, cg_i%ke - 1
+         do klo = cg_i%lhn(zdim, LO), cg_i%lhn(zdim, HI) - 1
             if (cg_i%z(klo+1) > zval) exit
          enddo
          khi = klo + 1
@@ -1065,9 +1068,10 @@ contains
          integer :: ksub, ksmid, k_cell, ii
          real    :: T_here, T_next, n_here, cs2_eff, delta, rho_old_cell, new_rho
          real    :: lambda_here, P_here
-         real, allocatable :: dprof_sub(:), Tprof_sub(:)
+         real, allocatable :: dprof_sub(:), Tprof_sub(:), Tprof_avg(:)
 
          allocate(dprof_sub(nstot), Tprof_sub(nstot))
+         allocate(Tprof_avg(hsbn(LO):hsbn(HI)))
 
          ! Find midplane subcell
          ksmid = maxloc(zs, 1, mask=(zs < 0.0))
@@ -1100,12 +1104,12 @@ contains
 
          ! Average subcells onto grid cells
          dprof(:) = 0.0
-         Tprof(:) = 0.0
+         Tprof_avg(:) = 0.0
          do k_cell = hsbn(LO), hsbn(HI)
             do ksub = 1, nstot
                if (zs(ksub) > hsl(k_cell) .and. zs(ksub) < hsl(k_cell+1)) then
                   dprof(k_cell) = dprof(k_cell) + dprof_sub(ksub) / real(rnsub)
-                  Tprof(k_cell) = Tprof(k_cell) + Tprof_sub(ksub) / real(rnsub)
+                  Tprof_avg(k_cell) = Tprof_avg(k_cell) + Tprof_sub(ksub) / real(rnsub)
                endif
             enddo
          enddo
@@ -1126,10 +1130,11 @@ contains
 
          ! Store temperature profile for use by other routines
          if (associated(hscg)) then
-            hscg%q(i_teq)%arr(iia, jja, hsbn(LO):hsbn(HI)) = Tprof(hsbn(LO):hsbn(HI))
+            hscg%q(itemp)%arr(iia, jja, hsbn(LO):hsbn(HI)) = Tprof_avg(hsbn(LO):hsbn(HI))
          endif
 
          deallocate(dprof_sub, Tprof_sub)
+         deallocate(Tprof_avg)
 
       end subroutine solve_column_thermal
 
@@ -1149,7 +1154,7 @@ contains
          character(len=*), intent(in)    :: bm
 
          integer :: ii, jj, knext
-         real    :: T_cur, T_next, n_cur, n_next, lambda_cur
+         real    :: T_cur, T_next, n_cur, n_next, lambda_cur, num, den
          real    :: dT, cs2_eff, P_cur, P_next, lambda_next, T_jump
          real    :: alpha_equi, factor_G0
 
@@ -1181,14 +1186,11 @@ contains
          alpha_equi = 1.0
 
          ! Modified for magnetic pressure: effective sound speed
-         cs2_eff = kboltz * T_cur / mH
+cs2_eff = kboltz * T_cur / mH
          if (magn_s .and. B0_s > 0.0 .and. d0_s > small) then
             cs2_eff = cs2_eff + B0_s**2 * n_cur / (4.0 * pi * d0_s**2)
          endif
 
-         ! Temperature step from combined equilibrium:
-         ! dT/dz = -(mH / kB(1+α)) × g(z) × (Λ - G₀)/(Λ(α-1) + G₀)
-         ! Modified for MHD: additional pressure gradient contribution
          factor_G0 = 1.0
          if (lambda_cur * mH**2 - G0_heat * mH**2 * factor_G0 < 0.0) then
             ! Heating dominates — force warm branch or clamp
@@ -1200,11 +1202,15 @@ contains
             factor_G0 = 0.9 * lambda_cur / G0_heat  ! reduce factor to keep positive
          endif
 
-         dT = -mH / (kboltz * (1.0 + alpha_equi)) * gprofs(ksub_s) * &
-              (zs(knext) - zs(ksub_s)) * &
-              (lambda_cur * mH**2 - G0_heat * mH**2 * factor_G0) / &
-              (lambda_cur * (alpha(ii) - 1.0) * mH**2 + G0_heat * mH**2 * factor_G0)
+         ! Numerator: -m_H * g * dz * T * (Lambda - Gamma_0)
+         num = -mH * gprofs(ksub_s) * (zs(knext) - zs(ksub_s)) * T_cur * &
+               (lambda_cur * mH**2 - G0_heat * mH**2 * factor_G0)
+               
+         ! Denominator: k_B * T * (Lambda - Gamma_0) - m_H * c_{s,eff}^2 * alpha * Lambda
+         den = kboltz * T_cur * (lambda_cur * mH**2 - G0_heat * mH**2 * factor_G0) - &
+               mH * cs2_eff * alpha(ii) * lambda_cur * mH**2
 
+         dT = num / den
          dT = abs(dT)  ! Temperature increases away from midplane
          T_next = T_cur + dT
 
@@ -1366,7 +1372,7 @@ contains
                      if (therm_f) then
 #ifdef THERM
                         ! Get temperature from stored equilibrium profile
-                        T_here = max(cg_f%q(i_teq)%arr(i, j, k), 10.0)
+                        T_here = max(cg_f%q(itemp)%arr(i, j, k), 10.0)
                         pres_here = rho_here * kboltz * T_here / mH
 #else /* !THERM */
                         pres_here = rho_here * cs2_f / flind%ion%gam

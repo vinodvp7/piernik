@@ -68,7 +68,7 @@
 
  $FLUID_IONIZED
     gamma    = 1.6667
-    selfgrav = .true.
+    selfgrav = .false.
  /
 
  $NUMERICAL_SETUP
@@ -117,7 +117,7 @@
  /
 
  $MULTIGRID_GRAVITY
-    grav_bnd_str = "isolated"
+    grav_bnd_str = "dirichlet"
  /
 
  $INTERACTIONS

@@ -100,7 +100,7 @@
  /
 
  $MULTIGRID_GRAVITY
-    grav_bnd_str = "isolated"
+    grav_bnd_str = "dirichlet"
     norm_tol     = 1.0e-8
     max_cycles   = 50
  /

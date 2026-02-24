@@ -41,7 +41,7 @@ module thermal
    implicit none
 
    private
-   public ::  init_thermal, thermal_active, cfl_coolheat, thermal_sources, itemp, fit_cooling_curve, cleanup_thermal, calc_tcool
+   public ::  init_thermal, thermal_active, cfl_coolheat, thermal_sources, itemp, fit_cooling_curve, cleanup_thermal, calc_tcool, find_temp_bin, alpha, tref, lambda0, g1_heat, g0_heat
 
    character(len=cbuff_len)        :: cool_model, cool_curve, heat_model, scheme, cool_file
    logical                         :: thermal_active

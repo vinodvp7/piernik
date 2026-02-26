@@ -191,12 +191,17 @@ contains
          call establish_strat_box(d0, cs2, B0=B0, use_selfgrav=.false., &
                                   use_thermal=.false., use_magnetic=.true.)
 
-      case (4)
-         ! Thermal equilibrium + external gravity (residual check only)
-         if (master) call printinfo("[Case 4] Thermo-hydrostatic (residual check)")
-         call establish_strat_box(d0, cs2, T0=T0, use_selfgrav=.false., &
+         case (4)
+         if (master) then
+            write(msg, '(a)') " CASE 4: Thermo-hydrostatic (no closed form)"
+            call printinfo(msg)
+         endif
+         call establish_strat_box(d0, cs2, T0=T0, use_selfgrav=.true., &
                                   use_thermal=.true., use_magnetic=.false., &
                                   branch='pressure_track')
+#ifdef THERM
+         call compute_residuals()    ! ALL processes must participate
+#endif /* THERM */
 
       end select
 
@@ -274,11 +279,13 @@ contains
             call printinfo(msg)
 
          case (4)
-            write(msg, '(a)') " CASE 4: Thermo-hydrostatic (no closed form)"
-            call printinfo(msg)
-#ifdef THERM
-            call compute_residuals()
-#endif /* THERM */
+!          if (master) then
+!             write(msg, '(a)') " CASE 4: Thermo-hydrostatic (no closed form)"
+!             call printinfo(msg)
+!          endif
+! #ifdef THERM
+!             call compute_residuals()
+! #endif /* THERM */
          end select
 
          write(msg, '(a,es12.5)') "   L2  relative error = ", L2
@@ -454,6 +461,7 @@ contains
       use allreduce,    only: piernik_MPI_Allreduce
       use thermal,      only: find_temp_bin, alpha, Tref, lambda0, G1_heat, G0_heat, itemp
       use units,        only: kboltz, mH
+      use mpisetup,     only: master
 
       implicit none
 
@@ -513,10 +521,12 @@ contains
       call piernik_MPI_Allreduce(max_R_hydro, pMAX)
       call piernik_MPI_Allreduce(max_R_therm, pMAX)
 
-      write(msg, '(a,es12.5)') "   Max hydrostatic residual |dP/dz+rho*g|/(rho*g) = ", max_R_hydro
-      call printinfo(msg)
-      write(msg, '(a,es12.5)') "   Max thermal    residual |n^2L-nG|/(nG)        = ", max_R_therm
-      call printinfo(msg)
+      if (master) then     ! ← add this guard
+         write(msg, '(a,es12.5)') "   Max hydrostatic residual ... = ", max_R_hydro
+         call printinfo(msg)
+         write(msg, '(a,es12.5)') "   Max thermal    residual ... = ", max_R_therm
+         call printinfo(msg)
+      endif
 
    end subroutine compute_residuals
 #endif /* THERM */

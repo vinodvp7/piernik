@@ -1,0 +1,30 @@
+#if !defined LOCAL_FR_SPEED
+#  define GLOBAL_FR_SPEED
+#endif
+
+#undef  ISO
+
+#define IONIZED
+
+#define GRAV
+
+#define SELF_GRAV
+#define MULTIGRID
+#undef COSM_RAY
+
+#define MAGNETIC
+
+#define THERM
+
+#define NBODY
+#define NBODY_1FILE
+#define NBODY_MULTIGRID
+
+#undef NBODY_GRIDDIRECT
+
+#if 0
+  Dirty trick!
+  The following declaration is used in multigrid.F90 to remove density bias for some test cases
+#endif
+#define JEANS_PROBLEM
+

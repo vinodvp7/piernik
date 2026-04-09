@@ -36,6 +36,7 @@
 module hydrostatic
 ! pulled by GRAV
    use grid_cont, only: grid_container
+   use constants,  only: big_float
 
    implicit none
 
@@ -46,7 +47,10 @@ module hydrostatic
 
    real, allocatable, dimension(:) :: zs        !< array of z-positions of subgrid cells centers
    real, allocatable, dimension(:) :: gprofs    !< array of gravitational acceleration in a column of subgrid
+   real, allocatable, dimension(:) :: gprofs_ext   !< array of gravitational acceleration in a column of subgrid
+   real, allocatable, dimension(:) :: sgprofs   !< array of gravitational acceleration in a column of subgrid due to self gravity
    real, allocatable, dimension(:) :: dprofs
+   real, allocatable, dimension(:) :: dprofs_old
    real, allocatable, dimension(:) :: dprof     !< Array used for storing density during calculation of hydrostatic equilibrium
    real                            :: dzs       !< length of the subgrid cell in z-direction
    integer(kind=4)                 :: nstot     !< total number of subgrid cells in a column through all z-blocks
@@ -58,7 +62,8 @@ module hydrostatic
    type(grid_container), pointer   :: hscg
    logical                         :: unresolved = .false. !< check if grid subdivision is sufficient
    real                            :: urslvd               !< factor of grid subdivision insufficiency
-
+   integer                         :: ksmid
+   real                            :: dproferr = big_float
    interface
       real function hzeqscheme(ksub, up)
          implicit none
@@ -134,40 +139,99 @@ contains
 !! \param csim2 sqare of sound velocity
 !! \param sd optional variable to give a sum of dprofs array from hydrostatic_main routine
 !<
-   subroutine hydrostatic_zeq_densmid(iia, jja, d0, csim2, sd)
+   subroutine hydrostatic_zeq_densmid(iia, jja, d0, csim2, sd, omega, maxiter, err)
 
-      use constants,  only: half, small, two
-      use dataio_pub, only: die
+      use constants,  only: half, small, two, fpi
+      use units,      only: newtong
+      use dataio_pub, only: die, warn
       use gravity,    only: get_gprofs
+      use dataio_pub, only: printinfo, msg
 
       implicit none
 
-      integer,        intent(in)  :: iia, jja
-      real,           intent(in)  :: d0, csim2
-      real, optional, intent(out) :: sd
-      integer                     :: ksub
+      integer,           intent(in)  :: iia, jja
+      real,              intent(in)  :: d0, csim2
+      real,    optional, intent(in)  :: omega, err
+      integer, optional, intent(in)  :: maxiter
+      real,    optional, intent(out) :: sd
+
+      integer                     :: ksub, miter, isub
+      real :: om, err_d
+
+      if (present(omega)) then
+         om = omega
+      else 
+         om = 0.7
+      endif
+      if (present(maxiter)) then
+         miter = maxiter
+      else 
+         miter = 1
+#ifdef SELF_GRAV
+         miter = 100
+#endif /* SELF_GRAV */
+      endif
+      if (present(err)) then
+         err_d = err
+      else 
+         err_d = 1e-5
+      endif
 
       if (d0 <= small) call die("[hydrostatic:hydrostatic_zeq_densmid] d0 must be /= 0")
       dmid = d0
 
-      allocate(zs(nstot), gprofs(nstot), dprofs(nstot))
+      allocate(zs(nstot), gprofs(nstot), gprofs_ext(nstot), dprofs(nstot), sgprofs(nstot), dprofs_old(nstot))
+
+      sgprofs(:) = 0.0
 
       do ksub = 1, nstot
          zs(ksub) = hsmin + (real(ksub)-half) * dzs
       enddo
+
       call get_gprofs(iia, jja)
-      gprofs(:) = gprofs(:) / csim2 * dzs
 
-      if (any(abs(gprofs) >= two)) then
-         unresolved = .true.
-         urslvd = max(urslvd, maxval(abs(gprofs))/two)
+      call find_pot_mid
+
+      gprofs_ext(:) = gprofs(:)
+      do isub = 1, miter 
+#ifdef SELF_GRAV
+         if (ksmid < nstot) then
+            sgprofs(ksmid+1) = 0.0
+            do ksub = ksmid+1, nstot-1
+               sgprofs(ksub+1) = sgprofs(ksub) - fpi * newtong * dprofs(ksub) * dzs
+            enddo
+         endif
+
+         if (ksmid > 1) then
+            sgprofs(ksmid) = 0.0
+            do ksub = ksmid, 2, -1
+               sgprofs(ksub-1) = sgprofs(ksub) + fpi * newtong * dprofs(ksub) * dzs
+            enddo
+         endif
+#endif /* SELF_GRAV */
+
+         gprofs(:) = (gprofs_ext(:) + sgprofs(:)) / csim2 * dzs
+
+         if (any(abs(gprofs) >= two)) then
+            unresolved = .true.
+            urslvd = max(urslvd, maxval(abs(gprofs))/two)
+         endif
+
+         call hydrostatic_main(om, sd)
+
+         if (dproferr < err_d) exit
+      enddo 
+
+      if ((isub >= miter) .and. isub /= 1) then
+         call warn("[hydrostatic:hydrostatic_zeq_densmid] convergence not detected. Increase maxiter or dont trust this  equilibrium")
       endif
-
-      call hydrostatic_main(sd)
 
       if (allocated(zs))     deallocate(zs)
       if (allocated(gprofs)) deallocate(gprofs)
       if (allocated(dprofs)) deallocate(dprofs)
+      if (allocated(sgprofs)) deallocate(sgprofs)
+      if (allocated(dprofs_old)) deallocate(dprofs_old)
+      if (allocated(gprofs_ext)) deallocate(gprofs_ext)
 
    end subroutine hydrostatic_zeq_densmid
 
@@ -206,11 +270,7 @@ contains
 
    end subroutine set_default_hsparams
 
-!>
-!! \brief Routine that arranges %hydrostatic equilibrium in the vertical (z) direction
-!<
-   subroutine hydrostatic_main(sd)
-
+   subroutine find_pot_mid
       use constants,  only: LO, HI, zdim
       use dataio_pub, only: die
       use domain,     only: dom
@@ -219,9 +279,6 @@ contains
 #endif /* !HYDROSTATIC_V2 */
 
       implicit none
-
-      real, optional, intent(out) :: sd
-      integer                     :: ksub, ksmid, k
 
       ksmid = 0
 #ifdef HYDROSTATIC_V2
@@ -237,7 +294,32 @@ contains
       ksmid = maxloc(zs,1,mask=(zs < 0.0))   ! the midplane is in between ksmid and ksmid+1
       hzeq_scheme => hzeq_scheme_v1
 #endif /* !HYDROSTATIC_V2 */
-      if (ksmid == 0) call die("[hydrostatic:hydrostatic_main] ksmid not set")
+      if (ksmid == 0) call die("[hydrostatic:find_pot_mid] ksmid not set")
+
+   end subroutine find_pot_mid
+
+!>
+!! \brief Routine that arranges %hydrostatic equilibrium in the vertical (z) direction
+!<
+   subroutine hydrostatic_main(om,sd)
+
+      use constants,  only: LO, HI, zdim
+      use dataio_pub, only: die
+      use domain,     only: dom
+#ifdef HYDROSTATIC_V2
+      use constants,  only: big_float
+#endif /* !HYDROSTATIC_V2 */
+
+      implicit none
+
+      real, intent(in) :: om
+      real, optional, intent(out) :: sd
+
+      integer :: k, ksub
+
+
+      dprofs_old(:) = dprofs
+
 
       if (ksmid < nstot) then
          dprofs(ksmid+1) = dmid
@@ -253,12 +335,18 @@ contains
          enddo
       endif
 
+      dproferr = maxval(abs((dprofs(:) - dprofs_old(:)) / dprofs(:)), &
+                        mask=(dprofs(:) > 1e-3 * dmid))
+
+      dprofs(:) = (1.0 - om) * dprofs_old(:) + om * dprofs(:)
+
       dprof(:) = 0.0
       do k = hsbn(LO), hsbn(HI)
          do ksub = 1, nstot
             if (zs(ksub) > hsl(k) .and. zs(ksub) < hsl(k+1)) dprof(k) = dprof(k) + dprofs(ksub)/real(rnsub)
          enddo
       enddo
+
 
       if (present(sd)) then
          sd = 0.0

@@ -1,13 +1,27 @@
- !
- 
- 
- 
- 
- 
- 
- 
- 
- 
+!! Case | prob | g0   | selfgrav  | branch    | expected profile                       | scale height / output
+!! -----|------|------|-----------|-----------|----------------------------------------|-----------------------------------------------
+!!  1   |  1   | !=0  | .false.   | analytic  | symmetric exp, peak d0 at z=0          | H = cs2*kpc/g0 (in title); L1 ~ truncation
+!!  2   |  2   | !=0  | .false.   | analytic  | Gaussian                               | H = sqrt(cs2*kpc/g0)
+!!  3   |  1   | =0   | .true.    | analytic  | pure Spitzer sech^2                    | H = sqrt(cs2/2*pi*G*rho0), zsft = 0
+!!  4   |  1   | !=0  | .true.    | analytic  | folded shifted sech^2, flatter topped  | H = sqrt(cs2/2*pi*G*rho_m), zsft > 0
+!!  5   |  2   | !=0  | .true.    | fit       | between Gauss and sech^2               | h_g, h_s bracket; compare to limits of 2 & 3
+!!  6   |  3   | N/A  | .false.   | fit       | Gaussian core + steeper wings          | 3 fitted h + RMS; Gauss wins the core
+!!  7   |  3   | N/A  | .true.    | fit       | as case 6, compressed                  | all fitted h below case-6 values
+!! =====================================================================================================================================
+!!
+!! WARNING (Self-Gravity): 
+!! For cases where selfgrav = .true., consider using a lower value for `d0` 
+!! and a higher value for `alpha` to achieve a better profile resolution. 
+!! Otherwise, the disk is highly susceptible to collapsing into just a few cells.
+!!
+!! WARNING (Error Norms): 
+!! Be aware that the L1 error norms can be contaminated due to the wings in 
+!! these profiles. Relying strictly on L1 may give a skewed representation of 
+!! core accuracy.
+
+!! WARNING (Fits for prob 3): 
+!! For case 3 all 3 fits are bad and fits cannot be trusted.
+
  $BASE_DOMAIN
     n_d = 1, 256, 512
     nb  = 4

@@ -1,0 +1,11 @@
+#if !defined LOCAL_FR_SPEED
+#  define GLOBAL_FR_SPEED
+#endif
+
+#undef ISO
+
+#define IONIZED
+#define THERM
+#define SELF_GRAV
+#define MULTIGRID
+#define NBODY

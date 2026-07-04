@@ -526,14 +526,15 @@ contains
       use user_hooks,   only: user_vars_arr_in_restart
       use version,      only: nenv, env, init_version
 #ifdef HDF5
-      use common_hdf5,  only: init_hdf5
+      use common_hdf5,  only: init_hdf5, hdf_vars
       use data_hdf5,    only: init_data
       use dataio_pub,   only: gdf_strict, msg, nhdf, nstep_start
       use fluidindex,   only: flind
       use global,       only: t, nstep
       use restart_hdf5, only: read_restart_hdf5
 #ifdef NBODY
-      use particles_io, only: init_nbody_hdf5
+      use particles_io,   only: init_nbody_hdf5
+      use star_formation, only: register_SF_vars
 #endif /* NBODY */
 #endif /* HDF5 */
 
@@ -576,6 +577,7 @@ contains
       call init_hdf5(vars)
 #ifdef NBODY
       call init_nbody_hdf5(pvars)
+      call register_SF_vars(hdf_vars)
 #endif /* NBODY */
       call init_data
 #endif /* HDF5 */
@@ -1006,6 +1008,7 @@ contains
 #endif /* MAGNETIC */
 #ifdef NBODY
       use particle_diag,    only: particle_diagnostics, tot_energy, d_energy, tot_angmom, d_angmom
+      use star_formation,   only: SF_tsl, SF_tsl_reduce               
 #endif /* NBODY */
 
       implicit none
@@ -1113,6 +1116,7 @@ contains
             endif
 #ifdef NBODY
             call pop_vector(tsl_names, field_len, ["totpener", "errpener", "totpamom", "errpamom"])
+            call SF_tsl(tsl_vars, tsl_names)
 #endif /* NBODY */
 
             if (associated(user_tsl)) call user_tsl(tsl_vars, tsl_names)
@@ -1233,6 +1237,7 @@ contains
 
 #ifdef NBODY
       call particle_diagnostics(.false.)
+      call SF_tsl_reduce  
 #endif /* NBODY */
 
       call write_log(tsl)
@@ -1277,6 +1282,7 @@ contains
          enddo
 #ifdef NBODY
          call pop_vector(tsl_vars, [tot_energy, d_energy, tot_angmom, d_angmom])
+         call SF_tsl(tsl_vars) 
 #endif /* NBODY */
 
       endif

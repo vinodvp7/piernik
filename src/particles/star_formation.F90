@@ -38,16 +38,24 @@ module star_formation
    implicit none
 
    private
-   public :: init_SF, SF, initialize_id, attribute_id, pid_gen, dmass_stars, SF_redo_timestep
+   public :: init_SF, SF, initialize_id, attribute_id, pid_gen, dmass_stars, SF_redo_timestep, SF_tsl_reduce, seed_initial_stars
+   public :: register_SF_vars, SF_step, SF_tsl                                      ! NEW
+
 
    integer(kind=4), parameter            :: giga = 1000000000
    integer(kind=4)                       :: pid_gen, maxpid, dpid
-   real                  :: dens_thr, temp_thr, eps_sf, mass_SN, max_part_mass, n_SN, SN_ener, dt_violent_FB
+   real                  :: dens_thr, temp_thr, eps_sf, mass_SN, max_part_mass, n_SN, SN_ener, dt_violent_FB, seed_lookback, seed_dens_thr
    logical               :: kick, Jeans_crit, divv_crit, tdyn_crit, delayed, kineticFB, inject_mass, SF_redo_timestep
    real                  :: dmass_stars, dist_accr
    character(len=dsetnamelen), parameter :: sfr_n  = "SFR_n", sfrh_n = "SFRh_n", snel_n = "SNel_n", sneh_n = "SNeh_n", sne_n = "SNe_n"
+   logical,         save :: sfrl_dump = .false., sfrh_dump = .false., sne_dump = .false.  ! NEW: set once by register_SF_vars
+   real,            save :: dmass_stars_tot = 0.0                                        ! NEW: cumulative stellar mass formed
+   integer(kind=4), save :: sne_cnt = 0, sne_cnt_tot = 0                                  ! NEW: SNe since last tsl dump / all-time
+   real, save :: dmass_stars_glob = 0.0, dmass_stars_tot_glob = 0.0, sne_cnt_glob = 0.0, sne_cnt_tot_glob = 0.0                ! NEW
+   logical               :: initial_stars
+   logical, save         :: seed_done = .false.   ! internal guard, not user-facing — not in the namelist
 
-   namelist /STAR_FORMATION_CONTROL/ kick, dens_thr, temp_thr, eps_sf, mass_SN, n_SN, max_part_mass, dist_accr, SN_ener, Jeans_crit, divv_crit, tdyn_crit, delayed, kineticFB, inject_mass, dt_violent_FB
+   namelist /STAR_FORMATION_CONTROL/ kick, dens_thr, temp_thr, eps_sf, mass_SN, n_SN, max_part_mass, dist_accr, SN_ener, Jeans_crit, divv_crit, tdyn_crit, delayed, kineticFB, inject_mass, dt_violent_FB, initial_stars, seed_lookback, seed_dens_thr
 
 contains
 
@@ -82,7 +90,10 @@ contains
       kineticFB        = .false.         ! Kinetic feedback following TIGRESS
       inject_mass      = .false.         ! Mass released during supernova
       SF_redo_timestep = .false.         ! Timestep redo if dt > dt_violent_FB. Currently not used.
-
+      initial_stars    = .false.   ! opt-in — off unless you ask for it
+      seed_lookback    = 10.0      ! Myr in PSM units — how far back the Schmidt integral looks
+      seed_dens_thr    = -1.0      ! sentinel: <=0 means "use dens_thr", matching the check in seed_initial_stars
+      
       if (master) then
 
          if (.not.nh%initialized) call nh%init()
@@ -108,6 +119,7 @@ contains
          lbuff(5) = delayed
          lbuff(6) = kineticFB
          lbuff(7) = inject_mass
+         lbuff(8) = initial_stars
 
          rbuff(1) = dens_thr
          rbuff(2) = temp_thr
@@ -117,7 +129,9 @@ contains
          rbuff(6) = dist_accr
          rbuff(7) = n_SN
          rbuff(8) = SN_ener
-         rbuff(9)= dt_violent_FB
+         rbuff(9) = dt_violent_FB
+         rbuff(10) = seed_lookback
+         rbuff(11) = seed_dens_thr
 
       endif
 
@@ -134,7 +148,8 @@ contains
          delayed       = lbuff(5)
          kineticFB     = lbuff(6)
          inject_mass   = lbuff(7)
-
+         initial_stars = lbuff(8)
+         
          dens_thr        = rbuff(1)
          temp_thr        = rbuff(2)
          eps_sf          = rbuff(3)
@@ -144,6 +159,8 @@ contains
          n_SN            = rbuff(7)
          SN_ener         = rbuff(8)
          dt_violent_FB   = rbuff(9)
+         seed_lookback   = rbuff(10)
+         seed_dens_thr   =  rbuff(11) 
 
          if ((kick) .and. (mass_SN .ne. max_part_mass)) call warn('[star_formation] Warning: With kick we assume particules only accrete up to 1 explosion loadout mass (n_SN * mass_SN) in 1 timestep.')
 
@@ -267,10 +284,11 @@ contains
                      mass       = sf_dens2dt * cg%dvol
 
                      ! Look for a sink particle to attribute the star forming mass to.
+! Look for a sink particle to attribute the star forming mass to.
                      pset => cg%pset%first
                      do while (associated(pset))
-                        if ((pset%pdata%tform + tini >= 0.0) .and. (pset%pdata%mass < max_part_mass)) then
-                           if (add_SFmass(pset, cg%x(i), cg%y(j), cg%z(k), sector)) then       ! Check if the particle is within the accretion distance
+                        if (pset%pdata%phy .and. (pset%pdata%tform + tini >= 0.0) .and. (pset%pdata%mass < max_part_mass)) then
+                           if (add_SFmass(pset, cg%x(i), cg%y(j), cg%z(k), sector)) then       ! Check if the particle is within the accretion distance      ! Check if the particle is within the accretion distance
                               stage = aint(pset%pdata%mass / mass_SN_tot)
                               if ( (kick .or. delayed) .and. (stage >= 1) ) then
                                  t1 = t - pset%pdata%tform
@@ -290,6 +308,7 @@ contains
                                  if ((.not. kick) .and. (.not. delayed)) then                ! If not delayed feedback, instantaneous SN injection
                                     mfdv = (aint(pset%pdata%mass / mass_SN_tot) - stage) / cg%dvol
                                     if (sne_dump) cg%q(isn)%arr(i,j,k)   = cg%q(isn)%arr(i,j,k) + 1
+                                    sne_cnt = sne_cnt + 1 
                                     call sf_inject(cg, pfl%ien, pfl%idn, i, j, k, is, ish, mfdv * en_SN09, mfdv * en_SN01, dt, sne_dump)   ! SNe energy injection
                                  endif
                                  pset%pdata%tform = t
@@ -316,6 +335,7 @@ contains
                            if ((.not. kick) .and. (.not. delayed)) then   ! If no delayed feedback, instantaneous SN injection
                               mfdv = aint(mass/mass_SN_tot) / cg%dvol
                               if (sne_dump) cg%q(isn)%arr(i,j,k)   = cg%q(isn)%arr(i,j,k) + 1
+                              sne_cnt = sne_cnt + 1 
                               call sf_inject(cg, pfl%ien, pfl%idn, i, j, k, is, ish, mfdv * en_SN09, mfdv * en_SN01, dt, sne_dump)
                            endif
                            tbirth = t
@@ -393,6 +413,7 @@ contains
                                     cg%u(pfl%ien,i,j,k) = cg%u(pfl%ien,i,j,k) + ekin(cg%u(pfl%imx,i,j,k), cg%u(pfl%imy,i,j,k), cg%u(pfl%imz,i,j,k), cg%u(pfl%idn,i,j,k))  ! add new ekin
                                  else if (aijk1 == 0 .and. tcond2) then    ! Instantaneous injection of SNe from Agertz+2013: delayed period over
                                     if (sne_dump) cg%q(isn)%arr(i,j,k)   = cg%q(isn)%arr(i,j,k) + 1
+                                    sne_cnt = sne_cnt + 1 
                                     call sf_inject(cg, pfl%ien, pfl%idn, i, j, k, is, ish, mfdv * en_SN09, mfdv * en_SN01, dt,sne_dump)
                                  endif
 
@@ -415,8 +436,10 @@ contains
                                     cycle
                                  endif
                                  if (.not. cg%leafmap(i,j,k)) cycle
-
-                                 if ((sne_dump) .and. (aijk1 == 0)) cg%q(isn)%arr(i,j,k)   = cg%q(isn)%arr(i,j,k) + 1
+                                 if (aijk1 == 0) then
+                                    if (sne_dump) cg%q(isn)%arr(i,j,k) = cg%q(isn)%arr(i,j,k) + 1
+                                        sne_cnt = sne_cnt + 1
+                                 endif
                                  call TIGRESS_injection(cg, pfl, dens_amb, cg%dx, mfdv, frac1, ijk1, aijk1, i, j, k, is, ish, sne_dump)
                               endif
                            enddo
@@ -1185,5 +1208,204 @@ frac = 1.0 / ncount
 
 end subroutine find_injection_region
 
+subroutine register_SF_vars(hdf_vars)
+#ifdef HDF5
+      use cg_leaves,        only: leaves
+      use cg_list,          only: cg_list_element
+      use cg_list_global,   only: all_cg
+      use constants,        only: AT_NO_B
+      use grid_cont,        only: grid_container
+      use named_array_list, only: qna
+#endif /* HDF5 */
+      implicit none
+
+      character(len=dsetnamelen), dimension(:), intent(in) :: hdf_vars   ! NEW — passed in, not use-associated
+
+#ifdef HDF5
+      type(cg_list_element), pointer :: cgl
+      type(grid_container),  pointer :: cg
+
+      sfrl_dump = any(hdf_vars == sfr_n)
+      sfrh_dump = any(hdf_vars == sfrh_n)
+      sne_dump  = any(hdf_vars == sne_n) .or. any(hdf_vars == snel_n) .or. any(hdf_vars == sneh_n)
+
+      if (sfrl_dump) call all_cg%reg_var(sfr_n,  restart_mode = AT_NO_B)
+      if (sfrh_dump) call all_cg%reg_var(sfrh_n, restart_mode = AT_NO_B)
+      if (sne_dump)  call all_cg%reg_var(sne_n,  restart_mode = AT_NO_B)
+      if (sne_dump)  call all_cg%reg_var(snel_n, restart_mode = AT_NO_B)
+      if (sne_dump)  call all_cg%reg_var(sneh_n, restart_mode = AT_NO_B)
+
+      cgl => leaves%first
+      do while (associated(cgl))
+         cg => cgl%cg
+         if (sfrl_dump) cg%q(qna%ind(sfr_n ))%arr = 0.0
+         if (sfrh_dump) cg%q(qna%ind(sfrh_n))%arr = 0.0
+         if (sne_dump)  cg%q(qna%ind(sne_n ))%arr = 0.0
+         if (sne_dump)  cg%q(qna%ind(snel_n))%arr = 0.0
+         if (sne_dump)  cg%q(qna%ind(sneh_n))%arr = 0.0
+         cgl => cgl%nxt
+      enddo
+#endif /* HDF5 */
+   end subroutine register_SF_vars
+
+   subroutine SF_step(forward)
+
+      implicit none
+      logical, intent(in) :: forward
+
+      call SF(forward, sfrl_dump, sfrh_dump, sne_dump)
+      if (.not. forward) dmass_stars_tot = dmass_stars_tot + dmass_stars   ! SF only updates dmass_stars on the .false. half-step
+
+   end subroutine SF_step
+    subroutine SF_tsl(user_vars, tsl_names)
+
+        use diagnostics, only: pop_vector
+
+        implicit none
+
+        real,             dimension(:), intent(inout), allocatable           :: user_vars
+        character(len=*), dimension(:), intent(inout), allocatable, optional :: tsl_names
+
+        if (present(tsl_names)) then
+            call pop_vector(tsl_names, len(tsl_names(1)), ["dmass_stars    ", "dmass_stars_tot", "SNe            ", "SNe_tot        "])
+        else
+            call pop_vector(user_vars, [dmass_stars_glob, dmass_stars_tot_glob, sne_cnt_glob, sne_cnt_tot_glob])
+        endif
+
+    end subroutine SF_tsl
+
+   ! Sum the per-rank star-formation counters across all MPI ranks.
+   ! Collective — must be called by every rank, before the master-only tsl write.
+   subroutine SF_tsl_reduce
+
+      use allreduce, only: piernik_MPI_Allreduce
+      use constants, only: pSUM
+
+      implicit none
+
+      sne_cnt_tot = sne_cnt_tot + sne_cnt      ! per-rank running total, same as before
+
+      dmass_stars_glob     = dmass_stars
+      dmass_stars_tot_glob = dmass_stars_tot
+      sne_cnt_glob         = real(sne_cnt)
+      sne_cnt_tot_glob     = real(sne_cnt_tot)
+
+      call piernik_MPI_Allreduce(dmass_stars_glob,     pSUM)
+      call piernik_MPI_Allreduce(dmass_stars_tot_glob, pSUM)
+      call piernik_MPI_Allreduce(sne_cnt_glob,         pSUM)
+      call piernik_MPI_Allreduce(sne_cnt_tot_glob,     pSUM)
+
+      sne_cnt = 0                               ! reset "since-last-dump" counter, per rank
+
+   end subroutine SF_tsl_reduce
+
+
+   subroutine seed_initial_stars
+
+      use allreduce,      only: piernik_MPI_Allreduce
+      use cg_leaves,      only: leaves
+      use cg_list,        only: cg_list_element
+      use constants,      only: ndims, xdim, ydim, zdim, LO, HI, CENTER, pSUM
+      use dataio_pub,     only: msg, printinfo, warn
+      use domain,         only: dom
+      use fluidindex,     only: flind
+      use global,         only: t
+      use grid_cont,      only: grid_container
+      use mpisetup,       only: master
+      use particle_utils, only: is_part_in_cg
+      use units,          only: newtong
+
+      implicit none
+
+      real, parameter :: seed_mass_floor = 0.90, seed_mass_spread = 0.099  !< f in [0.90, 0.99): trigger mechanics, not physics knobs
+
+      type(cg_list_element), pointer :: cgl
+      type(grid_container),  pointer :: cg
+
+      integer(kind=4)        :: i, j, k, pid, np, n
+      integer(kind=8)        :: n_seeded, n_elig
+      real                   :: rho, m_exp, m_exp_tot, m_star, m_seeded, r1, sigma_sfr, n_seeded_r, n_elig_r, rho_thr
+      real, dimension(ndims) :: pos, vel, acc
+      logical                :: in, phy, out, fin
+
+      if (.not. initial_stars) return
+      if (seed_done) return
+      seed_done = .true.
+
+      rho_thr = dens_thr
+      if (seed_dens_thr > 0.0) rho_thr = seed_dens_thr
+
+      call random_number(r1)
+      m_star = (seed_mass_floor + seed_mass_spread * r1) * mass_SN * n_SN
+
+      m_exp_tot = 0.0
+      m_seeded  = 0.0
+      n_seeded  = 0
+      n_elig    = 0
+
+      cgl => leaves%first
+      do while (associated(cgl))
+         cg => cgl%cg
+         do i = cg%ijkse(xdim,LO), cg%ijkse(xdim,HI)
+            do j = cg%ijkse(ydim,LO), cg%ijkse(ydim,HI)
+               do k = cg%ijkse(zdim,LO), cg%ijkse(zdim,HI)
+                  if (.not. cg%leafmap(i,j,k)) cycle
+                  rho = cg%u(flind%ion%idn,i,j,k)
+                  if (rho < rho_thr) cycle
+                  n_elig = n_elig + 1
+
+                  ! Expected stellar mass from the volumetric Schmidt law over the lookback window
+                  m_exp     = eps_sf * sqrt(newtong) * rho**1.5 * cg%dvol * seed_lookback
+                  m_exp_tot = m_exp_tot + m_exp
+
+                  ! Poisson-like sampling: deterministic integer part, Bernoulli remainder.
+                  ! <m_seeded> equals the Schmidt integral; positions are uncorrelated with the
+                  ! sweep order (the mass-accumulator variant produced a lattice on smooth fields).
+                  np = int(m_exp / m_star, kind=4)
+                  call random_number(r1)
+                  if (r1 < m_exp / m_star - real(np)) np = np + 1
+
+                  do n = 1, np
+                     call attribute_id(pid)
+                     pos = [cg%coord(CENTER,xdim)%r(i), cg%coord(CENTER,ydim)%r(j), cg%coord(CENTER,zdim)%r(k)]
+                     vel = 0.0
+                     acc = 0.0
+                     call is_part_in_cg(cg, pos, .true., in, phy, out, fin)
+                     call cg%pset%add(pid, m_star, pos, vel, acc, 0.0, in, phy, out, fin, t, 0.0)
+
+                     m_seeded = m_seeded + m_star
+                     n_seeded = n_seeded + 1
+
+                     call random_number(r1)
+                     m_star = (seed_mass_floor + seed_mass_spread * r1) * mass_SN * n_SN
+                  enddo
+               enddo
+            enddo
+         enddo
+         cgl => cgl%nxt
+      enddo
+
+      n_seeded_r = real(n_seeded)
+      n_elig_r   = real(n_elig)
+      call piernik_MPI_Allreduce(m_seeded,   pSUM)
+      call piernik_MPI_Allreduce(m_exp_tot,  pSUM)
+      call piernik_MPI_Allreduce(n_seeded_r, pSUM)
+      call piernik_MPI_Allreduce(n_elig_r,   pSUM)
+
+      sigma_sfr = m_seeded / (seed_lookback * (dom%edge(xdim,HI) - dom%edge(xdim,LO)) * (dom%edge(ydim,HI) - dom%edge(ydim,LO)))
+
+      if (master) then
+         write(msg,'(a,i10,a,es14.6,a,es14.6,a,es14.6)') '[star_formation:seed_initial_stars] eligible cells = ', &
+              &  int(n_elig_r, kind=8), ', rho_thr = ', rho_thr, ', Schmidt mass over lookback = ', m_exp_tot, &
+              &  ', per-particle mass ~ ', mass_SN * n_SN
+         call printinfo(msg)
+         write(msg,'(a,i10,a,es14.6,a,es14.6,a)') '[star_formation:seed_initial_stars] Seeded ', int(n_seeded_r, kind=8), &
+              &  ' particles, total mass = ', m_seeded, ', implied Sigma_SFR = ', sigma_sfr, &
+              &  ' (Msun/Myr/pc^2 = Msun/yr/kpc^2 in PSM; solar neighbourhood: 2-5e-3)'
+         call printinfo(msg)
+         if (n_seeded_r <= 0.0) call warn('[star_formation:seed_initial_stars] initial_stars = .true. but nothing was seeded: check rho_thr against the Schmidt mass line above')
+      endif
+
+   end subroutine seed_initial_stars
 
 end module star_formation

@@ -90,7 +90,7 @@ contains
 #ifdef NBODY
       use particle_gravity,      only: update_particle_gravpot_and_acc
       use particle_pub,          only: init_particles
-      use star_formation,        only: initialize_id, seed_initial_stars
+      use star_formation,        only: initialize_id, init_SF, seed_initial_stars
       use particle_solvers,      only: init_psolver, update_particle_kinetic_energy
       use particle_utils,        only: global_count_all_particles
 #endif /* NBODY */
@@ -218,6 +218,7 @@ contains
 #ifdef NBODY
       call init_particles
       call init_psolver
+      call init_SF  
 #endif /* NBODY */
 #ifdef MULTIGRID
       call init_multigrid_ext                ! Has to be called before init_grid
@@ -348,6 +349,7 @@ contains
 #endif /* SELF_GRAV && NBODY */
 #ifdef NBODY
          call initialize_id()      ! idempotent: per-process particle id offsets
+         
          call seed_initial_stars   ! no-op unless initial_stars = .true. in STAR_FORMATION_CONTROL
 #endif /* NBODY */
          if (associated(problem_post_IC)) call problem_post_IC

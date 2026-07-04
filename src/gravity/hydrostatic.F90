@@ -271,14 +271,30 @@ contains
    subroutine thermal_hydro_zeq_Tmid(iia, jja, T0)
 
       use constants,  only: half, small, two, LO, HI, zdim
-      use dataio_pub, only: die
+      use dataio_pub, only: die, warn
       use gravity,    only: get_gprofs
+#ifdef SELF_GRAV
+      use fluidindex, only: flind
+#endif /* SELF_GRAV */
 
       implicit none
 
       integer,        intent(in)  :: iia, jja
       real,           intent(in)  :: T0
-      integer                     :: ksub
+      integer                     :: ksub, miter, isub
+      real                        :: om
+      logical                     :: self_g = .false.
+
+#ifdef SELF_GRAV
+      self_g = flind%any_fluid_is_selfgrav()
+#endif /* SELF_GRAV */
+
+      om = 0.7
+      miter = 100
+      if (.not. self_g) then
+         om = 1.0    ! single pass for no self-gravity case so no relaxation needed
+         miter = 1
+      endif
 
       if (T0 <= small) call die("[hydrostatic:thermal_hydro_zeq_Tmid] T0 must be /= 0")
       Tmid = T0
@@ -289,20 +305,11 @@ contains
          zs(ksub) = hsmin + (real(ksub)-half) * dzs
       enddo
       ksmin = 1
-      do ksub = 1, nstot
-         if (zs(ksub) .ge. hscg%z(hscg%lhn(zdim, LO)) - dz/2) then
-            ksmin = ksub
-            exit
-         endif
-      enddo
-      ksmax = nstot
-      do ksub = 1, nstot
-         if (zs(ksub) .ge. hscg%z(hscg%lhn(zdim, HI)) + dz/2) then
-            ksmax = ksub - 1
-            exit
-         endif
-      enddo
-      allocate(gprofs(ksmin:ksmax), dprofs(ksmin:ksmax), Tprofs(ksmin:ksmax))
+      ksmax = nstot   ! full-column solve on every block, mirroring hydrostatic_zeq_densmid:
+                      ! every rank integrates the whole z-column from the midplane and extracts
+                      ! its own hsbn window; no inter-block anchor handoff, no MPI ordering
+      allocate(gprofs(ksmin:ksmax), dprofs(ksmin:ksmax), Tprofs(ksmin:ksmax), &
+           &   gprofs_ext(ksmin:ksmax), sgprofs(ksmin:ksmax), dprofs_old(ksmin:ksmax))
       call get_gprofs(iia, jja)
 
       if (any(abs(gprofs) >= two)) then
@@ -310,14 +317,72 @@ contains
          urslvd = max(urslvd, maxval(abs(gprofs))/two)
       endif
 
-      call thermal_hydro_main(iia,jja)
+      gprofs_ext(:) = gprofs(:)
+      sgprofs(:)    = 0.0
+      dprofs(:)     = 0.0
+
+      do isub = 1, miter
+#ifdef SELF_GRAV
+         if (self_g) call selfgrav_gauss_1d(iia, jja)
+#endif /* SELF_GRAV */
+         gprofs(:) = gprofs_ext(:) + sgprofs(:)   ! raw acceleration here, unlike densmid (no /csim2*dzs)
+
+         dprofs_old(:) = dprofs(:)
+
+         call thermal_hydro_main(iia, jja)
+
+         dproferr = maxval(abs((dprofs(:) - dprofs_old(:)) / dprofs(:)), &
+                           mask=(dprofs(:) > 1e-3 * maxval(dprofs)))
+         if (dproferr < 1e-5) exit
+
+         dprofs(:) = (1.0 - om) * dprofs_old(:) + om * dprofs(:)   ! relax the density feeding g_sg
+      enddo
+
+      if ((isub >= miter) .and. self_g) then
+         call warn("[hydrostatic:thermal_hydro_zeq_Tmid] convergence not detected. Increase maxiter or dont trust this equilibrium")
+      endif
 
       if (allocated(zs))     deallocate(zs)
       if (allocated(gprofs)) deallocate(gprofs)
       if (allocated(dprofs)) deallocate(dprofs)
       if (allocated(Tprofs)) deallocate(Tprofs)
+      if (allocated(gprofs_ext)) deallocate(gprofs_ext)
+      if (allocated(sgprofs))    deallocate(sgprofs)
+      if (allocated(dprofs_old)) deallocate(dprofs_old)
 
     end subroutine thermal_hydro_zeq_Tmid
+
+#ifdef SELF_GRAV
+!>
+!! \brief 1D Gauss-law self-gravity for the thermo-hydrostatic column: g_sg(z) = -4 pi G int_0^z rho dz'
+!! \details zs spans the full domain column on every block, so the integration is always anchored
+!! at the midplane (g_sg = 0 by plane symmetry). Structurally identical to the SELF_GRAV block of
+!! hydrostatic_zeq_densmid; every rank solves the same global column, making the result independent
+!! of the MPI decomposition.
+!<
+   subroutine selfgrav_gauss_1d(iia, jja)
+
+      use constants, only: fpi
+      use units,     only: newtong
+
+      implicit none
+
+      integer, intent(in) :: iia, jja
+      integer             :: ksub, kmid
+
+      kmid = minloc(abs(zs(ksmin:ksmax)),1) + ksmin - 1   ! full column: always anchored at z = 0
+      sgprofs(kmid) = 0.0
+      do ksub = kmid, ksmax-1
+         sgprofs(ksub+1) = sgprofs(ksub) - fpi * newtong * dprofs(ksub) * dzs
+      enddo
+      do ksub = kmid, ksmin+1, -1
+         sgprofs(ksub-1) = sgprofs(ksub) + fpi * newtong * dprofs(ksub) * dzs
+      enddo
+
+      if (.false.) ksub = iia + jja   ! suppress compiler warnings on unused arguments
+
+   end subroutine selfgrav_gauss_1d
+#endif /* SELF_GRAV */
 
 #endif /* THERM */
 
@@ -354,7 +419,7 @@ contains
       allocate(hsl(hsbn(LO):hsbn(HI)+I_ONE))
       hsl(hsbn(LO):hsbn(HI)) = cg%coord(LEFT,  zdim)%r(hsbn(LO):hsbn(HI))
       hsl(hsbn(HI)+I_ONE)    = cg%coord(RIGHT, zdim)%r(hsbn(HI))
-
+      dz = cg%dl(zdim)   !< z cell size: half-cell margin for ksmin/ksmax in thermal_hydro_zeq_Tmid
       !zlim = 0
       !dz = hsl(hsbn(HI)) - hsl(hsbn(HI)-1)
       !do while (zlim .lt. 60) !650)
@@ -450,71 +515,45 @@ contains
    end subroutine hydrostatic_main
 !>
     !! \brief Routine that arranges thermal + hydrostatic equilibrium in the vertical (z) direction by setting the Temperatures and then the corresponding densities
-    !! \details This requires the current z array to either include the midplane, or to grab the boundaries values from the cg below / above
+    !! \details The z array spans the full domain column on every block, so the march always starts
+    !! from the midplane seed (Tmid); each block extracts its own hsbn window at the end.
 !<
 #ifdef THERM
    subroutine thermal_hydro_main(iia,jja)
 
       use constants,  only: LO, HI, zdim
       use dataio_pub, only: die
-      use mpisetup,    only: proc
-      use thermal,    only: find_temp_bin, alpha, Tref, lambda0, G1_heat, G0_heat
+      use thermal,    only: find_temp_bin, alpha, Tref, lambda0, G1_heat, G0_heat, T_jump
       use units,      only: mH
+      use, intrinsic :: ieee_arithmetic, only: ieee_is_nan
+      use dataio_pub, only: msg
 
       implicit none
 
       integer, intent(in)         :: iia, jja
-      integer                     :: ksub, ksmid, k, ii, i, iip, kstart
-      logical                     :: up, down, bnd_done
+      integer                     :: ksub, ksmid, k, ii, i, kstart
+      logical                     :: up, down
 
 
       up = .false.
       down = .false.
-      bnd_done = .false.
       kstart = 1
       Tprofs = 0.0
       dprofs = 0.0
-      if (hscg%z(hscg%lh1(zdim, LO)) * hscg%z(hscg%lh1(zdim, HI)) .lt. 0.0) then
-         ksmid = 0
-         ksmid = minloc(abs(zs(ksmin:ksmax)),1) + ksmin -1
-         if (ksmid == 0) call die("[hydrostatic:thermal_hydro_main] ksmid not set")
 
-         if ((ksmid .lt. ksmin) .or. (ksmid .gt. ksmax)) print *, ksmin, ksmax, ksmid, zs(ksmin), zs(ksmax), zs(ksmid), minloc(abs(zs(ksmin:ksmax)),1)
+      ksmid = minloc(abs(zs(ksmin:ksmax)),1) + ksmin - 1   ! global midplane: zs spans the full column on every block
+      if (ksmid == 0) call die("[hydrostatic:thermal_hydro_main] ksmid not set")
 
-         Tprofs(ksmid) = Tmid
-         call find_temp_bin(Tmid, ii)
-         dprofs(ksmid) = G1_heat*mH / (lambda0(ii) * (Tmid/Tref(ii))**alpha(ii)*mH**2 - G0_heat*mH**2) * mH
-         if ((ksmid .ne. ksmin) .and. (ksmid .ne. ksmax)) then
-            Tprofs(ksmid+1) = Tmid
-            dprofs(ksmid+1) = G1_heat*mH / (lambda0(ii) * (Tmid/Tref(ii))**alpha(ii)*mH**2 - G0_heat*mH**2) * mH
-         endif
-         up = .true.
-         down = .true.
-         kstart = ksmid
-      else
-         if (hscg%z(hscg%ijkse(zdim, LO)) .gt. 0.0) then
-            up = .true.
-            kstart = ksmin - 1
-            if (hscg%q(i_teq)%arr(iia, jja, hscg%lh1(zdim, LO)) .eq. 0.0) then
-               Tprof = 100000
-               dprof = 0.0000001
-               !print *, 'T=0', proc, hscg%grid_id, hscg%x(iia), hscg%y(jja), hscg%z(hscg%lh1(zdim, HI))
-               return
-            endif
-            Tprofs(ksmin) = hscg%q(i_teq)%arr(iia, jja, hscg%lh1(zdim, LO))
-
-         else
-            down = .true.
-            kstart = ksmax
-            if (hscg%q(i_teq)%arr(iia, jja, hscg%lh1(zdim, HI)) .eq. 0.0) then
-               Tprof = 100000
-               dprof = 0.0000001
-               print *, 'T=0', proc, hscg%grid_id, hscg%x(iia), hscg%y(jja), hscg%z(hscg%lh1(zdim, HI))
-               return
-            endif
-            Tprofs(ksmax) = hscg%q(i_teq)%arr(iia, jja, hscg%lh1(zdim, HI))
-         endif
+      Tprofs(ksmid) = Tmid
+      call find_temp_bin(Tmid, ii)
+      dprofs(ksmid) = G1_heat*mH / (lambda0(ii) * (Tmid/Tref(ii))**alpha(ii)*mH**2 - G0_heat*mH**2) * mH
+      if ((ksmid .ne. ksmin) .and. (ksmid .ne. ksmax)) then
+         Tprofs(ksmid+1) = Tmid
+         dprofs(ksmid+1) = G1_heat*mH / (lambda0(ii) * (Tmid/Tref(ii))**alpha(ii)*mH**2 - G0_heat*mH**2) * mH
       endif
+      up = .true.
+      down = .true.
+      kstart = ksmid
 
       !zlim = sqrt(hscg%x(iia)**2 + hscg%y(jja)**2)
       !if ((kstart .lt. ksmin-1) .or. (kstart .gt. ksmax)) print *, 'Out of bounds', kstart, ksmin, ksmax !call die('[hydrostatics] Out of bounds')
@@ -522,7 +561,7 @@ contains
          i=0
          chg_halo = .false.
          !if (zs(kstart+1) .gt. zlim) chg_halo = .true.
-         if (Tprofs(kstart+1) .gt. 43287.612810830615) chg_halo = .true.
+         if (Tprofs(kstart+1) .gt. T_jump) chg_halo = .true.
          if (kstart < nstot) then
             do ksub = kstart+1, ksmax-1
                if ((ksub+1 .lt. ksmin) .or. (ksub+1 .gt. ksmax)) print *, 'Out of bounds: up', ksmin, ksmax, ksub+1
@@ -542,7 +581,7 @@ contains
       if (down) then
          chg_halo = .false.
          !if (zs(kstart) .lt. -1.0*zlim) chg_halo = .true.
-         if (Tprofs(kstart) .gt. 43287.612810830615) chg_halo = .true.
+         if (Tprofs(kstart) .gt. T_jump) chg_halo = .true.
          if (kstart > 1) then
             do ksub = kstart, ksmin+1, -1
                if ((ksub-1 .lt. ksmin) .or. (ksub-1 .gt. ksmax)) print *, 'Out of bounds: down', ksmin, ksmax, ksub+1
@@ -613,7 +652,7 @@ contains
 #ifdef THERM
    real function Tzeq_scheme(ksub, up, ii) result(factor)
 
-     use thermal,          only: G0_heat, alpha, lambda0, Tref, G1_heat, find_temp_bin
+     use thermal,          only: G0_heat, alpha, lambda0, Tref, G1_heat, find_temp_bin, T_jump
      use units,            only: kboltz, mH
 
       implicit none
@@ -635,7 +674,7 @@ contains
 
      ! chg_halo = .true.
       !if ((abs(zs(ksub+nint(up))) .lt. zlim) .or.  (chg_halo)) then
-      if ((Tprofs(ksub) .lt. 43287.612810830615) .or. (chg_halo)) then
+      if ((Tprofs(ksub) .lt. T_jump) .or. (chg_halo)) then
          factor = - mH / (kboltz*(1+alpha_equi)) * gprofs(ksub) * (zs(ksub+nint(up)) - zs(ksub)) * (lambda*mH**2 - G0_heat*mH**2*factor_G0)/(lambda*(alpha(ii)-1)*mH**2 + G0_heat*mH**2*factor_G0)
       else
          Press1 = kboltz * G1_heat*mH / (lambda*mH**2 - G0_heat*mH**2) * Tprofs(ksub)

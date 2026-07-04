@@ -1,0 +1,125 @@
+!! Case | prob | g0   | selfgrav  | branch    | expected profile                       | scale height / output
+!! -----|------|------|-----------|-----------|----------------------------------------|-----------------------------------------------
+!!  1   |  1   | !=0  | .false.   | analytic  | symmetric exp, peak d0 at z=0          | H = cs2*kpc/g0 (in title); L1 ~ truncation
+!!  2   |  2   | !=0  | .false.   | analytic  | Gaussian                               | H = sqrt(cs2*kpc/g0)
+!!  3   |  1   | =0   | .true.    | analytic  | pure Spitzer sech^2                    | H = sqrt(cs2/2*pi*G*rho0), zsft = 0
+!!  4   |  1   | !=0  | .true.    | analytic  | folded shifted sech^2, flatter topped  | H = sqrt(cs2/2*pi*G*rho_m), zsft > 0
+!!  5   |  2   | !=0  | .true.    | fit       | between Gauss and sech^2               | h_g, h_s bracket; compare to limits of 2 & 3
+!!  6   |  3   | N/A  | .false.   | fit       | Gaussian core + steeper wings          | 3 fitted h + RMS; Gauss wins the core
+!!  7   |  3   | N/A  | .true.    | fit       | as case 6, compressed                  | all fitted h below case-6 values
+!!  8   |  1   | !=0  | .false.   | analytic  | THERMAL: linear T(z), rho ~ T^-acool   | dT/dz = mH*gz/(kB*(1+a_equi)*(acool-1)); L1 on rho AND T
+!!  9   |  1   | !=0  | .true.    | fit       | THERMAL: as 8, compressed              | fitted h below case-8; Picard 10-30 iters, no warn
+!! 10   |  3   | N/A  | .true.    | fit       | THERMAL: Ferriere, production-like     | fits only; halo jump above warm-branch P-max
+!! =====================================================================================================================================
+!!
+!! Thermal cases (8-10) additionally require: thermal_eq=.true., gprofs_target='gpth',
+!! the $THERMAL block below with thermal_active=.true., and #define THERM (ISO undef) in piernik.def.
+!! Isothermal cases 1-7 run in the same build with thermal_eq=.false. and thermal_active=.false.
+!!
+!! WARNING (Self-Gravity): 
+!! For cases where selfgrav = .true., consider using a lower value for `d0` 
+!! and a higher value for `alpha` to achieve a better profile resolution. 
+!! Otherwise, the disk is highly susceptible to collapsing into just a few cells.
+!!
+!! WARNING (Error Norms): 
+!! Be aware that the L1 error norms can be contaminated due to the wings in 
+!! these profiles. Relying strictly on L1 may give a skewed representation of 
+!! core accuracy.
+
+!! WARNING (Fits for prob 3): 
+!! For case 3 all 3 fits are bad and fits cannot be trusted.
+
+ $BASE_DOMAIN
+    n_d = 1, 256, 512
+    nb  = 4
+    bnd_xl = 'per'
+    bnd_xr = 'per'
+    bnd_yl = 'per'
+    bnd_yr = 'per'
+    bnd_zl = 'out'
+    bnd_zr = 'out'
+    xmin   =-500.0
+    xmax   = 500.0
+    ymin   =-500.0
+    ymax   = 500.0
+    zmin   =-1000.0       ! 2 kpc box
+    zmax   = 1000.0
+ /
+
+ $MPI_BLOCKS
+    psize = 2, 2, 1
+ /
+
+ $UNITS
+    units_set = "PSM"
+ /
+
+ $RESTART_CONTROL
+    restart  = 'last'
+    res_id   = ''
+ /
+
+ $END_CONTROL
+    tend   = 50.0
+    nend   = 10           ! We are only testing the equilibrium 
+ /
+
+ $OUTPUT_CONTROL
+    problem_name = 'stratbox'
+    run_id = 'tst'
+    dt_hdf  = 1e-20
+    dt_res  = 0.0
+    dt_log  = 1e-20
+    dt_tsl  = 1e-20
+    vars(1:) = 'ener', 'dens', 'magx', 'magy', 'magz', 'velx', 'vely', 'velz'
+ /
+
+ $NUMERICAL_SETUP
+    cfl    = 0.3
+    smalld = 1.e-6
+    smallei= 1.e-7
+    limiter= 'vanleer'
+ /
+
+ $FLUID_IONIZED
+    gamma  = 1.66666666666666666
+ /
+
+
+ $PROBLEM_CONTROL
+    prob       = 1
+    g0         = 100.0     ! case 8: strong constant g so T spans ~4x over the kpc: real dynamic range
+    thermal_eq = .true.
+    T_mid      = 5000.0
+ /
+
+ $GRAVITY
+    user_grav    = .true.
+    gprofs_target= 'gpth'   ! REQUIRED for thermal_eq: fills gprofs(ksmin:ksmax); use 'extgp' for cases 1-7
+    r_gc         = 8500     ! solar circle (only matters for prob 3 / Ferriere)
+    nsub         = 10
+ /
+
+ $THERMAL
+    thermal_active = .true.       ! .false. for isothermal cases 1-7
+    cool_model     = 'piecewise_power_law'
+    cool_curve     = 'power_law'  ! SINGLE global power law: makes case 8 exactly solvable (no bins, no table)
+    alpha_cool     = 1.5          ! must be > 1: T rises, rho falls outward; extrema-free curve
+    Teq            = 5000.0       ! reference T of the power law; with Lambda_0 = G1 gives n_eq(T_mid=5000) = 1 cm^-3
+    Lambda_0       = 2.0e-26
+    heat_model     = 'G012'
+    G0             = 0.0          ! keeps the factor_G0 hack in Tzeq_scheme inert
+    G1             = 2.0e-26
+    G2             = 0.0
+    x_ion          = 1.0
+    scheme         = 'EE'         ! pure-cooling fit bins: what thermal_hydro_main's manual heating balance expects
+    isochoric      = 1
+    cfl_coolheat   = 0.1
+    T_jump         = 1e30
+ /
+
+ $INTERACTIONS
+ /
+
+ $AMR
+ /

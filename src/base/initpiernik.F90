@@ -90,6 +90,7 @@ contains
 #ifdef NBODY
       use particle_gravity,      only: update_particle_gravpot_and_acc
       use particle_pub,          only: init_particles
+      use star_formation,        only: initialize_id, seed_initial_stars
       use particle_solvers,      only: init_psolver, update_particle_kinetic_energy
       use particle_utils,        only: global_count_all_particles
 #endif /* NBODY */
@@ -345,6 +346,10 @@ contains
 #if defined(SELF_GRAV) && defined(NBODY)
          !  Do we need to do anything particle-related to be called here?
 #endif /* SELF_GRAV && NBODY */
+#ifdef NBODY
+         call initialize_id()      ! idempotent: per-process particle id offsets
+         call seed_initial_stars   ! no-op unless initial_stars = .true. in STAR_FORMATION_CONTROL
+#endif /* NBODY */
          if (associated(problem_post_IC)) call problem_post_IC
       endif
       call ppp_main%stop(ic_label)

@@ -1124,7 +1124,7 @@ contains
       v(:) = cg%u(pfl%imx:pfl%imz,i,j,k)/cg%u(pfl%idn,i,j,k) !- pset%pdata%vel
       mp0cost = cg%u(pfl%idn,i,j,k) * (abs(ijk1(xdim)*v(xdim)) + abs(ijk1(ydim)*v(ydim)) + abs(ijk1(zdim)*v(zdim))) / sqrt(real(aijk1))
       mp0sq   = cg%u(pfl%idn,i,j,k)**2 * (v(xdim)**2 + v(ydim)**2 + v(zdim)**2)
-      mp = sqrt(mp0cost**2 + 2*(Ekin0 + en_SN09 * mfdv * 0.28 *frac) * (cg%u(pfl%idn,i,j,k)+ 10.0 *frac / cg%dvol * merge(1,0, inject_mass)) - mp0sq) - mp0cost
+      mp = sqrt(max(0.0, mp0cost**2 + 2*(Ekin0 + en_SN09 * mfdv * 0.28 *frac) * (cg%u(pfl%idn,i,j,k)+ 10.0 *frac / cg%dvol * merge(1,0, inject_mass)) - mp0sq)) - mp0cost
       padd = mp / sqrt(real(aijk1))
       call sf_inject(cg, pfl%ien, pfl%idn, i, j, k, is, ish, mfdv * en_SN09 * frac * 0.72, 0.0, dt, sne_dump)
       if (aijk1 .eq. 0) print *, '28% of SN energy injected as kinetic, 72% thermal'
@@ -1134,7 +1134,7 @@ contains
       v(:) = cg%u(pfl%imx:pfl%imz,i,j,k)/cg%u(pfl%idn,i,j,k) !- pset%pdata%vel
       mp0cost = cg%u(pfl%idn,i,j,k) * (abs(ijk1(xdim)*v(xdim)) + abs(ijk1(ydim)*v(ydim)) + abs(ijk1(zdim)*v(zdim))) / sqrt(real(aijk1))
       mp0sq   = cg%u(pfl%idn,i,j,k)**2 * (v(xdim)**2 + v(ydim)**2 + v(zdim)**2)
-      mp = sqrt(mp0cost**2 + 2*(Ekin0 + en_SN09 * mfdv *frac) * (cg%u(pfl%idn,i,j,k)+ 10.0 *frac / cg%dvol * merge(1,0, inject_mass)) - mp0sq) - mp0cost
+      mp = sqrt(max(0.0, mp0cost**2 + 2*(Ekin0 + en_SN09 * mfdv *frac) * (cg%u(pfl%idn,i,j,k)+ 10.0 *frac / cg%dvol * merge(1,0, inject_mass)) - mp0sq)) - mp0cost
       padd = mp / sqrt(real(aijk1))
    endif
    if (aijk1 .eq. 0) return

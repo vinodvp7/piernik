@@ -41,7 +41,68 @@ module cg_list_global
    implicit none
 
    private
-   public :: all_cg, all_cg_n
+   public :: all_cg, all_cg_n, ct_divguard_t
+
+
+   !>
+   !! \brief Saved HI closing faces of a face-centred magnetic field, for ct_divguard_t.
+   !<
+   type :: ctg_plane_t
+      real, allocatable, dimension(:,:) :: a
+   end type ctg_plane_t
+
+   type :: ctg_blk_t
+      type(ctg_plane_t), dimension(3) :: pl
+   end type ctg_blk_t
+
+   !>
+   !! \brief Stop a guardcell exchange from changing div(B) inside any block.
+   !!
+   !! Constrained transport only *preserves* div(B): div(curl) = 0 is an identity within a block,
+   !! for any single-valued edge EMF, so once a block is born divergence-free the curl can never
+   !! spoil it. div(B) can only grow if something writes cg%b outside the curl. A guardcell
+   !! exchange is such a writer, and there is exactly one face it touches that belongs to an
+   !! INTERIOR cell: because a face-centred component is stored at its *lower* face, the face
+   !! closing a block at the HI end lives at index ijkse(d,HI)+1, a guardcell, yet it is the upper
+   !! face of the last interior cell.
+   !!
+   !! For a same-level neighbour that is normally harmless -- both blocks compute that face from
+   !! the very same single-valued EMF, so the copy is a no-op. It stops being a no-op the moment a
+   !! NEW block appears next to an OLD one under dynamic refinement. The new block's B comes from
+   !! prolongation of the coarse level, the old block's from its own CT history, and although the
+   !! two agree in the mean (the coarse face is the exact average of the fine faces -- verified to
+   !! 16 digits on the Orszag-Tang reproducer) they differ face by face by the prolongation slope.
+   !! The exchange hands one block the other's value and that block's outermost cell layer picks up
+   !! a div(B) of order the slope, which CT then freezes for ever.
+   !!
+   !! keep_fc_faces and cg_level_connected::keep_stag_closing_faces cannot help: those guard
+   !! fine/coarse faces, and this is a same-level (BND_MPI) one. Protecting it would only move the
+   !! error into the other block, which is just as wrong.
+   !!
+   !! The cure is to accept the neighbour's value -- it owns that face, and the field must stay
+   !! single-valued -- and to cancel the divergence it brings with a correction that is itself
+   !! divergence-free, i.e. a curl. Let d(p,q) be the change the exchange made to the closing face.
+   !! We look for a correction to the two TRANSVERSE components in the outermost cell layer with
+   !!
+   !!    [u(p+1,q) - u(p,q)] + [v(p,q+1) - v(p,q)] = -d(p,q) / dl_d ,   u, v = dB_t / dl_t
+   !!
+   !! and u, v vanishing on the block's own boundary, so nothing shared with a neighbour moves.
+   !! Two cumulative sweeps solve it exactly: sweep p to cancel the in-row variation, then sweep q
+   !! to carry the row means away. Solvability needs sum(d) = 0 over the plane, which is the
+   !! statement that restriction and prolongation conserve the total flux through the face -- true
+   !! to round-off -- so the residual mean is removed first and is of order 1E-16.
+   !!
+   !! Away from a refinement event the exchange changes that face by nothing at all, so the whole
+   !! thing is gated on a relative threshold and normal runs are untouched.
+   !!
+   !! Each caller keeps its own saved state, so guards may safely nest.
+   !<
+   type :: ct_divguard_t
+      type(ctg_blk_t), allocatable, dimension(:), private :: sv
+   contains
+      procedure :: snap => ctg_snap   !< remember the HI closing faces before an exchange
+      procedure :: fix  => ctg_fix    !< afterwards, keep the new values but undo their divergence
+   end type ct_divguard_t
 
    !>
    !! \brief A list of grid containers that are supposed to have the same variables registered
@@ -71,6 +132,230 @@ module cg_list_global
    character(len=dsetnamelen), parameter :: all_cg_n = "all_cg" !< name of the all_cg list
 
 contains
+
+!> \brief Is constrained transport in charge of the magnetic field?
+
+   logical function ctg_active()
+
+      use constants, only: DIVB_CT, RTVD_SPLIT
+      use global,    only: divB_0_method, which_solver
+
+      implicit none
+
+      ctg_active = (divB_0_method == DIVB_CT) .and. (which_solver /= RTVD_SPLIT)
+
+   end function ctg_active
+
+!> \brief Pick the two directions transverse to d, with t1 guaranteed to be a real one.
+
+   subroutine ctg_transverse(d, t1, t2, ok)
+
+      use constants, only: ndims, I_ONE
+      use domain,    only: dom
+
+      implicit none
+
+      integer(kind=4), intent(in)  :: d
+      integer(kind=4), intent(out) :: t1, t2
+      logical,         intent(out) :: ok
+
+      integer(kind=4) :: tt
+
+      t1 = I_ONE + mod(d,         int(ndims, kind=4))
+      t2 = I_ONE + mod(d + I_ONE, int(ndims, kind=4))
+      if (.not. dom%has_dir(t1)) then
+         tt = t1 ; t1 = t2 ; t2 = tt
+      endif
+      ok = dom%has_dir(t1)   ! 1D: no transverse face to redistribute into
+
+   end subroutine ctg_transverse
+
+!> \brief Remember the HI closing faces of every block on the list, before an exchange touches them.
+
+   subroutine ctg_snap(this, first, ind)
+
+      use cg_list,   only: cg_list_element
+      use constants, only: xdim, ydim, zdim, LO, HI
+      use domain,    only: dom
+      use grid_cont, only: grid_container
+
+      implicit none
+
+      class(ct_divguard_t),                   intent(inout) :: this
+      type(cg_list_element), pointer,         intent(in)    :: first  !< head of the list to guard
+      integer(kind=4),                        intent(in)    :: ind    !< the magnetic field array being exchanged
+
+      type(cg_list_element), pointer :: cgl
+      type(grid_container),  pointer :: cg
+      integer(kind=4)                :: d, t1, t2
+      integer                        :: n, ncg, p, q, plo, phi, qlo, qhi, f
+      integer, dimension(3)          :: v
+      logical                        :: ok
+
+      if (.not. ctg_active()) return
+
+      ncg = 0
+      cgl => first
+      do while (associated(cgl))
+         ncg = ncg + 1
+         cgl => cgl%nxt
+      enddo
+      if (allocated(this%sv)) deallocate(this%sv)
+      allocate(this%sv(ncg))
+
+      n = 0
+      cgl => first
+      do while (associated(cgl))
+         cg => cgl%cg
+         n = n + 1
+         if (n > size(this%sv)) exit
+
+         do d = xdim, zdim
+            if (.not. dom%has_dir(d)) cycle
+            call ctg_transverse(d, t1, t2, ok)
+            if (.not. ok) cycle
+
+            f   = cg%ijkse(d,  HI) + 1
+            plo = cg%ijkse(t1, LO) ; phi = cg%ijkse(t1, HI)
+            qlo = cg%ijkse(t2, LO) ; qhi = cg%ijkse(t2, HI)
+
+            allocate(this%sv(n)%pl(d)%a(plo:phi, qlo:qhi))
+            v(d) = f
+            do q = qlo, qhi
+               v(t2) = q
+               do p = plo, phi
+                  v(t1) = p
+                  this%sv(n)%pl(d)%a(p, q) = cg%w(ind)%arr(d, v(xdim), v(ydim), v(zdim))
+               enddo
+            enddo
+         enddo
+
+         cgl => cgl%nxt
+      enddo
+
+   end subroutine ctg_snap
+
+!>
+!! \brief Keep whatever the exchange put on the closing faces, but cancel the divergence it brought.
+!!
+!! Must be called on the same list, in the same order, as the matching ctg_snap.
+!<
+
+   subroutine ctg_fix(this, first, ind)
+
+      use cg_list,   only: cg_list_element
+      use constants, only: xdim, ydim, zdim, LO, HI
+      use domain,    only: dom
+      use grid_cont, only: grid_container
+
+      implicit none
+
+      class(ct_divguard_t),                   intent(inout) :: this
+      type(cg_list_element), pointer,         intent(in)    :: first  !< head of the list to guard
+      integer(kind=4),                        intent(in)    :: ind    !< the magnetic field array being exchanged
+
+      !> below this fraction of the local field scale the exchange has not really changed anything
+      real, parameter :: ctg_eps = 1.e-11
+
+      type(cg_list_element), pointer :: cgl
+      type(grid_container),  pointer :: cg
+      integer(kind=4)                :: d, t1, t2
+      integer                        :: n, p, q, plo, phi, qlo, qhi, f, np, nq
+      integer, dimension(3)          :: v
+      real, allocatable, dimension(:,:) :: r, u, w
+      real, allocatable, dimension(:)   :: sq
+      real                           :: dmax, bsc
+      logical                        :: ok
+
+      if (.not. ctg_active()) return
+      if (.not. allocated(this%sv)) return
+
+      n = 0
+      cgl => first
+      do while (associated(cgl))
+         cg => cgl%cg
+         n = n + 1
+         if (n > size(this%sv)) exit
+
+         do d = xdim, zdim
+            if (.not. dom%has_dir(d)) cycle
+            call ctg_transverse(d, t1, t2, ok)
+            if (.not. ok) cycle
+
+            f   = cg%ijkse(d,  HI) + 1
+            plo = cg%ijkse(t1, LO) ; phi = cg%ijkse(t1, HI) ; np = phi - plo + 1
+            qlo = cg%ijkse(t2, LO) ; qhi = cg%ijkse(t2, HI) ; nq = qhi - qlo + 1
+
+            if (.not. allocated(this%sv(n)%pl(d)%a)) cycle
+            if (lbound(this%sv(n)%pl(d)%a, 1) /= plo .or. ubound(this%sv(n)%pl(d)%a, 1) /= phi .or. &
+                 lbound(this%sv(n)%pl(d)%a, 2) /= qlo .or. ubound(this%sv(n)%pl(d)%a, 2) /= qhi) cycle  ! list moved under us
+
+            allocate(r(plo:phi, qlo:qhi))
+            v(d) = f
+            dmax = 0.
+            do q = qlo, qhi
+               v(t2) = q
+               do p = plo, phi
+                  v(t1) = p
+                  r(p, q) = cg%w(ind)%arr(d, v(xdim), v(ydim), v(zdim)) - this%sv(n)%pl(d)%a(p, q)
+                  dmax = max(dmax, abs(r(p, q)))
+               enddo
+            enddo
+
+            bsc = maxval(abs(cg%w(ind)%arr))
+            if (dmax > ctg_eps * max(bsc, tiny(1.))) then
+
+               r = - r * cg%idl(d)            ! the div(B) the exchange injected, with the sign to cancel
+               r = r - sum(r) / real(np * nq) ! solvability; the removed mean is of order round-off
+
+               allocate(u(plo:phi+1, qlo:qhi), sq(qlo:qhi))
+               do q = qlo, qhi
+                  sq(q) = sum(r(:, q)) / real(np)
+                  u(plo, q) = 0.
+                  do p = plo, phi
+                     u(p+1, q) = u(p, q) + r(p, q) - sq(q)   ! closes at u(phi+1,q) = 0
+                  enddo
+               enddo
+
+               v(d) = cg%ijkse(d, HI)         ! the transverse faces of the outermost cell layer
+               do q = qlo, qhi
+                  v(t2) = q
+                  do p = plo + 1, phi         ! u vanishes at plo and phi+1: shared faces stay put
+                     v(t1) = p
+                     cg%w(ind)%arr(t1, v(xdim), v(ydim), v(zdim)) = cg%w(ind)%arr(t1, v(xdim), v(ydim), v(zdim)) + u(p, q) * cg%dl(t1)
+                  enddo
+               enddo
+
+               if (dom%has_dir(t2)) then
+                  allocate(w(plo:phi, qlo:qhi+1))
+                  do p = plo, phi
+                     w(p, qlo) = 0.
+                     do q = qlo, qhi
+                        w(p, q+1) = w(p, q) + sq(q)          ! closes at w(p,qhi+1) = 0
+                     enddo
+                  enddo
+                  do q = qlo + 1, qhi
+                     v(t2) = q
+                     do p = plo, phi
+                        v(t1) = p
+                        cg%w(ind)%arr(t2, v(xdim), v(ydim), v(zdim)) = cg%w(ind)%arr(t2, v(xdim), v(ydim), v(zdim)) + w(p, q) * cg%dl(t2)
+                     enddo
+                  enddo
+                  deallocate(w)
+               endif
+
+               deallocate(u, sq)
+            endif
+            deallocate(r)
+         enddo
+
+         cgl => cgl%nxt
+      enddo
+
+      deallocate(this%sv)
+
+   end subroutine ctg_fix
+
 
 !> \brief Initialize
 
@@ -187,9 +472,9 @@ contains
       endif
 
       if (present(dim4)) then
-         call wna%add2lst(na_var_4d(name, vit, rm, op, mg, dim4=d4))
+         call wna%add2lst(na_var_4d(name, vit, rm, op, mg, position=pos, dim4=d4))
       else
-         call qna%add2lst(na_var(name, vit, rm, op, mg))
+         call qna%add2lst(na_var(name, vit, rm, op, mg, position=pos))
       endif
 
       select case (op)
@@ -237,8 +522,9 @@ contains
       use constants,  only: cs_i2_n
 #endif /* ISO */
 #ifdef MAGNETIC
-      use constants,  only: mag_n, magh_n, ndims, AT_OUT_B, VAR_XFACE, VAR_YFACE, VAR_ZFACE, VAR_CENTER,&
-      &                     psi_n, psih_n, xbflx_n, ybflx_n, zbflx_n, psiflx_n
+      use constants,  only: mag_n, magh_n, ndims, AT_OUT_B, AT_IGNORE, VAR_XFACE, VAR_YFACE, VAR_ZFACE, VAR_CENTER,&
+      &                     VAR_XEDGE, VAR_YEDGE, VAR_ZEDGE, I_TWO, O_INJ, RTVD_SPLIT, &
+      &                     psi_n, psih_n, xbflx_n, ybflx_n, zbflx_n, psiflx_n, emf_n, emff_n, emfcc_n
       use global,     only: cc_mag, ord_mag_prolong
 #endif /* MAGNETIC */
 
@@ -249,6 +535,10 @@ contains
 #ifdef MAGNETIC
       integer(kind=4), dimension(ndims), parameter :: xyz_face = [ VAR_XFACE, VAR_YFACE, VAR_ZFACE ]
       integer(kind=4), dimension(ndims), parameter :: xyz_center = [ VAR_CENTER, VAR_CENTER, VAR_CENTER ]
+      integer(kind=4), dimension(ndims), parameter :: xyz_edge = [ VAR_XEDGE, VAR_YEDGE, VAR_ZEDGE ]
+      !> Staging slots are face-centred in their own sweep direction: (xdim,1:2), (ydim,1:2), (zdim,1:2)
+      integer(kind=4), dimension(I_TWO*ndims), parameter :: emff_pos = &
+           [ VAR_XFACE, VAR_XFACE, VAR_YFACE, VAR_YFACE, VAR_ZFACE, VAR_ZFACE ]
       integer(kind=4), dimension(ndims) :: pia
 
       pia = merge(xyz_center, xyz_face, cc_mag)
@@ -291,6 +581,21 @@ contains
       if (cc_mag) then
          call this%reg_var(psi_n,  vital = .true., ord_prolong = ord_mag_prolong, restart_mode = AT_OUT_B)  !! an array for div B cleaning
          call this%reg_var(psih_n, vital = .false.)  !! its copy for use in RK2
+      else if (which_solver /= RTVD_SPLIT) then
+         ! Constrained Transport for the Riemann solvers (ct_core). RTVD is left alone: it keeps
+         ! using its own scratch array in the legacy ct module.
+         ! Both arrays are recomputed from scratch every step, hence vital = .false. (they must NOT
+         ! be touched by the generic prolongation/restriction, which would be wrong for face- and
+         ! edge-centred data) and restart_mode = AT_IGNORE.
+         call this%reg_var(emf_n,  vital = .false., dim4 = ndims,        ord_prolong = O_INJ, restart_mode = AT_IGNORE, position = xyz_edge)
+         call this%reg_var(emff_n, vital = .false., dim4 = I_TWO*ndims,  ord_prolong = O_INJ, restart_mode = AT_IGNORE, position = emff_pos)
+         ! Cell-centred EMF (slots 1:3) and velocity (4:6) sampled at the START of the step.
+         ! The Gardiner & Stone correction is referenced to eps^n_cc, so (face EMF - cell-centred
+         ! EMF) must be a pure SPATIAL slope. cg%u is already at t^{n+1} by the time ct_advance_b
+         ! runs, so recomputing it there contaminates that difference with -dt*dE/dt: an
+         ! anti-dissipative forcing proportional to CFL, which drove a short-wavelength mode.
+         call this%reg_var(emfcc_n, vital = .false., dim4 = I_TWO*ndims, ord_prolong = O_INJ, restart_mode = AT_IGNORE)
+         call set_emf_names
       endif
 #endif /* MAGNETIC */
 
@@ -456,6 +761,35 @@ contains
          end select
 
       end subroutine set_magnetic_names
+
+!> \brief Name the components of the constrained-transport EMF arrays
+
+      subroutine set_emf_names
+
+         use constants,        only: xdim, ydim, zdim, emf_n, emff_n
+         use named_array_list, only: wna, na_var_4d
+
+         implicit none
+
+         select type (lst => wna%lst)
+            type is (na_var_4d)
+
+               call lst(wna%ind(emf_n))%set_compname(xdim, "emfx")
+               call lst(wna%ind(emf_n))%set_compname(ydim, "emfy")
+               call lst(wna%ind(emf_n))%set_compname(zdim, "emfz")
+
+               ! slot (d, t): face-centred EMF from the d-sweep. See ct_core::emfc for which
+               ! global component each slot carries.
+               call lst(wna%ind(emff_n))%set_compname(1_4, "emff_xz")
+               call lst(wna%ind(emff_n))%set_compname(2_4, "emff_xy")
+               call lst(wna%ind(emff_n))%set_compname(3_4, "emff_yz")
+               call lst(wna%ind(emff_n))%set_compname(4_4, "emff_yx")
+               call lst(wna%ind(emff_n))%set_compname(5_4, "emff_zx")
+               call lst(wna%ind(emff_n))%set_compname(6_4, "emff_zy")
+
+         end select
+
+      end subroutine set_emf_names
 #endif /* MAGNETIC */
 
    end subroutine register_fluids

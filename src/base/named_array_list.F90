@@ -51,6 +51,7 @@ module named_array_list
                                                                   !< AT_OUT_B write with ext. boundaries
       integer(kind=4)                            :: ord_prolong   !< Prolongation order for the variable
       logical                                    :: multigrid     !< .true. for variables that may exist below base level (e.g. work fields for multigrid solver)
+      integer(kind=4), allocatable, dimension(:) :: position      !< centering of each component: VAR_CENTER, VAR_[XYZ]FACE or VAR_[XYZ]EDGE
    contains
       procedure :: copy_base
    end type na_var_base
@@ -385,6 +386,10 @@ contains
       this%restart_mode = other%restart_mode
       this%ord_prolong = other%ord_prolong
       this%multigrid = other%multigrid
+      if (allocated(other%position)) then
+         allocate(this%position(size(other%position)))
+         this%position = other%position
+      endif
 
    end subroutine copy_base
 

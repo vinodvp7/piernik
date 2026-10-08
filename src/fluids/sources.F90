@@ -34,6 +34,31 @@ module sources
 
    private
    public :: external_sources, internal_sources, care_for_positives, init_sources, prepare_sources, timestep_sources
+   public :: floored_intener, ct_efix_account, ct_efix_report
+
+   !>
+   !! Accounting for the internal-energy floor that constrained transport re-applies after the
+   !! curl of the edge EMFs (ct::ct_fix_energy).  That floor can only ever *add* energy, exactly
+   !! as limit_minimal_density can only ever add mass, so -- just like mass_defect::local_magic_mass
+   !! -- the amount added has to be tracked, or a run can silently gain energy.  These are
+   !! per-rank, cumulative over the whole run; ct_efix_report reduces and prints them.
+   !<
+   real,            save :: ct_efix_de    = 0.   !< cumulative energy added by the CT e_int floor
+   integer(kind=8), save :: ct_efix_ncell = 0    !< cumulative number of cells the floor touched
+   integer(kind=8), save :: ct_efix_nneg  = 0    !< cumulative number of cells with a *genuinely* negative e_int
+   real,            save :: ct_efix_worst = 0.   !< most negative e_int / (e_kin + e_mag) seen so far
+   integer(kind=8), save :: ct_efix_shown = 0    !< value of ct_efix_ncell at the last report
+   integer(kind=8), save :: ct_efix_nshown = 0   !< value of ct_efix_nneg at the last report
+
+   !> How often ct_efix_report is allowed to do its global reduction.  The reduction is pure
+   !! diagnostics on the hot path, so it is batched instead of being done every single step; the
+   !! *detection* (global::ei_negative) rides on the reduction check_cfl_violation already does
+   !! every step, so nothing time-critical waits for this.
+   integer(kind=4), parameter :: ct_efix_report_every = 10
+
+#ifdef THERM
+   real, parameter :: therm_T_floor = 10.0  !< minimum temperature [K] enforced under THERM
+#endif /* THERM */
 
 contains
 
@@ -391,13 +416,141 @@ contains
 
    end subroutine limit_minimal_density
 
+!==========================================================================================
+!> \brief Is constrained transport in charge of B? Then B is stale until ct_core has run.
+!! Kept local to avoid a module cycle between sources and ct_core.
+
+   logical function ct_owns_b()
+
+      use constants, only: DIVB_CT, RTVD_SPLIT
+      use global,    only: divB_0_method, which_solver
+
+      implicit none
+
+      ct_owns_b = (divB_0_method == DIVB_CT) .and. (which_solver /= RTVD_SPLIT)
+
+   end function ct_owns_b
+
+!==========================================================================================
+!>
+!! \brief The internal-energy floor, in exactly one place.
+!!
+!! Two call sites must agree on what "floored" means:
+!!  * limit_minimal_intener, mid-sweep, against the provisional magnetic field, and
+!!  * ct::ct_fix_energy, after the curl of the edge EMFs, against the field CT actually produced.
+!!
+!! They used to implement the floor separately and had already drifted apart: without THERM both
+!! clamp to global::smallei, but *with* THERM limit_minimal_intener does not clamp to smallei at
+!! all -- it rewrites e_int from a minimum temperature of therm_T_floor, which in cgs is typically
+!! orders of magnitude above smallei -- while ct_fix_energy still clamped to smallei, so under CT
+!! cells could be left far below the temperature floor the rest of the code assumes is enforced.
+!! Both now call this function, so they cannot drift again.
+!!
+!! Returns e_int unchanged when nothing needs flooring, so the caller can simply test whether the
+!! result differs from its input.
+!<
+
+   elemental real function floored_intener(int_ener, dn, gam_1) result(ei)
+
+      use global, only: smallei, use_smallei
+#ifdef THERM
+      use units,  only: kboltz, mH
+#endif /* THERM */
+
+      implicit none
+
+      real, intent(in) :: int_ener  !< internal energy density to be floored
+      real, intent(in) :: dn        !< density of the same fluid in the same cell
+      real, intent(in) :: gam_1     !< gamma - 1 of that fluid
+
+      ei = int_ener
+      if (use_smallei) ei = max(ei, smallei)
+#ifdef THERM
+      ! T = e_int * (gamma-1) * mH / (dn * kboltz) < therm_T_floor  <=>  e_int < dn * therm_T_floor * kboltz / ((gamma-1) * mH),
+      ! so the temperature floor is applied as a straight comparison on e_int.  Doing it that way
+      ! rather than as the round trip e_int -> T -> e_int matters here: the round trip perturbs
+      ! *every* cell by a ulp or so, and ct::ct_fix_energy decides a cell was floored by testing
+      ! whether this function changed its value, which that noise would make true almost everywhere.
+      ei = max(ei, dn * therm_T_floor * kboltz / (gam_1 * mH))
+#endif /* THERM */
+
+   end function floored_intener
+
+!==========================================================================================
+!>
+!! \brief Accumulate what ct::ct_fix_energy just did.  Purely local; no communication.
+!<
+
+   subroutine ct_efix_account(de, ncell, nneg, worst)
+
+      implicit none
+
+      real,            intent(in) :: de     !< energy added by the floor in this call
+      integer(kind=8), intent(in) :: ncell  !< cells the floor touched
+      integer(kind=8), intent(in) :: nneg   !< cells whose e_int was genuinely negative
+      real,            intent(in) :: worst  !< smallest (most negative) e_int / (e_kin + e_mag)
+
+      ct_efix_de    = ct_efix_de    + de
+      ct_efix_ncell = ct_efix_ncell + ncell
+      ct_efix_nneg  = ct_efix_nneg  + nneg
+      ct_efix_worst = min(ct_efix_worst, worst)
+
+   end subroutine ct_efix_account
+
+!==========================================================================================
+!>
+!! \brief Reduce and report the CT internal-energy-floor accounting.
+!!
+!! Cumulative totals, not per-step events: the old per-step message was capped at ten warnings
+!! for the whole run and then floored silently forever, so the reported counts undercounted by an
+!! unknown amount.  Called from ct::ct_fix_energy on every block sweep but does its global
+!! reduction only every ct_efix_report_every steps -- nstep is identical on all ranks, so the
+!! collective stays matched -- and only says anything when the totals have grown.
+!<
+
+   subroutine ct_efix_report
+
+      use allreduce,  only: piernik_MPI_Allreduce
+      use constants,  only: pSUM, pMIN
+      use dataio_pub, only: msg, warn
+      use global,     only: nstep
+      use mpisetup,   only: master
+
+      implicit none
+
+      real            :: de, worst
+      integer(kind=8) :: ncell, nneg
+
+      if (mod(nstep, ct_efix_report_every) /= 0) return
+
+      de    = ct_efix_de
+      ncell = ct_efix_ncell
+      nneg  = ct_efix_nneg
+      worst = ct_efix_worst
+      call piernik_MPI_Allreduce(de,    pSUM)
+      call piernik_MPI_Allreduce(ncell, pSUM)
+      call piernik_MPI_Allreduce(nneg,  pSUM)
+      call piernik_MPI_Allreduce(worst, pMIN)
+
+      if (ncell > ct_efix_shown .or. nneg > ct_efix_nshown) then
+         write(msg, '(a,i0,a,es13.4,a,i0,a,es13.4)') &
+              "[sources:ct_efix_report] CT internal-energy floor applied in ", ncell, &
+              " cell-updates so far, adding ", de, " of energy; genuinely negative in ", nneg, &
+              ", worst e_int/(e_kin+e_mag) = ", worst
+         if (master) call warn(msg)
+         ct_efix_shown  = ncell
+         ct_efix_nshown = nneg
+      endif
+
+   end subroutine ct_efix_report
+
    subroutine limit_minimal_intener(n, bb, u1)
 
       use constants,  only: xdim, ydim, zdim, zero
       use fluidindex, only: flind, nmag
       use fluidtypes, only: component_fluid
       use func,       only: emag, ekin
-      use global,     only: smallei, use_smallei, ei_negative, disallow_negatives
+      use global,     only: ei_negative, disallow_negatives
 
       implicit none
 
@@ -411,6 +564,7 @@ contains
       class(component_fluid), pointer :: pfl
       integer                         :: ifl
 
+
       do ifl = 1, flind%fluids
          pfl => flind%all_fluids(ifl)%fl
          if (pfl%has_energy) then
@@ -422,9 +576,14 @@ contains
                int_ener = u1(:, pfl%ien) - kin_ener
             endif
 
-            if (disallow_negatives) ei_negative = ei_negative .or. (any(int_ener < zero))
-            if (use_smallei) int_ener = max(int_ener, smallei)
-
+            ! With constrained transport the magnetic field is not final at this point: the solver
+            ! leaves B alone and ct_core advances it by the curl of the edge EMFs after all sweeps.
+            ! Judging e_int = e_tot - e_kin - e_mag against this provisional field flags cells that
+            ! are healthy once the real field arrives, and the redo loop then simply runs the
+            ! timestep down to dt_min. ct_core::ct_fix_energy repeats the test -- and this flagging
+            ! -- against the field CT actually produced.
+            if (disallow_negatives .and. .not. ct_owns_b()) ei_negative = ei_negative .or. (any(int_ener < zero))
+            int_ener = floored_intener(int_ener, u1(:, pfl%idn), pfl%gam_1)
             u1(:, pfl%ien) = int_ener + kin_ener
             if (pfl%is_magnetized) u1(:, pfl%ien) = u1(:, pfl%ien) + mag_ener
          endif

@@ -47,6 +47,11 @@ contains
       use domain,             only: dom
       use fluidindex,         only: flind, iarr_all_dn, iarr_all_mx, iarr_all_swp
       use sources,            only: internal_sources, care_for_positives
+#ifdef MAGNETIC
+      use bfc_bcc,            only: interpolate_mag_field
+      use ct,                 only: ct_live_arrays
+      use global,             only: cc_mag
+#endif /* MAGNETIC */
       use diagnostics,        only: my_allocate, my_deallocate
 #ifdef MAGNETIC
       use constants,          only: magh_n
@@ -68,6 +73,7 @@ contains
       real, dimension(:,:), pointer                               :: pb
       real, dimension(:,:),allocatable                            :: b
       integer                                                     :: bhi
+      integer(kind=4)                                             :: iu_live, ib_live
       bhi = wna%ind(magh_n)
 #else /* !MAGNETIC */
       real, dimension(1, 1)                                       :: b_dummy ! Required by source routines in non-magnetic builds.
@@ -76,6 +82,10 @@ contains
 #endif /* !MAGNETIC */
 
       uhi = wna%ind(uh_n)
+#ifdef MAGNETIC
+      iu_live = wna%fi ; ib_live = wna%bi
+      if (.not. cc_mag) call ct_live_arrays(istep, iu_live, ib_live)
+#endif /* MAGNETIC */
       do ddim = xdim, zdim
          if (.not. dom%has_dir(ddim)) cycle
          call my_allocate(u, [cg%n_(ddim), size(cg%u, 1, kind=4)])
@@ -98,7 +108,16 @@ contains
                     endif
                   u(:, iarr_all_swp(ddim,:)) = transpose(pu(:,:))
 #ifdef MAGNETIC
-                  b(:, iarr_mag_swp(ddim,:)) = transpose(pb(:,:))
+                  if (cc_mag) then
+                     b(:, iarr_mag_swp(ddim,:)) = transpose(pb(:,:))
+                  else
+                     ! Constrained transport keeps B on faces. internal_sources and, above all,
+                     ! limit_minimal_intener inside care_for_positives need it at cell centres --
+                     ! feeding them the raw staggered values makes emag wrong, so the internal
+                     ! energy floor is applied against the wrong magnetic energy and the run dies
+                     ! with a spurious "negative internal energy".
+                     b(:, :) = interpolate_mag_field(ddim, cg, i1, i2, ib_live)
+                  endif
 #endif /* MAGNETIC */
                   u1 = u
                   vx = u(:, iarr_all_mx) / u(:, iarr_all_dn) ! this may also be useful for gravitational acceleration

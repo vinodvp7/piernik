@@ -144,6 +144,10 @@ contains
       use fargo,               only: make_fargosweep
       use global,              only: skip_sweep, use_fargo
       use hdc,                 only: glmdamping, eglm
+#ifdef MAGNETIC
+      use ct,                  only: ct_reset_emf, ct_advance_b, ct_active
+      use global,              only: dt
+#endif /* MAGNETIC */
       use ppp,                 only: ppp_main
       use sources,             only: external_sources
       use sweeps,              only: sweep
@@ -203,13 +207,33 @@ contains
       ! The following block of code may be treated as a 3D (M)HD solver.
       ! Don't put anything inside unless you're sure it should belong to the (M)HD solver.
       call ppp_main%start(sw3_label)
+#ifdef MAGNETIC
+      !
+      ! Constrained transport for the split Riemann solver: one curl per DIRECTION, so the y- and
+      ! z-sweeps see a B the x-sweep has already updated. Driving it once per whole step instead
+      ! left B a full timestep stale and cost a full order of temporal accuracy.
+      !
+      ! This is exact, not an approximation: the Balsara & Spicer edge average is a plain sum over
+      ! the contributing sweeps, so restricting the assembly to one sweep and curling after each
+      ! direction sums to precisely the same total as one curl at the end -- and every partial
+      ! update is still a full curl of a single-valued edge field, so div(B) is preserved exactly.
+      ! (Curling only the terms one sweep contributes to each B component would NOT be: that
+      ! leaves a second mixed difference in div(B). Only the full curl telescopes.)
+      !
+      ! The GS correction cannot be split this way; global.F90 forces Balsara on this path.
+      !
+      if (ct_active()) call ct_reset_emf
+#endif /* MAGNETIC */
       if (use_fargo) then
          if (.not.skip_sweep(zdim)) call make_adv_sweep(zdim, forward)
          if (.not.skip_sweep(xdim)) call make_adv_sweep(xdim, forward)
          if (.not.skip_sweep(ydim)) call make_fargosweep
+#ifdef MAGNETIC
+         if (ct_active()) call ct_advance_b(dt)   ! fargo: unchanged whole-step driving
+#endif /* MAGNETIC */
       else
          do s = sFRST, sLAST, sCHNG
-            if (.not.skip_sweep(s)) call make_adv_sweep(s, forward)
+            if (.not.skip_sweep(s)) call make_adv_sweep(s, forward)   ! CT is curled inside, per stage
          enddo
       endif
       call ppp_main%stop(sw3_label)
@@ -265,7 +289,10 @@ contains
       if (dom%has_dir(dir)) then
          if (.not. forward) then
 #ifdef MAGNETIC
-            if (divB_0_method == DIVB_CT) call magfield(dir)
+            ! Only RTVD builds its EMF here (ct::tvdb, an upwind advection of v*B that is unrelated
+            ! to the Riemann fluxes and leaves the outer two guardcell layers of the EMF undefined).
+            ! The Riemann solvers get CT from ct_core, driven once per make_3sweeps.
+            if ((divB_0_method == DIVB_CT) .and. (which_solver == RTVD_SPLIT)) call magfield(dir)
 #endif /* MAGNETIC */
          endif
 
@@ -273,7 +300,7 @@ contains
 
          if (forward) then
 #ifdef MAGNETIC
-            if (divB_0_method == DIVB_CT) call magfield(dir)
+            if ((divB_0_method == DIVB_CT) .and. (which_solver == RTVD_SPLIT)) call magfield(dir)
 #endif /* MAGNETIC */
          endif
       else

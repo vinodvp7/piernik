@@ -102,6 +102,9 @@ contains
       call glmdamping(.true.)
       t = t + dt
 
+      ! Constrained transport is driven per RK stage from inside unsplit_sweep, so that B is
+      ! advanced on the same time levels as the fluid. Doing it once per step instead left the
+      ! solver looking at B^n in both stages and cost a full order of temporal accuracy.
       call unsplit_sweep
 #ifdef GRAV
       need_update = .true.

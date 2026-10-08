@@ -113,6 +113,9 @@ contains
          endif
       endif
 
+      ! Under CT the solver never advances B -- ct_advance_b does, and its guardcells are already
+      ! the ones ct_core left. Refreshing them here would overwrite the fine side of a fine/coarse
+      ! interface with prolonged coarse values, which the next curl would then freeze in.
       if (divB_0_method == DIVB_HDC) then
 #ifdef MAGNETIC
          if (present(cdim)) then
@@ -140,7 +143,11 @@ contains
            &                      RTVD_SPLIT, RIEMANN_SPLIT, PPP_CG
       use dataio_pub,       only: die
       use fc_fluxes,        only: initiate_flx_recv, recv_cg_finebnd, send_cg_coarsebnd
-      use global,           only: integration_order, use_fargo, which_solver
+      use global,           only: integration_order, use_fargo, which_solver, dt
+#ifdef MAGNETIC
+      use constants,        only: rk_coef
+      use ct,               only: ct_advance_b, ct_active
+#endif /* MAGNETIC */
       use grid_cont,        only: grid_container
       use MPIF,             only: MPI_STATUS_IGNORE
       use MPIFUN,           only: MPI_Waitany
@@ -286,6 +293,17 @@ contains
          enddo
 
          call req%waitall("sweeps")
+
+#ifdef MAGNETIC
+         !
+         ! Constrained transport, split path: curl THIS direction's staged EMFs now, on this RK
+         ! stage's own time level. Restricting the Balsara assembly to one sweep is exact (see
+         ! fluidupdate::make_3sweeps), and doing it per stage as well as per direction is what
+         ! removes the last of the O(dt) staleness -- B is then advanced on exactly the same time
+         ! levels as the fluid, as the GLM path already does via apply_flux.
+         !
+         if (ct_active()) call ct_advance_b(rk_coef(istep) * dt, istep, only_dir = cdim)
+#endif /* MAGNETIC */
 
          call update_boundaries(cdim, istep)
       enddo

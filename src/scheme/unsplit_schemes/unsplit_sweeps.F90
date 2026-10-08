@@ -50,7 +50,11 @@ contains
       use constants,         only: first_stage, last_stage, INVALID, PPP_CG, RIEMANN_UNSPLIT
       use dataio_pub,        only: die
       use fc_fluxes,         only: initiate_flx_recv, recv_cg_finebnd, send_cg_coarsebnd
-      use global,            only: integration_order, which_solver
+      use global,            only: integration_order, which_solver, dt
+#ifdef MAGNETIC
+      use constants,         only: rk_coef
+      use ct,                only: ct_reset_emf, ct_advance_b, ct_active
+#endif /* MAGNETIC */
       use grid_cont,         only: grid_container
       use MPIF,              only: MPI_STATUS_IGNORE
       use MPIFUN,            only: MPI_Waitany
@@ -90,6 +94,12 @@ contains
 
       ! This is the loop over Runge-Kutta stages
       do istep = first_stage(integration_order), last_stage(integration_order)
+
+#ifdef MAGNETIC
+         ! Stage the EMFs for THIS stage only; ct_advance_b below curls them onto the stage's
+         ! own time level (magh for the non-last stage, cg%b for the last).
+         if (ct_active()) call ct_reset_emf(istep)
+#endif /* MAGNETIC */
 
          call initiate_flx_recv(req, INVALID)
          n_recv = req%n
@@ -144,6 +154,10 @@ contains
          enddo
 
          call req%waitall("sweeps")
+
+#ifdef MAGNETIC
+         if (ct_active()) call ct_advance_b(rk_coef(istep) * dt, istep)
+#endif /* MAGNETIC */
 
          call update_boundaries(istep = istep)
       enddo

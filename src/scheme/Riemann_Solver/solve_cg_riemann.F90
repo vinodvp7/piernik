@@ -119,6 +119,9 @@ contains
       use bfc_bcc,          only: interpolate_mag_field
       use constants,        only: pdims, xdim, zdim, ORTHO1, ORTHO2, LO, HI, psi_n, uh_n, magh_n, psih_n, INVALID, &
            &                      rk_coef, psidim, cs_i2_n, first_stage
+#ifdef MAGNETIC
+      use ct,               only: ct_store_face_emf, ct_live_arrays
+#endif /* MAGNETIC */
       use fluidindex,       only: flind, iarr_all_dn, iarr_all_mx, iarr_all_swp, iarr_mag_swp
       use fluxtypes,        only: ext_fluxes
       use global,           only: dt, cc_mag, integration_order
@@ -145,9 +148,23 @@ contains
       real, dimension(size(u,1), flind%fluids), target :: vx
       type(ext_fluxes)                           :: eflx
       integer                                    :: i_cs_iso2
+      real, dimension(cg%n_(ddim)-1, xdim:zdim)  :: mag_flx  !< magnetic fluxes, staged for constrained transport
+      logical                                    :: do_ct
+      integer(kind=4)                            :: iu_live, ib_live
+      real, dimension(:), pointer                :: pbn
 
       uhi = wna%ind(uh_n)
       bhi = wna%ind(magh_n)
+
+      ! With CT the solver does not own the magnetic field: it only supplies the EMFs.
+      do_ct = .false.
+      ib_live = wna%bi
+#ifdef MAGNETIC
+      do_ct = .not. cc_mag
+      ! Under CT the solver must see the field this RK stage evaluates fluxes from: cg%b at the
+      ! first stage, magh at the second (the non-last stage curls into magh).
+      if (do_ct) call ct_live_arrays(istep, iu_live, ib_live)
+#endif /* MAGNETIC */
 
       psii  = INVALID
       psihi = INVALID
@@ -188,8 +205,14 @@ contains
             else
                ! For CT, we do not call magfield, and transverse magnetic fluxes are discarded after the first stage.
                ! The same applies to RTVD + CT. Staggered grids may require magnetic boundary exchange at corners every stage.
-               b0(:, xdim:zdim) = interpolate_mag_field(ddim, cg, i1, i2, bhi)
-               b(:, :) = interpolate_mag_field(ddim, cg, i1, i2, wna%bi)
+               b(:, :) = interpolate_mag_field(ddim, cg, i1, i2, ib_live)
+               ! With CT the solver never advances B, so the half-step field is identical to the
+               ! current one and we can reuse it. Interpolating magh here instead would sample the
+               ! neighbouring pencils (i1+1, i2+1) that the pencil-by-pencil "pb0 = pb" copy above
+               ! has not reached yet -- and never reaches at all for guardcell pencils, since this
+               ! loop only covers interior transverse indices. That read of uninitialised memory
+               ! made RIEMANN_SPLIT + divB_0="CT" blow up on the first y-sweep.
+               b0(:, xdim:zdim) = b(:, :)
             endif
 
             if (i_cs_iso2 > 0) cs2 => cg%q(i_cs_iso2)%get_sweep(ddim, i1, i2)
@@ -206,11 +229,24 @@ contains
                b0(:, psidim) = ppsi0(:)
                b1(:, psidim) = ppsi(:)
 
-               call solve(u0, b0, u1, b1, cs2, rk_coef(istep) * dt/cg%dl(ddim), eflx)
+               if (do_ct) then
+                  call solve(u0, b0, u1, b1, cs2, rk_coef(istep) * dt/cg%dl(ddim), eflx, mag_flx)
+               else
+                  call solve(u0, b0, u1, b1, cs2, rk_coef(istep) * dt/cg%dl(ddim), eflx)
+               endif
 
             else
-               call solve(u0, b0(:, xdim:zdim), u1, b1(:, xdim:zdim), cs2, rk_coef(istep) * dt/cg%dl(ddim), eflx)
+               if (do_ct) then
+                  pbn => cg%w(ib_live)%get_sweep(ddim, ddim, i1, i2)  ! face-centred normal component
+                  call solve(u0, b0(:, xdim:zdim), u1, b1(:, xdim:zdim), cs2, rk_coef(istep) * dt/cg%dl(ddim), eflx, mag_flx, pbn)
+               else
+                  call solve(u0, b0(:, xdim:zdim), u1, b1(:, xdim:zdim), cs2, rk_coef(istep) * dt/cg%dl(ddim), eflx)
+               endif
             endif
+
+#ifdef MAGNETIC
+            if (do_ct) call ct_store_face_emf(cg, ddim, i1, i2, mag_flx)
+#endif /* MAGNETIC */
 
             call internal_sources(size(u, 1, kind=4), u, u1, b, cg, istep, ddim, i1, i2, rk_coef(istep) * dt, vx)
             ! See the results of Jeans test with RTVD and RIEMANN for estimate of accuracy.
@@ -311,7 +347,7 @@ contains
 !! We don't calculate n-th interface because it is as incomplete as 0-th interface
 !<
 
-   subroutine solve(u0, b0, u1, b1, cs2, dtodx, eflx)
+   subroutine solve(u0, b0, u1, b1, cs2, dtodx, eflx, mag_flx_out, bn)
 
       use constants,      only: DIVB_HDC, xdim, ydim, zdim
       use fluxtypes,      only: ext_fluxes, apply_fluid_ext_fluxes, apply_magnetic_ext_fluxes
@@ -328,6 +364,8 @@ contains
       real, dimension(:), pointer, intent(in)    :: cs2    !< square of local isothermal sound speed
       real,                        intent(in)    :: dtodx  !< timestep advance: RK-factor * timestep / cell length
       type(ext_fluxes),            intent(inout) :: eflx   !< external fluxes
+      real, dimension(:,:), optional, intent(out) :: mag_flx_out  !< magnetic fluxes, handed to constrained transport
+      real, dimension(:),   optional, intent(in)  :: bn           !< face-centred normal B, for constrained transport
 
       ! left and right states at interfaces 1 .. n-1
       real, dimension(size(u0, 1)-1, size(u0, 2)), target :: ql, qr
@@ -344,6 +382,17 @@ contains
       mag_flx = huge(1.)
 
       call interpol(u1, ql, qr, b1, bl, br)
+
+      ! Under constrained transport the normal component of B at an interface is *known*: it is the
+      ! face-centred value, and it is single-valued there by construction. Letting interpol
+      ! reconstruct it independently from the left and right hands HLLD a discontinuous normal
+      ! field, which is unphysical -- the jump feeds straight into the wave speeds and star states.
+      ! bn is the face pencil, and bn(m+1) is the interface between sweep cells m and m+1.
+      if (present(bn)) then
+         bl(:, xdim) = bn(2:)
+         br(:, xdim) = bn(2:)
+      endif
+
       call riemann_wrap(ql, qr, bl, br, cs2, flx, mag_flx) ! Now we advance the left and right states by a timestep.
 
       call apply_fluid_ext_fluxes(eflx, flx)
@@ -351,6 +400,9 @@ contains
       if (divB_0_method == DIVB_HDC) then
          call apply_magnetic_ext_fluxes(eflx, mag_flx)
       endif
+
+      ! mag_flx(m) is the interface between sweep cells m and m+1, i.e. face-array index m+1
+      if (present(mag_flx_out)) mag_flx_out(:, :) = mag_flx(:, xdim:zdim)
 
       associate (nx => size(u0, in))
          u1(2:nx-1, :) = u0(2:nx-1, :) + dtodx * (flx(:nx-2, :) - flx(2:, :))

@@ -39,11 +39,14 @@ program piernik
         &                       fplen, stdout, I_ONE, CHK, FINAL_DUMP, cbuff_len, PPP_IO, PPP_MPI, pLOR, V_LOG, V_INFO
    use dataio,            only: write_data, user_msg_handler, check_log, check_tsl, dump, cleanup_dataio
    use dataio_pub,        only: nend, tend, msg, print_char_line, printinfo, warn, die, code_progress, nstep_start
-   use div_B,             only: print_divB_norm
+   use div_B,             only: print_divB_norm, print_divB_ct
    use finalizepiernik,   only: cleanup_piernik
    use fluidindex,        only: flind
    use fluidupdate,       only: fluid_update
    use global,            only: t, nstep, dt, dtm, print_divB, tstep_attempt
+#ifdef MAGNETIC
+   use ct,                only: ct_active
+#endif /* MAGNETIC */
    use initpiernik,       only: init_piernik
    use lb_helpers,        only: costs_maintenance
    use list_of_cg_lists,  only: all_lists
@@ -118,7 +121,12 @@ program piernik
    if (master) call print_char_line("=")
 
    call print_progress(nstep)
-   if (print_divB > 0) call print_divB_norm
+   if (print_divB > 0) then
+      call print_divB_norm
+#ifdef MAGNETIC
+      if (ct_active()) call print_divB_ct
+#endif /* MAGNETIC */
+   endif
 
    rs = repeat_step()  ! enforce function call
    do while (t < tend .and. nstep < nend .and. .not.(end_sim) .or. rs) ! main loop
@@ -192,7 +200,12 @@ program piernik
          endif
 
          if (print_divB > 0) then
-            if (mod(nstep, print_divB) == 0) call print_divB_norm
+            if (mod(nstep, print_divB) == 0) then
+               call print_divB_norm
+#ifdef MAGNETIC
+               if (ct_active()) call print_divB_ct
+#endif /* MAGNETIC */
+            endif
          endif
       endif
 
@@ -212,7 +225,12 @@ program piernik
    enddo ! main loop
 
    if (print_divB > 0) then
-      if (mod(nstep, print_divB) /= 0) call print_divB_norm ! print the norm at the end, if it wasn't printed inside the loop above
+      if (mod(nstep, print_divB) /= 0) then ! print the norm at the end, if it wasn't printed inside the loop above
+         call print_divB_norm
+#ifdef MAGNETIC
+         if (ct_active()) call print_divB_ct
+#endif /* MAGNETIC */
+      endif
    endif
 
    code_progress = PIERNIK_FINISHED

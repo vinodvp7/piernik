@@ -357,7 +357,7 @@ contains
       use inittracer,       only: iarr_trc, ntracers
       use mpisetup,         only: proc
 #ifdef MAGNETIC
-      use constants,        only: xdim, ydim, zdim, half, two, I_TWO, I_FOUR, I_SIX, I_EIGHT
+      use constants,        only: xdim, ydim, zdim, ndims, half, two, I_TWO, I_FOUR, I_SIX, I_EIGHT
       use div_B,            only: divB_c_IO
       use domain,           only: dom
       use global,           only: cc_mag
@@ -383,6 +383,9 @@ contains
 
       class(component_fluid), pointer                :: fl_dni, fl_mach
       integer(kind=4)                                :: i_xyz
+#ifdef MAGNETIC
+      integer(kind=4), dimension(ndims)              :: bsh
+#endif /* MAGNETIC */
       integer                                        :: ii, jj, kk
       integer                                        :: i
 #ifdef COSM_RAYS
@@ -587,7 +590,21 @@ contains
 #endif /* !ISO */
 #ifdef MAGNETIC
          case ("magx", "magy", "magz")
-            tab(:,:,:) = cg%b(xdim + i_xyz, RNG) ! beware: these are "raw", face-centered. Use them with care when you process plotfiles
+            ! Always write a cell-centred field, so plotfiles mean the same thing whether the run
+            ! used GLM (already cell-centred) or constrained transport (staggered). With CT the
+            ! component normal to its own face is averaged with the face one cell up.
+            ! Use "magxf"/"magyf"/"magzf" if you really want the raw staggered values.
+            if (cc_mag) then
+               tab(:,:,:) = cg%b(xdim + i_xyz, RNG)
+            else
+               bsh = 0 ; bsh(xdim + i_xyz) = dom%D_(xdim + i_xyz)
+               tab(:,:,:) = half * (cg%b(xdim + i_xyz, RNG) + &
+                    &               cg%b(xdim + i_xyz, cg%is + bsh(xdim) : cg%ie + bsh(xdim), &
+                    &                                  cg%js + bsh(ydim) : cg%je + bsh(ydim), &
+                    &                                  cg%ks + bsh(zdim) : cg%ke + bsh(zdim)))
+            endif
+         case ("magxf", "magyf", "magzf")
+            tab(:,:,:) = cg%b(xdim + i_xyz, RNG) ! raw, face-centered when divB_0 = "CT"
          case ("magB")
             tab(:,:,:) = sqrt(two * emag_c)
          case ("magdir")

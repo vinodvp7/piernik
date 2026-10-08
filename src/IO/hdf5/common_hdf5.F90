@@ -186,6 +186,17 @@ contains
             case ('temp')
                if (has_neu) call append_var('temn')
                if (has_ion) call append_var('temi')
+            case ("divbc", "divbc4", "divbc6", "divbc8")
+               ! explicit cell-centred stencil
+               if (.not. cc_mag) call warn("[common_hdf5:init_hdf5] '" // trim(vars(i)) // "' is the " // &
+                    "CELL-centred divergence stencil, but with divB_0 = 'CT' the field is face-centred, so it " // &
+                    "measures the wrong thing and will not be at round-off. Use 'divb' (it picks the right one).")
+               call append_var(vars(i))
+            case ("divbf", "divbf4", "divbf6", "divbf8")
+               ! explicit face-centred stencil
+               if (cc_mag) call warn("[common_hdf5:init_hdf5] '" // trim(vars(i)) // "' is the FACE-centred " // &
+                    "divergence stencil, but the field is cell-centred here. Use 'divb' (it picks the right one).")
+               call append_var(vars(i))
             case ("divb", "divB")
                if (cc_mag) then
                   call append_var("divbc")

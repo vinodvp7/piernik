@@ -61,6 +61,7 @@ module div_B
 !! For Ubuntu one may need maxima-share package
 
    integer(kind=4), parameter :: max_c = 4
+   real, save :: bscale0 = -1.   !< |B|max at the first diagnostic call, used to normalise for good
    real, dimension(max_c, max_c), parameter :: coeff_c = reshape( [ [ 1./2.,  0.,     0.,       0.      ], &
         &                                                           [ 2./3., -1./12., 0.,       0.      ], &
         &                                                           [ 3./4., -3./20., 1./60.,   0.      ], &
@@ -71,7 +72,7 @@ module div_B
         &                                                           [ 1225./1024., -245./3072., 49./5120., -5./7168. ] ], [max_c, max_c] )
 
    private
-   public :: divB, idivB, divB_c_IO, print_divB_norm
+   public :: divB, idivB, divB_c_IO, print_divB_norm, print_divB_ct
 
 contains
 
@@ -105,6 +106,149 @@ contains
       if (master) call printinfo(msg, V_INFO)
 
    end subroutine print_divB_norm
+
+!>
+!! \brief Constrained-transport oracle: max of the dimensionless |div(B)| dx / |B|.
+!!
+!! Reported per level, and split by where the cell sits, because each category fails for a
+!! different reason: the block interior tests the EMF assembly, cells touching a block boundary
+!! test the same-level EMF exchange, cells at a fine/coarse interface test the EMF restriction,
+!! and cells at an external boundary test bnd_emf / bnd_b.
+!!
+!! CT *preserves* div(B) rather than zeroing it, so the quantity to watch is the change of this
+!! number from step to step, not its absolute value. With a div-free initial condition it should
+!! sit at round-off forever.
+!<
+
+   subroutine print_divB_ct
+
+      use cg_leaves,  only: leaves
+      use cg_list,    only: cg_list_element
+      use constants,  only: I_TWO, xdim, ydim, zdim, LO, HI, V_INFO, BND_FC, BND_MPI_FC, BND_MPI, BND_PER
+      use dataio_pub, only: printinfo, msg
+      use domain,     only: dom
+      use grid_cont,  only: grid_container
+      use allreduce,  only: piernik_MPI_Allreduce
+      use mpisetup,   only: master
+      use constants,  only: pMAX
+
+      implicit none
+
+      type(cg_list_element), pointer :: cgl
+      type(grid_container),  pointer :: cg
+      integer                        :: i, j, k
+      integer(kind=4)                :: d, lh
+      real                           :: db, r, bscale
+      real, dimension(4)             :: mx   !< interior, block bnd, f/c bnd, external bnd
+      integer, parameter             :: maxlev = 6
+      real, dimension(0:maxlev)      :: mlev
+      integer                        :: il
+      logical                        :: at_blk, at_fc, at_ext
+      integer, dimension(3)          :: loc
+
+#ifndef MAGNETIC
+      return
+#endif /* !MAGNETIC */
+
+      call divB(I_TWO)   ! the 2nd order face stencil is the one CT makes exact
+      mx = 0.
+      loc = 0
+      mlev = 0.
+
+      ! Normalise by a single global field scale. Dividing by the local |B| would be dominated by
+      ! cells where the field is essentially zero (everything outside an advected field loop),
+      ! which says nothing about whether CT is working.
+      bscale = 0.
+      cgl => leaves%first
+      do while (associated(cgl))
+         bscale = max(bscale, maxval(abs(cgl%cg%b)))
+         cgl => cgl%nxt
+      enddo
+      call piernik_MPI_Allreduce(bscale, pMAX)
+      if (bscale <= tiny(1.)) return
+      ! Freeze the normalisation at its initial value. CT conserves div(B) cell by cell, so the
+      ! reported number must be *constant*; dividing by a |B| that drifts as the field evolves
+      ! would make a perfectly conserved div(B) look like it was decaying.
+      if (bscale0 <= 0.) bscale0 = bscale
+      bscale = bscale0
+
+      cgl => leaves%first
+      do while (associated(cgl))
+         cg => cgl%cg
+         do k = cg%ks, cg%ke
+            do j = cg%js, cg%je
+               do i = cg%is, cg%ie
+                  db = abs(cg%q(idivB)%arr(i,j,k))
+                  r = db * minval(cg%dl(:), mask=(cg%dl(:) > 0.)) / bscale
+
+                  at_blk = .false. ; at_fc = .false. ; at_ext = .false.
+                  do d = xdim, zdim
+                     if (.not. dom%has_dir(d)) cycle   ! a degenerate direction has no boundary layer
+                     do lh = LO, HI
+                        if (.not. touches(cg, d, lh, i, j, k)) cycle
+                        select case (cg%bnd(d, lh))
+                           case (BND_FC, BND_MPI_FC)
+                              at_fc = .true.
+                           case (BND_MPI, BND_PER)
+                              at_blk = .true.
+                           case default
+                              at_ext = .true.
+                        end select
+                     enddo
+                  enddo
+
+                  il = min(maxlev, max(0, int(cg%l%id)))
+                  mlev(il) = max(mlev(il), r)
+
+                  if (at_fc) then
+                     mx(3) = max(mx(3), r)
+                  else if (at_ext) then
+                     mx(4) = max(mx(4), r)
+                  else if (at_blk) then
+                     mx(2) = max(mx(2), r)
+                  else
+                     if (r > mx(1)) loc = [i, j, k]
+                     mx(1) = max(mx(1), r)
+                  endif
+               enddo
+            enddo
+         enddo
+         cgl => cgl%nxt
+      enddo
+
+      call piernik_MPI_Allreduce(mx, pMAX)
+      call piernik_MPI_Allreduce(mlev, pMAX)
+
+      write(msg,'(a,4(a,es9.2))') "[divB_ct] max |divB| dx/|B|", &
+           "  interior=", mx(1), "  block=", mx(2), "  f/c=", mx(3), "  ext=", mx(4)
+      write(msg(len_trim(msg)+1:),'(a,es9.2)') "  |B|max=", bscale
+      write(msg(len_trim(msg)+1:),'(a)') "  per level:"
+      do il = 0, maxlev
+         if (mlev(il) > 0.) write(msg(len_trim(msg)+1:),'(a,i0,a,es9.2)') " L", il, "=", mlev(il)
+      enddo
+      if (master) call printinfo(msg, V_INFO)
+
+   end subroutine print_divB_ct
+
+!> \brief Is cell (i,j,k) in the outermost interior layer of cg on side lh of direction d?
+
+   logical function touches(cg, d, lh, i, j, k)
+
+      use constants, only: xdim, zdim
+      use grid_cont, only: grid_container
+
+      implicit none
+
+      type(grid_container), pointer, intent(in) :: cg
+      integer(kind=4),               intent(in) :: d, lh
+      integer,                       intent(in) :: i, j, k
+
+      integer, dimension(xdim:zdim) :: v
+
+      v = [i, j, k]
+      touches = (v(d) == cg%ijkse(d, lh))
+
+   end function touches
 
 !>
 !! \brief Allocate extra space for divB

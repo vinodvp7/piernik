@@ -42,6 +42,7 @@ module grid_cont_prolong
 
       real, dimension(:,:,:), allocatable :: prolong_, prolong_x, prolong_xy !< auxiliary prolongation arrays for intermediate results
       real, dimension(:,:,:), pointer     :: prolong_xyz                     !< auxiliary prolongation array for final result.
+      real, dimension(:,:,:,:), allocatable :: prolong_m                     !< coarse-level face-centred B scratch (component, i, j, k), allocated on demand by prolong_m_alloc
       ! OPT: Valgrind indicates that operations on array allocated on pointer might be slower than on ordinary arrays due to poorer L2 cache utilization
 
    contains
@@ -49,6 +50,8 @@ module grid_cont_prolong
       procedure :: init_gc_prolong  !< Initialization
       procedure :: cleanup_prolong  !< Deallocate all internals
       procedure :: prolong          !< perform prolongation of the data stored in this%prolong_
+      procedure :: prolong_m_alloc  !< allocate this%prolong_m on demand (coarse staggered B scratch)
+      procedure :: prolong_mag      !< divergence-free prolongation of a face-centred B from this%prolong_m
 
    end type grid_container_prolong_t
 
@@ -98,6 +101,7 @@ contains
       class(grid_container_prolong_t), intent(inout) :: this !< object invoking type-bound procedure
 
       ! arrays not handled through named_array feature
+      if (allocated(this%prolong_m))    deallocate(this%prolong_m)
       if (associated(this%prolong_xyz)) deallocate(this%prolong_xyz)
       if (allocated(this%prolong_xy))   deallocate(this%prolong_xy)
       if (allocated(this%prolong_x))    deallocate(this%prolong_x)
@@ -451,5 +455,355 @@ contains
       ! Alternatively, an FFT convolution may be employed after injection. No idea at what stencil size the FFT is faster. It is finite size for sure :-)
 
    end subroutine prolong
+
+!>
+!! \brief Allocate the coarse staggered-B scratch array on demand.
+!!
+!! It has the same index range as this%prolong_ (the coarsened block plus dom%nb coarse
+!! guardcells) but carries all three field components, because a divergence-free
+!! reconstruction cannot be done one component at a time.
+!<
+
+   subroutine prolong_m_alloc(this)
+
+      use constants, only: xdim, ydim, zdim, dirtyH1
+
+      implicit none
+
+      class(grid_container_prolong_t), intent(inout) :: this !< object invoking type-bound procedure
+
+      if (allocated(this%prolong_m)) return
+
+      allocate(this%prolong_m(xdim:zdim, &
+           &                  lbound(this%prolong_, dim=1):ubound(this%prolong_, dim=1), &
+           &                  lbound(this%prolong_, dim=2):ubound(this%prolong_, dim=2), &
+           &                  lbound(this%prolong_, dim=3):ubound(this%prolong_, dim=3)))
+      this%prolong_m = 0.795*dirtyH1
+
+   end subroutine prolong_m_alloc
+
+!>
+!! \brief Divergence-free prolongation of a face-centred (staggered) magnetic field.
+!!
+!! \details The coarse field must already be present in this%prolong_m(:, i, j, k), covering the
+!! coarse cell range cse(:,:) extended by at least one coarse cell in every existing direction
+!! (the transverse slopes and the face closing the last cell both need that extra layer).
+!! Only fine faces whose index lies inside fclip(:,:) are written.
+!!
+!! Conventions (verified against div_B::sixpoint and cg_level_connected::restrict_1var):
+!!  * component d at index i sits at the LOWER face of cell i, i.e. at physical position i-1/2,
+!!    so div(B)(i) = (B_x(i+1) - B_x(i))/dx + ... ;
+!!  * a coarse index c maps to fine index refinement_factor*c (grid_helpers::c2f_o), hence the
+!!    coarse d-face of cell c coincides with the fine d-face at index 2c;
+!!  * a degenerate direction contributes nothing: it has a single sub-index, no interior face and
+!!    no term in the divergence. Component B_d of a degenerate direction d is then simply a
+!!    cell-centred scalar and is reconstructed by the same transverse-slope formula.
+!!
+!! The two steps:
+!!
+!! 1. SKIN faces -- the fine faces lying ON a coarse face. Writing H for the coarse cell size and
+!!    h = H/2 for the fine one, the fine sub-face centres sit at +-H/4 from the coarse face centre,
+!!    so for each transverse direction e
+!!
+!!       B_d(fine) = B_d(coarse face) + sum_e (t_e - 1/2)/2 * S_e ,   t_e in {0,1}
+!!
+!!    with S_e the monotonised-central limited difference of B_d ALONG e taken at fixed face index
+!!    in d, i.e. from the coarse faces (c_d, c_e-1), (c_d, c_e), (c_d, c_e+1):
+!!
+!!       S_e = minmod( 2*(B(c_e)-B(c_e-1)), 2*(B(c_e+1)-B(c_e)), (B(c_e+1)-B(c_e-1))/2 ).
+!!
+!!    The slope belongs to the FACE, not to either of the two coarse cells sharing it, so both of
+!!    them - and both fine blocks meeting there - produce bit-identical values. Since the limited
+!!    slope averages to zero over the 2 (2D) or 4 (3D) sub-faces, the flux through a coarse face is
+!!    reproduced exactly.
+!!
+!! 2. INTERIOR faces -- those strictly inside a coarse cell. They start at the average of the two
+!!    opposite skin faces and are then projected onto the divergence-free subspace with the skin
+!!    held fixed. Freezing the skin makes that a homogeneous-Neumann Poisson problem on the
+!!    2x2(x2) block of fine subcells,
+!!
+!!       L phi = r,   r(a,b,c) = div(B_init)(a,b,c),   dB_d = -(phi(+) - phi(-))/h_d
+!!
+!!    (the sign follows from div(-grad phi) = -L phi). On two cells the 1D Neumann Laplacian is
+!!    (1/h^2)*[[-1,1],[1,-1]], so L diagonalises exactly under the Hadamard (+-1) transform with
+!!    lambda(p,q,s) = lambda_x(p) + lambda_y(q) + lambda_z(s), each term 0 or -2/h_d^2. No
+!!    iteration is needed: phi_mode = r_mode/lambda_mode.
+!!
+!!    The all-ones mode has lambda = 0 and is left alone. Its amplitude is the mean of r over the
+!!    subcells, which telescopes to exactly the coarse cell's own divergence -- zero for a
+!!    divergence-free coarse field. That identity is checked below and is what catches index or
+!!    sign errors; what survives it is the coarse divergence spread uniformly over the subcells,
+!!    which is the conservative thing to do (constrained transport preserves div(B), it does not
+!!    erase it).
+!<
+
+   subroutine prolong_mag(this, iv, cse, fclip, cavail)
+
+      use constants,  only: xdim, ydim, zdim, ndims, LO, HI, refinement_factor, half
+      use dataio_pub, only: msg, warn
+      use domain,     only: dom
+
+      implicit none
+
+      class(grid_container_prolong_t), intent(inout) :: this  !< object invoking type-bound procedure
+      integer(kind=4),                              intent(in) :: iv    !< wna index of the magnetic field
+      integer(kind=8), dimension(xdim:zdim, LO:HI), intent(in) :: cse   !< coarse cells to be prolonged
+      integer(kind=8), dimension(xdim:zdim, LO:HI), intent(in) :: fclip !< fine indices that may be written
+      integer(kind=8), dimension(xdim:zdim, LO:HI), intent(in), optional :: cavail !< coarse indices of this%prolong_m that actually hold valid data
+
+      ! fine face values inside one coarse cell: (component, x-offset, y-offset, z-offset),
+      ! offsets 0..2 along the component's own direction and 0..1 in the transverse ones
+      real, dimension(xdim:zdim, 0:refinement_factor, 0:refinement_factor, 0:refinement_factor) :: bf
+      real, dimension(0:1, 0:1, 0:1)        :: rr, phi
+      integer(kind=8), dimension(ndims)     :: cc, ccf, f0, fi
+      integer(kind=8), dimension(ndims, LO:HI) :: mlim
+      integer,         dimension(ndims)     :: nn, ab, tt
+      integer(kind=8)                       :: ic, jc, kc
+      integer(kind=4)                       :: d, e
+      integer                               :: a, b, c, p, q, s, al, nsub
+      real,            dimension(ndims)     :: h, sl
+      real                                  :: bc, v, lam, rhat, ph, r0, rs
+      logical                                        :: haveslope, clamped
+      real,    parameter :: zm_tol = 1.e-3            !< relative tolerance for the zero-mode identity
+      real,    save      :: zm_max = 0.               !< largest relative zero-mode residual seen so far
+      logical, save      :: zm_warned = .false.
+
+      if (.not. allocated(this%prolong_m)) return
+
+      nn(:) = 0
+      where (dom%has_dir(:)) nn(:) = refinement_factor - 1
+      nsub = product(nn(:) + 1)
+      h(:) = this%dl(:)
+
+      mlim(:, LO) = [lbound(this%prolong_m, dim=2), lbound(this%prolong_m, dim=3), lbound(this%prolong_m, dim=4)]
+      mlim(:, HI) = [ubound(this%prolong_m, dim=2), ubound(this%prolong_m, dim=3), ubound(this%prolong_m, dim=4)]
+      if (present(cavail)) then
+         mlim(:, LO) = max(mlim(:, LO), cavail(:, LO))
+         mlim(:, HI) = min(mlim(:, HI), cavail(:, HI))
+      endif
+
+      do kc = cse(zdim, LO), cse(zdim, HI)
+         do jc = cse(ydim, LO), cse(ydim, HI)
+            do ic = cse(xdim, LO), cse(xdim, HI)
+
+               cc(:) = [ic, jc, kc]
+               f0(:) = refinement_factor * cc(:)
+               bf(:, :, :, :) = 0.
+               clamped = .false.
+
+               ! ---- step 1: the skin faces -------------------------------------------------
+               do d = xdim, zdim
+                  do al = 0, nn(d) * refinement_factor, refinement_factor   ! 0 and 2, or just 0
+
+                     ccf(:) = cc(:)
+                     ccf(d) = cc(d) + al/refinement_factor
+                     ! Clamp rather than skip: a face left unwritten would keep whatever the
+                     ! allocator put there, and a fresh block has nothing else to fall back on.
+                     if (any(ccf(:) < mlim(:, LO)) .or. any(ccf(:) > mlim(:, HI))) clamped = .true.
+                     ccf(:) = max(mlim(:, LO), min(mlim(:, HI), ccf(:)))
+                     bc = this%prolong_m(d, ccf(xdim), ccf(ydim), ccf(zdim))
+
+                     sl(:) = 0.
+                     do e = xdim, zdim
+                        if (e == d .or. .not. dom%has_dir(e)) cycle
+                        haveslope = (ccf(e) - 1 >= mlim(e, LO)) .and. (ccf(e) + 1 <= mlim(e, HI))
+                        if (.not. haveslope) cycle
+                        sl(e) = mc_slope(this%prolong_m(d, ccf(xdim) - merge(1_8, 0_8, e == xdim), &
+                             &                             ccf(ydim) - merge(1_8, 0_8, e == ydim), &
+                             &                             ccf(zdim) - merge(1_8, 0_8, e == zdim)), &
+                             &           bc, &
+                             &           this%prolong_m(d, ccf(xdim) + merge(1_8, 0_8, e == xdim), &
+                             &                             ccf(ydim) + merge(1_8, 0_8, e == ydim), &
+                             &                             ccf(zdim) + merge(1_8, 0_8, e == zdim)))
+                     enddo
+
+                     tt(:) = 0
+                     do c = 0, merge(nn(zdim), 0, d /= zdim)
+                        tt(zdim) = c
+                        do b = 0, merge(nn(ydim), 0, d /= ydim)
+                           tt(ydim) = b
+                           do a = 0, merge(nn(xdim), 0, d /= xdim)
+                              tt(xdim) = a
+                              ab(:) = tt(:)
+                              ab(d) = al
+                              v = bc
+                              do e = xdim, zdim
+                                 if (e == d .or. .not. dom%has_dir(e)) cycle
+                                 v = v + (tt(e) - half) * half * sl(e)
+                              enddo
+                              bf(d, ab(xdim), ab(ydim), ab(zdim)) = v
+                           enddo
+                        enddo
+                     enddo
+
+                  enddo
+               enddo
+
+               ! ---- step 2a: seed the interior faces ---------------------------------------
+               do d = xdim, zdim
+                  if (.not. dom%has_dir(d)) cycle
+                  tt(:) = 0
+                  do c = 0, merge(nn(zdim), 0, d /= zdim)
+                     tt(zdim) = c
+                     do b = 0, merge(nn(ydim), 0, d /= ydim)
+                        tt(ydim) = b
+                        do a = 0, merge(nn(xdim), 0, d /= xdim)
+                           tt(xdim) = a
+                           ab(:) = tt(:)
+                           ab(d) = 0
+                           v = bf(d, ab(xdim), ab(ydim), ab(zdim))
+                           ab(d) = refinement_factor
+                           v = half * (v + bf(d, ab(xdim), ab(ydim), ab(zdim)))
+                           ab(d) = 1
+                           bf(d, ab(xdim), ab(ydim), ab(zdim)) = v
+                        enddo
+                     enddo
+                  enddo
+               enddo
+
+               ! ---- step 2b: subcell divergences ------------------------------------------
+               rr(:, :, :) = 0.
+               rs = 0.
+               do c = 0, nn(zdim)
+                  do b = 0, nn(ydim)
+                     do a = 0, nn(xdim)
+                        v = 0.
+                        if (dom%has_dir(xdim)) v = v + (bf(xdim, a+1, b,   c  ) - bf(xdim, a, b, c)) / h(xdim)
+                        if (dom%has_dir(ydim)) v = v + (bf(ydim, a,   b+1, c  ) - bf(ydim, a, b, c)) / h(ydim)
+                        if (dom%has_dir(zdim)) v = v + (bf(zdim, a,   b,   c+1) - bf(zdim, a, b, c)) / h(zdim)
+                        rr(a, b, c) = v
+                        if (dom%has_dir(xdim)) rs = max(rs, abs(bf(xdim, a+1, b,   c  ) - bf(xdim, a, b, c)) / h(xdim))
+                        if (dom%has_dir(ydim)) rs = max(rs, abs(bf(ydim, a,   b+1, c  ) - bf(ydim, a, b, c)) / h(ydim))
+                        if (dom%has_dir(zdim)) rs = max(rs, abs(bf(zdim, a,   b,   c+1) - bf(zdim, a, b, c)) / h(zdim))
+                     enddo
+                  enddo
+               enddo
+
+               ! The natural size of a divergence is |B| times the sum of the inverse cell sizes:
+               ! that, not the difference of two neighbouring faces, is the round-off floor of the
+               ! operator, and in a locally uniform field the difference-based scale is zero.
+               do d = xdim, zdim
+                  if (dom%has_dir(d)) rs = max(rs, maxval(abs(bf(:, :, :, :))) / h(d))
+               enddo
+
+               ! ---- step 2c: the zero-mode identity ----------------------------------------
+               ! mean(r) telescopes to the coarse cell's own divergence and must vanish with it
+               ! Skip the check where the stencil had to be clamped: such a coarse cell lies
+               ! outside the data that was actually received (an outer guardcell of a freshly
+               ! created block) and its extrapolated faces are not expected to be divergence-free.
+               r0 = sum(rr(0:nn(xdim), 0:nn(ydim), 0:nn(zdim))) / nsub
+               if (abs(r0) > zm_tol * max(rs, tiny(1.)) .and. .not. clamped) then
+                  if (abs(r0) > zm_max * max(rs, tiny(1.))) then
+                     zm_max = abs(r0) / max(rs, tiny(1.))
+                     if (.not. zm_warned) then
+                        write(msg, '(a,es12.5,a,es12.5,a)') &
+                             "[grid_container_prolong:prolong_mag] zero-mode residual ", zm_max, &
+                             " (abs ", r0, ") exceeds tolerance - coarse field is not divergence-free"
+                        call warn(msg)
+                        zm_warned = .true.
+                     endif
+                  endif
+               endif
+
+               ! ---- step 2d: Hadamard-diagonal Neumann Poisson solve ------------------------
+               phi(:, :, :) = 0.
+               do s = 0, nn(zdim)
+                  do q = 0, nn(ydim)
+                     do p = 0, nn(xdim)
+                        if (p == 0 .and. q == 0 .and. s == 0) cycle   ! lambda = 0, left untouched
+                        lam = 0.
+                        if (p /= 0) lam = lam - 2./h(xdim)**2
+                        if (q /= 0) lam = lam - 2./h(ydim)**2
+                        if (s /= 0) lam = lam - 2./h(zdim)**2
+                        rhat = 0.
+                        do c = 0, nn(zdim)
+                           do b = 0, nn(ydim)
+                              do a = 0, nn(xdim)
+                                 rhat = rhat + rr(a, b, c) * hsign(p, a) * hsign(q, b) * hsign(s, c)
+                              enddo
+                           enddo
+                        enddo
+                        ph = rhat / (nsub * lam)
+                        do c = 0, nn(zdim)
+                           do b = 0, nn(ydim)
+                              do a = 0, nn(xdim)
+                                 phi(a, b, c) = phi(a, b, c) + ph * hsign(p, a) * hsign(q, b) * hsign(s, c)
+                              enddo
+                           enddo
+                        enddo
+                     enddo
+                  enddo
+               enddo
+
+               ! ---- step 2e: correct the interior faces ------------------------------------
+               do d = xdim, zdim
+                  if (.not. dom%has_dir(d)) cycle
+                  tt(:) = 0
+                  do c = 0, merge(nn(zdim), 0, d /= zdim)
+                     tt(zdim) = c
+                     do b = 0, merge(nn(ydim), 0, d /= ydim)
+                        tt(ydim) = b
+                        do a = 0, merge(nn(xdim), 0, d /= xdim)
+                           tt(xdim) = a
+                           ab(:) = tt(:)
+                           ab(d) = 0
+                           v = phi(ab(xdim), ab(ydim), ab(zdim))
+                           ab(d) = 1
+                           v = phi(ab(xdim), ab(ydim), ab(zdim)) - v
+                           bf(d, ab(xdim), ab(ydim), ab(zdim)) = bf(d, ab(xdim), ab(ydim), ab(zdim)) - v / h(d)
+                        enddo
+                     enddo
+                  enddo
+               enddo
+
+               ! ---- store ------------------------------------------------------------------
+               do d = xdim, zdim
+                  do c = 0, merge(nn(zdim) + 1, nn(zdim), d == zdim .and. dom%has_dir(zdim))
+                     ab(zdim) = c
+                     do b = 0, merge(nn(ydim) + 1, nn(ydim), d == ydim .and. dom%has_dir(ydim))
+                        ab(ydim) = b
+                        do a = 0, merge(nn(xdim) + 1, nn(xdim), d == xdim .and. dom%has_dir(xdim))
+                           ab(xdim) = a
+                           fi(:) = f0(:) + ab(:)
+                           if (any(fi(:) < fclip(:, LO)) .or. any(fi(:) > fclip(:, HI))) cycle
+                           this%w(iv)%arr(d, fi(xdim), fi(ydim), fi(zdim)) = bf(d, ab(xdim), ab(ydim), ab(zdim))
+                        enddo
+                     enddo
+                  enddo
+               enddo
+
+            enddo
+         enddo
+      enddo
+
+   contains
+
+      !> \brief +-1 entry of the Hadamard transform: mode p (0 or 1) evaluated at sub-index a
+      pure real function hsign(p, a)
+         implicit none
+         integer, intent(in) :: p, a
+         if (p == 0) then
+            hsign = 1.
+         else
+            hsign = 1. - 2.*a
+         endif
+      end function hsign
+
+      !> \brief monotonised-central limited difference across one coarse cell
+      pure real function mc_slope(vm, v0, vp)
+         implicit none
+         real, intent(in) :: vm, v0, vp
+         real :: dm, dp
+         dm = v0 - vm
+         dp = vp - v0
+         if (dm*dp <= 0.) then
+            mc_slope = 0.
+         else
+            mc_slope = sign(min(2.*abs(dm), 2.*abs(dp), half*abs(dm + dp)), dm)
+         endif
+      end function mc_slope
+
+   end subroutine prolong_mag
+
 
 end module grid_cont_prolong

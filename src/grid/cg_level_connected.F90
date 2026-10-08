@@ -31,6 +31,8 @@
 module cg_level_connected
 
    use cg_level, only: cg_level_t
+   use cg_list_global, only: ct_divguard_t
+   use constants, only: ndims
 
    implicit none
 
@@ -63,6 +65,7 @@ module cg_level_connected
       procedure :: prolong_bnd_from_coarser   !< Interpolate boundaries from coarse level at fine-coarse interfaces
 
       procedure :: restrict                   !< interpolate the grid data which has the flag vital set from this%coarser level
+      procedure :: restrict_emf               !< make edge EMFs single-valued across a fine/coarse interface (constrained transport)
       procedure :: restrict_to_base           !< restrict all variables to the base level
       procedure :: restrict_to_floor_q_1var   !< restrict specified q field as much as possible
       procedure :: restrict_to_base_q_1var    !< restrict specified q field to the base level
@@ -74,6 +77,36 @@ module cg_level_connected
       procedure :: arr4d_boundaries           !< Set up all guardcells (internal, external and fine-coarse) for given rank-4 arrays on a single level.
 
    end type cg_level_connected_t
+
+   !>
+   !! Saved fine-side closing faces of a staggered magnetic field, for keep_stag_closing_faces.
+   !! Lives at module level only because the save and the restore are two calls; the list cannot
+   !! change between them (they bracket a single arr4d_boundaries call).
+   !<
+   type :: stag_face_save_t
+      real, allocatable, dimension(:,:) :: px, py, pz
+      logical, dimension(ndims)         :: on = .false.
+   end type stag_face_save_t
+   type(stag_face_save_t), allocatable, dimension(:), save :: sfs
+
+   !>
+   !! \brief Guards the coarse-level guardcell refresh at the top of prolong_1var against changing
+   !! interior div(B).
+   !!
+   !! keep_stag_closing_faces below restores the fine side of a FINE/COARSE closing face, which is
+   !! the right thing there: that face belongs to the fine block and restrict_emf is what makes the
+   !! coarse side agree. It deliberately leaves SAME-LEVEL (BND_MPI) closing faces alone, and it
+   !! deliberately skips blocks that prolong is in the middle of creating. Both exclusions are
+   !! correct, and both leave a hole: when a freshly created block sits next to an old same-level
+   !! one, this refresh hands it the neighbour's face, which disagrees with its own prolonged value
+   !! by the prolongation slope, and its outermost cell layer picks up an O(slope) div(B) that CT
+   !! then freezes. Measured on the Orszag-Tang reproducer: 1.43E-01 injected at step 252, in a new
+   !! level-1 block at (is, je) whose bnd(y,HI) is BND_MPI, while U_pre was clean.
+   !!
+   !! ct_divguard_t keeps the neighbour's value -- it owns the face -- and cancels its divergence
+   !! with a curl confined to the block's outermost cell layer. See its definition in cg_list_global.
+   !<
+   type(ct_divguard_t), save :: prol_bnd_guard
 
 contains
 
@@ -932,12 +965,41 @@ contains
 !! \todo implement local copies without MPI
 !<
 
+!>
+!! \brief Is this rank-4 named array a face-centred (staggered) magnetic field?
+!!
+!! Both the main field and the RK2 half-step copy are staggered. magh_n is registered without an
+!! explicit position (so its %position says VAR_CENTER), yet it holds exactly the same face-centred
+!! data, and its fine/coarse guardcells are filled through prolong_bnd_from_coarser on the first
+!! stage - interpolating it as if it were cell-centred puts garbage B into the fine guardcells.
+!<
+
+   logical function is_stag_mag(iv)
+
+      use constants,        only: mag_n, magh_n
+      use global,           only: cc_mag
+      use named_array_list, only: wna
+
+      implicit none
+
+      integer(kind=4), intent(in) :: iv  !< index in wna
+
+      is_stag_mag = .false.
+      if (cc_mag) return
+      if (wna%exists(mag_n)) is_stag_mag = (iv == wna%ind(mag_n))
+      if (is_stag_mag) return
+      if (wna%exists(magh_n)) is_stag_mag = (iv == wna%ind(magh_n))
+
+   end function is_stag_mag
+
+
    subroutine prolong_1var(this, iv, bnd_type, dim4)
 
       use cg_cost_data,     only: I_REFINE
       use cg_list,          only: cg_list_element
       use constants,        only: xdim, ydim, zdim, LO, HI, I_ZERO, ndims, PPP_AMR  !, dirtyH1
       use dataio_pub,       only: msg, warn
+      use domain,           only: dom
       use grid_cont,        only: grid_container
       use grid_helpers,     only: f2c, c2f
       use named_array_list, only: qna, wna
@@ -963,9 +1025,16 @@ contains
       integer(kind=8), dimension(ndims, LO:HI)     :: box_8     !< temporary storage
       character(len=*), parameter                  :: pq1_label = "prolong_1v"
       logical                                      :: d4
+      logical                                      :: stag_mag  !< prolonging a face-centred magnetic field
+      integer(kind=8), dimension(ndims, LO:HI)     :: fclip, mse, cext
 
       d4 = .false.
       if (present(dim4)) d4 = dim4
+
+      ! A staggered B cannot be interpolated component by component through a cell-centred scratch:
+      ! wrong centring and, worse, not divergence-free. See grid_cont_prolong::prolong_mag.
+      stag_mag = d4
+      if (stag_mag) stag_mag = is_stag_mag(iv)
 
       call ppp_main%start(pq1_label, PPP_AMR)
 
@@ -984,7 +1053,23 @@ contains
       if (this%ord_prolong_set /= I_ZERO) then
          !> \todo some variables may need special care on external boundaries
          if (d4) then
+            !
+            ! This refreshes the SOURCE level's own guardcells before interpolating. For a
+            ! staggered B that runs prolong_bnd_from_coarser over this level's own fine/coarse
+            ! faces, which overwrites the face at ijkse(d,HI)+1 with interpolated COARSE B. That
+            ! face is a guardcell only by storage: it is the upper face of the last interior cell
+            ! and is owned by this level's own CT curl, so overwriting it injects divergence.
+            ! Worse, the children are then interpolated FROM the corrupted parent, and a
+            ! divergence-PRESERVING prolongation faithfully hands each child the parent's div(B)
+            ! -- the signature is L(n) and L(n+1) differing by exactly the refinement factor.
+            ! all_boundaries::keep_fc_faces guards the equivalent exchange in all_mag_boundaries
+            ! but cannot reach here (importing it would close a module cycle through cg_leaves).
+            !
+            if (stag_mag) call keep_stag_closing_faces(.true.)
+            if (stag_mag) call prol_bnd_guard%snap(this%first, iv)
             call this%arr4d_boundaries(iv) !, bnd_type = bnd_type)
+            if (stag_mag) call keep_stag_closing_faces(.false.)
+            if (stag_mag) call prol_bnd_guard%fix(this%first, iv)
          else
             call this%arr3d_boundaries(iv, bnd_type = bnd_type)
          endif
@@ -1062,7 +1147,38 @@ contains
             cse = f2c(box_8)
             fse = c2f(cse)  ! what about odd-sized or odd-offset cg?
 
-            if (d4) then
+            if (stag_mag) then
+
+               ! Divergence-free prolongation of the whole staggered vector at once. Gather all
+               ! three components of the coarse field into cg%prolong_m and let prolong_mag do the
+               ! skin interpolation plus the exact Neumann projection inside each coarse cell.
+               call cg%prolong_m_alloc
+               mse(:, LO) =  huge(1_8)
+               mse(:, HI) = -huge(1_8)
+               do g = lbound(cg%pi_tgt%seg(:), dim=1), ubound(cg%pi_tgt%seg(:), dim=1)
+                  associate (csep => cg%pi_tgt%seg(g)%se)
+                     cg%prolong_m(:, csep(xdim, LO):csep(xdim, HI), csep(ydim, LO):csep(ydim, HI), csep(zdim, LO):csep(zdim, HI)) = &
+                          &       cg%pi_tgt%seg(g)%buf4(:, :, :, :)
+                     mse(:, LO) = min(mse(:, LO), csep(:, LO))
+                     mse(:, HI) = max(mse(:, HI), csep(:, HI))
+                  end associate
+               enddo
+               ! Prolong the guardcells as well, as far as the received coarse data reaches.
+               ! A freshly created block has nothing in them yet, and the first thing that reads
+               ! cg%b -- the CT curl, the div(B) diagnostic, all_boundaries::keep_fc_faces, which
+               ! saves and restores the whole closing-face slab -- does so before any guardcell
+               ! exchange has had a chance to run. Whatever the exchange later brings in simply
+               ! overwrites this, so filling them here can only help.
+               ! cavail = mse keeps the stencil reading only coarse cells that were actually
+               ! received; where the block reaches further out than that, prolong_mag clamps to
+               ! the nearest available coarse face, which is still a bounded, sensible value.
+               cext = f2c(int(cg%lhn, kind=8))
+               ! the face closing the block at HI sits one index beyond the last cell
+               fclip(:, LO) = int(cg%lhn(:, LO), kind=8)
+               fclip(:, HI) = int(cg%lhn(:, HI), kind=8)
+               call cg%prolong_mag(iv, cext, fclip, cavail = mse)
+
+            else if (d4) then
                qna%lst(qna%wai)%ord_prolong = 0  !> QUIRKY \todo implement high order conservative prolongation and use wna%lst(i)%ord_prolong here
                do iw = 1, wna%get_dim4(iv)
                   do g = lbound(cg%pi_tgt%seg(:), dim=1), ubound(cg%pi_tgt%seg(:), dim=1)
@@ -1132,6 +1248,71 @@ contains
 
       endif
 
+   contains
+
+!> \brief Save (store = .true.) or restore the fine-side HI closing faces of a staggered B.
+
+      subroutine keep_stag_closing_faces(store)
+
+         use constants, only: BND_FC, BND_MPI_FC
+
+         implicit none
+
+         logical, intent(in) :: store
+
+         type(cg_list_element), pointer :: cl
+         type(grid_container),  pointer :: gc
+         integer                        :: n
+         integer(kind=4)                :: d
+
+         if (store) then
+            n = 0
+            cl => this%first
+            do while (associated(cl)) ; n = n + 1 ; cl => cl%nxt ; enddo
+            if (allocated(sfs)) deallocate(sfs)
+            allocate(sfs(n))
+         else
+            if (.not. allocated(sfs)) return
+         endif
+
+         n = 0
+         cl => this%first
+         do while (associated(cl))
+            gc => cl%cg
+            n = n + 1
+            if (n > size(sfs)) exit
+
+            if (store) then
+               do d = xdim, zdim
+                  ! only where this block's own curl owns the face, and only on pre-existing
+                  ! blocks -- a freshly created one has nothing worth preserving yet
+                  sfs(n)%on(d) = any(gc%bnd(d, HI) == [BND_FC, BND_MPI_FC]) .and. gc%is_old
+               enddo
+               if (sfs(n)%on(xdim)) then
+                  allocate(sfs(n)%px(gc%lhn(ydim, LO):gc%lhn(ydim, HI), gc%lhn(zdim, LO):gc%lhn(zdim, HI)))
+                  sfs(n)%px = gc%w(iv)%arr(xdim, gc%ijkse(xdim, HI) + 1, :, :)
+               endif
+               if (sfs(n)%on(ydim)) then
+                  allocate(sfs(n)%py(gc%lhn(xdim, LO):gc%lhn(xdim, HI), gc%lhn(zdim, LO):gc%lhn(zdim, HI)))
+                  sfs(n)%py = gc%w(iv)%arr(ydim, :, gc%ijkse(ydim, HI) + 1, :)
+               endif
+               if (sfs(n)%on(zdim)) then
+                  allocate(sfs(n)%pz(gc%lhn(xdim, LO):gc%lhn(xdim, HI), gc%lhn(ydim, LO):gc%lhn(ydim, HI)))
+                  sfs(n)%pz = gc%w(iv)%arr(zdim, :, :, gc%ijkse(zdim, HI) + 1)
+               endif
+            else
+               if (sfs(n)%on(xdim)) gc%w(iv)%arr(xdim, gc%ijkse(xdim, HI) + 1, :, :) = sfs(n)%px
+               if (sfs(n)%on(ydim)) gc%w(iv)%arr(ydim, :, gc%ijkse(ydim, HI) + 1, :) = sfs(n)%py
+               if (sfs(n)%on(zdim)) gc%w(iv)%arr(zdim, :, :, gc%ijkse(zdim, HI) + 1) = sfs(n)%pz
+            endif
+
+            cl => cl%nxt
+         enddo
+
+         if (.not. store) deallocate(sfs)
+
+      end subroutine keep_stag_closing_faces
+
    end subroutine prolong_1var
 
 !>
@@ -1179,7 +1360,12 @@ contains
       integer(kind=4) :: iw
       integer :: g
       logical, save :: firstcall = .true.
+      logical :: stag_mag  !< prolonging a face-centred magnetic field
       character(len=*), parameter :: pbc_label = "prolong_bnd_from_coarser" , pbcv_label = "prolong_bnd_from_coarser:vbp"
+
+      stag_mag = present(arr4d)
+      if (stag_mag) stag_mag = arr4d
+      if (stag_mag) stag_mag = is_stag_mag(ind)
 
       if (present(dir)) then
          if (firstcall .and. master) call warn("[cg_level_connected:prolong_bnd_from_coarser] dir present but not implemented yet")
@@ -1295,7 +1481,18 @@ contains
                   fse(:, HI) = min(fse(:, HI), int(cg%lhn(:, HI), kind=8))
                   !> When this%ord_prolong_set /= I_ZERO, the incoming data thus must contain valid guardcells
 
-                  if (present(arr4d)) then
+                  if (stag_mag) then
+
+                     ! Divergence-free reconstruction of the staggered field into the fine
+                     ! guardcells. See grid_cont_prolong::prolong_mag. Nothing outside fse is
+                     ! touched: at a LO interface the face at cg%ijkse(d, LO) is interior and the
+                     ! fine value there is the correct one (at HI it is a guardcell, protected by
+                     ! all_boundaries::keep_fc_faces).
+                     call cg%prolong_m_alloc
+                     cg%prolong_m(:, cse(xdim, LO):cse(xdim, HI), cse(ydim, LO):cse(ydim, HI), cse(zdim, LO):cse(zdim, HI)) = seg(g)%buf4(:, :, :, :)
+                     call cg%prolong_mag(ind, seg(g)%se, fse, cavail = cse)
+
+                  else if (present(arr4d)) then
                      qna%lst(qna%wai)%ord_prolong = wna%lst(ind)%ord_prolong  ! QUIRKY
                      do iw = 1, wna%get_dim4(ind)
                         cg%prolong_(cse(xdim, LO):cse(xdim, HI), cse(ydim, LO):cse(ydim, HI), cse(zdim, LO):cse(zdim, HI)) = seg(g)%buf4(iw, :, :, :)
@@ -1480,7 +1677,8 @@ contains
    subroutine restrict_1var(this, iv, dim4)
 
       use cg_cost_data,     only: I_REFINE
-      use constants,        only: xdim, ydim, zdim, ndims, LO, HI, refinement_factor, GEO_XYZ, GEO_RPZ
+      use constants,        only: xdim, ydim, zdim, ndims, LO, HI, refinement_factor, GEO_XYZ, GEO_RPZ, mag_n
+      use global,           only: cc_mag
       use dataio_pub,       only: msg, warn, die
       use domain,           only: dom
       use cg_list,          only: cg_list_element
@@ -1505,9 +1703,28 @@ contains
       type(cg_list_element), pointer               :: cgl
       type(grid_container),  pointer               :: cg                    !< current grid container
       logical                                      :: d4
+      logical                                      :: stag_mag              !< restricting a face-centred magnetic field
+      logical                                      :: skipm
+      integer(kind=4)                              :: dm, dd
+      integer(kind=8), dimension(xdim:zdim)        :: ijk, ijkc, ncm
+      integer(kind=8), dimension(xdim:zdim, LO:HI) :: csm
+      real, dimension(:,:,:), pointer              :: p3m
+      real, dimension(xdim:zdim)                   :: fnorm                 !< per-component face-average weight
 
       d4 = .false.
       if (present(dim4)) d4 = dim4
+
+      ! A staggered B needs a face-area average, not the volume average used for everything else.
+      stag_mag = d4 .and. .not. cc_mag
+      if (stag_mag) stag_mag = (iv == wna%ind(mag_n))
+      do dm = xdim, zdim
+         ! average over the directions transverse to this component's own face
+         if (dom%has_dir(dm)) then
+            fnorm(dm) = 1./refinement_factor**(dom%eff_dim - 1)
+         else
+            fnorm(dm) = 1./refinement_factor**dom%eff_dim
+         endif
+      enddo
 
       coarse => this%coarser
       if (.not. associated(coarse)) then ! can't restrict base level
@@ -1530,7 +1747,13 @@ contains
             do g = lbound(cg%ri_tgt%seg(:), dim=1), ubound(cg%ri_tgt%seg(:), dim=1)
                associate (seg => cg%ri_tgt%seg(g))
                   if (d4) then
-                     allocate(seg%buf4(wna%get_dim4(iv), size(seg%buf, dim=1), size(seg%buf, dim=2), size(seg%buf, dim=3)))
+                     if (stag_mag) then   ! must match the extended send buffer
+                        allocate(seg%buf4(wna%get_dim4(iv), size(seg%buf, dim=1) + dom%D_(xdim), &
+                             &                              size(seg%buf, dim=2) + dom%D_(ydim), &
+                             &                              size(seg%buf, dim=3) + dom%D_(zdim)))
+                     else
+                        allocate(seg%buf4(wna%get_dim4(iv), size(seg%buf, dim=1), size(seg%buf, dim=2), size(seg%buf, dim=3)))
+                     endif
                      call seg%recv_buf4(req)
                   else
                      call seg%recv_buf(req)
@@ -1554,7 +1777,16 @@ contains
 
             associate (seg => cg%ro_tgt%seg(g))
                if (d4) then
-                  allocate(seg%buf4(wna%get_dim4(iv), size(seg%buf, dim=1), size(seg%buf, dim=2), size(seg%buf, dim=3)))
+                  if (stag_mag) then
+                     ! one extra layer at HI: the face closing the covered region sits at coarse
+                     ! index cHI+1, outside the segment. Leaving it to the coarse curl while the
+                     ! other five faces of that cell are restricted is what breaks div(B) there.
+                     allocate(seg%buf4(wna%get_dim4(iv), size(seg%buf, dim=1) + dom%D_(xdim), &
+                          &                              size(seg%buf, dim=2) + dom%D_(ydim), &
+                          &                              size(seg%buf, dim=3) + dom%D_(zdim)))
+                  else
+                     allocate(seg%buf4(wna%get_dim4(iv), size(seg%buf, dim=1), size(seg%buf, dim=2), size(seg%buf, dim=3)))
+                  endif
                   seg%buf4(:, :, :, :) = 0.
                else
                   seg%buf(:, :, :) = 0.
@@ -1562,7 +1794,48 @@ contains
 
                fse(:,:) = seg%se(:,:)
                off1(:) = mod(seg%se(:, LO), int(refinement_factor, kind=8))
-               if (all(off1 == 0) .and. all(mod(fse(:, HI)-fse(:, LO), int(refinement_factor, kind=8)) == 1) .and. dom%eff_dim == ndims) then
+               if (stag_mag) then
+                  !
+                  ! Face-area restriction for a staggered magnetic field.
+                  !
+                  ! A coarse d-face is the average of the fine d-faces that lie *on* it, not a
+                  ! volume average of the 2**eff_dim fine cells. Only fine faces whose index in
+                  ! direction d is even coincide with a coarse face (coarse face index c maps to
+                  ! fine face index 2c); the odd ones sit inside the coarse cell and are dropped.
+                  ! Averaging over the 2**eff_dim cells instead -- which is what the generic code
+                  ! below does -- injects a divergence that constrained transport then preserves
+                  ! forever, and shows up as O(1) div(B) on the coarse level.
+                  !
+                  ncm = [size(seg%buf, dim=1), size(seg%buf, dim=2), size(seg%buf, dim=3)]
+                  do k = fse(zdim, LO), fse(zdim, HI) + dom%D_(zdim)
+                     kc = (k-fse(zdim, LO)+off1(zdim))/refinement_factor + 1
+                     do j = fse(ydim, LO), fse(ydim, HI) + dom%D_(ydim)
+                        jc = (j-fse(ydim, LO)+off1(ydim))/refinement_factor + 1
+                        do i = fse(xdim, LO), fse(xdim, HI) + dom%D_(xdim)
+                           ic = (i-fse(xdim, LO)+off1(xdim))/refinement_factor + 1
+                           ijk  = [i, j, k]
+                           ijkc = [ic, jc, kc]
+                           do dm = xdim, zdim
+                              skipm = .false.
+                              do dd = xdim, zdim
+                                 if (dd == dm) then
+                                    ! face-centred here: only fine faces lying on a coarse face
+                                    if (dom%has_dir(dd)) then
+                                       if (modulo(ijk(dd), int(refinement_factor, kind=8)) /= 0) skipm = .true.
+                                    endif
+                                 else
+                                    ! cell-centred here: both fine cells are averaged, and the
+                                    ! extra HI layer exists only along dm
+                                    if (ijkc(dd) > ncm(dd)) skipm = .true.
+                                 endif
+                              enddo
+                              if (skipm) cycle
+                              seg%buf4(dm, ic, jc, kc) = seg%buf4(dm, ic, jc, kc) + cg%w(iv)%arr(dm, i, j, k) * fnorm(dm)
+                           enddo
+                        enddo
+                     enddo
+                  enddo
+               else if (all(off1 == 0) .and. all(mod(fse(:, HI)-fse(:, LO), int(refinement_factor, kind=8)) == 1) .and. dom%eff_dim == ndims) then
                   ! This is the easy, even offset/even size case. Happens in AMR and when UG has regular cartesian decomposition.
                   ! It is few times faster than the code for odd cases below
                   select case (dom%geometry_type)
@@ -1658,9 +1931,11 @@ contains
 
             ! disables check_dirty
             if (d4) then
-               do g = 1, wna%get_dim4(iv)
-                  where (.not. cg%leafmap(:,:,:)) cg%w(iv)%arr(g, RNG) = 0.
-               enddo
+               if (.not. stag_mag) then   ! the staggered path overwrites, so no zeroing
+                  do g = 1, wna%get_dim4(iv)
+                     where (.not. cg%leafmap(:,:,:)) cg%w(iv)%arr(g, RNG) = 0.
+                  enddo
+               endif
             else
                where (.not. cg%leafmap(:,:,:)) cg%q(iv)%arr(RNG) = 0.
             endif
@@ -1678,7 +1953,16 @@ contains
                   case default
                      call die("[cg_level_connected:restrict_1var] Unknown geometry")
                end select
-               if (d4) then
+               if (stag_mag) then
+                  do dm = xdim, zdim
+                     csm(:,:) = cse(:,:)
+                     csm(dm, HI) = csm(dm, HI) + dom%D_(dm)   ! the rim belongs to this component only
+                     p3m => cg%w(iv)%arr(dm, csm(xdim, LO):csm(xdim, HI), &
+                          &                  csm(ydim, LO):csm(ydim, HI), &
+                          &                  csm(zdim, LO):csm(zdim, HI))
+                     p3m = cg%ri_tgt%seg(g)%buf4(dm, :size(p3m, dim=1), :size(p3m, dim=2), :size(p3m, dim=3))
+                  enddo
+               else if (d4) then
                   p4 => cg%w(iv)%span(cse)
                   p4 = p4 + cg%ri_tgt%seg(g)%buf4(:, :, :, :) !errors on overlap?
                else
@@ -1719,6 +2003,183 @@ contains
       endif
 
    end subroutine restrict_1var
+
+!>
+!! \brief Restrict edge-centred EMFs from this level onto the coarser one.
+!!
+!! This is what keeps div(B) = 0 across a fine/coarse interface under constrained transport.
+!! The coarse curl only reproduces the fine-averaged field on the shared face if the coarse EMFs
+!! on the edges bounding that face are exactly the average of the fine EMFs lying on them; with a
+!! face-area restriction of B alone, the coarse cell just *outside* the refined patch keeps its
+!! own EMF and its divergence breaks by the difference.
+!!
+!! It differs from restrict_1var in three ways, all of them necessary:
+!!  * an EMF component is staggered in the two directions transverse to its own edge and
+!!    cell-centred along it, so the restriction picks the fine indices that coincide with a coarse
+!!    edge in the former and averages the two fine values in the latter -- a line average, not a
+!!    volume average;
+!!  * the index range is extended by one at HI, because the edges bounding the far interface face
+!!    of the covered region sit at coarse index cHI+1, outside the restriction segment;
+!!  * it overwrites rather than accumulates. Two fine blocks sharing a rim edge both send it, and
+!!    they agree (the fine-level EMF exchange already made that edge single-valued), so an
+!!    accumulate would double it.
+!<
+
+   subroutine restrict_emf(this, iv)
+
+      use cg_cost_data, only: I_REFINE
+      use cg_list,      only: cg_list_element
+      use constants,    only: xdim, ydim, zdim, ndims, LO, HI, refinement_factor
+      use domain,       only: dom
+      use grid_cont,    only: grid_container
+      use pppmpi,       only: req_ppp
+
+      implicit none
+
+      class(cg_level_connected_t), target, intent(inout) :: this  !< the fine level
+      integer(kind=4),                     intent(in)    :: iv    !< the edge-centred EMF array
+
+      type(cg_level_connected_t), pointer          :: coarse
+      type(req_ppp)                                :: req
+      type(cg_list_element), pointer               :: cgl
+      type(grid_container),  pointer               :: cg
+      integer                                      :: g
+      integer(kind=8), dimension(xdim:zdim, LO:HI) :: fse, cse
+      integer(kind=8), dimension(xdim:zdim)        :: off1, ijk, ijkc, nc
+      integer(kind=8)                              :: i, j, k, ic, jc, kc
+      integer(kind=4)                              :: c, d
+      logical                                      :: skip
+      real, dimension(xdim:zdim)                   :: enorm
+      real, dimension(:,:,:), pointer              :: p3
+
+      coarse => this%coarser
+      if (.not. associated(coarse)) return
+
+      do c = xdim, zdim   ! averaged only along the edge itself
+         enorm(c) = merge(1./refinement_factor, 1., dom%has_dir(c))
+      enddo
+
+      call req%init(owncomm = .true., label = "ct_emf")
+
+      ! coarse side: post the receives
+      cgl => coarse%first
+      do while (associated(cgl))
+         cg => cgl%cg
+         call cg%costs%start
+         if (allocated(cg%ri_tgt%seg)) then
+            do g = lbound(cg%ri_tgt%seg(:), dim=1), ubound(cg%ri_tgt%seg(:), dim=1)
+               associate (seg => cg%ri_tgt%seg(g))
+                  if (allocated(seg%buf4)) deallocate(seg%buf4)
+                  allocate(seg%buf4(ndims, size(seg%buf, dim=1) + dom%D_(xdim), &
+                       &                   size(seg%buf, dim=2) + dom%D_(ydim), &
+                       &                   size(seg%buf, dim=3) + dom%D_(zdim)))
+                  call seg%recv_buf4(req)
+               end associate
+            enddo
+         endif
+         call cg%costs%stop(I_REFINE)
+         cgl => cgl%nxt
+      enddo
+
+      ! fine side: build the line averages and send them
+      cgl => this%first
+      do while (associated(cgl))
+         cg => cgl%cg
+         call cg%costs%start
+         if (allocated(cg%ro_tgt%seg)) then
+            do g = lbound(cg%ro_tgt%seg(:), dim=1), ubound(cg%ro_tgt%seg(:), dim=1)
+               associate (seg => cg%ro_tgt%seg(g))
+                  if (allocated(seg%buf4)) deallocate(seg%buf4)
+                  allocate(seg%buf4(ndims, size(seg%buf, dim=1) + dom%D_(xdim), &
+                       &                   size(seg%buf, dim=2) + dom%D_(ydim), &
+                       &                   size(seg%buf, dim=3) + dom%D_(zdim)))
+                  seg%buf4 = 0.
+
+                  fse(:,:) = seg%se(:,:)
+                  off1(:)  = mod(seg%se(:, LO), int(refinement_factor, kind=8))
+                  nc = [size(seg%buf, dim=1), size(seg%buf, dim=2), size(seg%buf, dim=3)]  ! un-extended coarse extent
+
+                  do k = fse(zdim, LO), fse(zdim, HI) + dom%D_(zdim)
+                     kc = (k-fse(zdim, LO)+off1(zdim))/refinement_factor + 1
+                     do j = fse(ydim, LO), fse(ydim, HI) + dom%D_(ydim)
+                        jc = (j-fse(ydim, LO)+off1(ydim))/refinement_factor + 1
+                        do i = fse(xdim, LO), fse(xdim, HI) + dom%D_(xdim)
+                           ic = (i-fse(xdim, LO)+off1(xdim))/refinement_factor + 1
+                           if (ic < 1 .or. ic > size(seg%buf4, dim=2)) cycle
+                           if (jc < 1 .or. jc > size(seg%buf4, dim=3)) cycle
+                           if (kc < 1 .or. kc > size(seg%buf4, dim=4)) cycle
+                           ijk = [i, j, k]
+                           ijkc = [ic, jc, kc]
+                           do c = xdim, zdim
+                              skip = .false.
+                              do d = xdim, zdim
+                                 if (d /= c) then
+                                    ! staggered transverse to the edge: only the fine edges that
+                                    ! lie on a coarse edge contribute
+                                    if (dom%has_dir(d)) then
+                                       if (modulo(ijk(d), int(refinement_factor, kind=8)) /= 0) skip = .true.
+                                    endif
+                                 else
+                                    ! along the edge the component is cell-centred and both fine
+                                    ! values are averaged. The +1 rim only exists for the staggered
+                                    ! directions; taking it here would halve the rim value, because
+                                    ! its partner lies outside the segment.
+                                    if (ijkc(d) > nc(d)) skip = .true.
+                                 endif
+                              enddo
+                              if (skip) cycle
+                              seg%buf4(c, ic, jc, kc) = seg%buf4(c, ic, jc, kc) + cg%w(iv)%arr(c, i, j, k) * enorm(c)
+                           enddo
+                        enddo
+                     enddo
+                  enddo
+
+                  call seg%send_buf4(req)
+               end associate
+            enddo
+         endif
+         call cg%costs%stop(I_REFINE)
+         cgl => cgl%nxt
+      enddo
+
+      call req%waitall("restrict_emf")
+
+      ! coarse side: overwrite
+      cgl => coarse%first
+      do while (associated(cgl))
+         cg => cgl%cg
+         call cg%costs%start
+         if (allocated(cg%ri_tgt%seg)) then
+            do g = lbound(cg%ri_tgt%seg(:), dim=1), ubound(cg%ri_tgt%seg(:), dim=1)
+               do c = xdim, zdim
+                  cse(:,:) = cg%ri_tgt%seg(g)%se(:,:)
+                  cse(:, HI) = cse(:, HI) + dom%D_(:)
+                  cse(c, HI) = cg%ri_tgt%seg(g)%se(c, HI)   ! no rim along the edge itself
+                  p3 => cg%w(iv)%arr(c, cse(xdim, LO):cse(xdim, HI), &
+                       &                cse(ydim, LO):cse(ydim, HI), &
+                       &                cse(zdim, LO):cse(zdim, HI))
+                  p3 = cg%ri_tgt%seg(g)%buf4(c, :size(p3, dim=1), :size(p3, dim=2), :size(p3, dim=3))
+               enddo
+               deallocate(cg%ri_tgt%seg(g)%buf4)   ! restrict_1var allocates buf4 unguarded
+            enddo
+         endif
+         call cg%costs%stop(I_REFINE)
+         cgl => cgl%nxt
+      enddo
+
+      ! leave the segments as we found them
+      cgl => this%first
+      do while (associated(cgl))
+         cg => cgl%cg
+         if (allocated(cg%ro_tgt%seg)) then
+            do g = lbound(cg%ro_tgt%seg(:), dim=1), ubound(cg%ro_tgt%seg(:), dim=1)
+               if (allocated(cg%ro_tgt%seg(g)%buf4)) deallocate(cg%ro_tgt%seg(g)%buf4)
+            enddo
+         endif
+         cgl => cgl%nxt
+      enddo
+
+   end subroutine restrict_emf
 
 !> \brief Quick and dirty restriction of 4D arrays. OPTIMIZE ME!
 

@@ -485,6 +485,10 @@ contains
    subroutine update_refinement_wrapped(act_count, refinement_fixup_only)
 
       use all_boundaries,        only: all_bnd, all_bnd_vital_q
+#ifdef MAGNETIC
+      use all_boundaries,        only: keep_fc_faces
+      use named_array_list,      only: wna
+#endif /* MAGNETIC */
       use allreduce,             only: piernik_MPI_Allreduce
       use cg_leaves,             only: leaves
       use cg_list,               only: cg_list_element
@@ -584,7 +588,7 @@ contains
                call curl%finer%init_all_new_cg
                call curl%finer%deallocate_patches
                call curl%finer%sync_ru
-               call curl%prolong
+               call prolong_keeping_fc(curl)
             endif
             call ppp_main%stop(prol_label, PPP_AMR)
 
@@ -654,7 +658,7 @@ contains
                   call curl%finer%sync_ru
                   call curl%deallocate_patches
                   !call finest%equalize
-                  call curl%prolong
+                  call prolong_keeping_fc(curl)
                   call all_cg%mark_orphans
                endif
             endif
@@ -706,6 +710,41 @@ contains
       call print_time("[refinement_update] Finishing (" // trim(merge("full update", "fixup only ", full_update)) // ")")
 
    contains
+
+      !>
+      !! \brief cg_level_connected::prolong, with the fine/coarse interface faces of the magnetic
+      !! field left alone.
+      !!
+      !! prolong refreshes the fine/coarse guardcells of the level it prolongs FROM before it can
+      !! interpolate anything, and for a face-centred field that guardcell layer contains a real
+      !! face of a real interior cell: the face closing a block at the HI end lives at index
+      !! ijkse(d,HI)+1. Overwriting it with interpolated coarse B discards what the constrained
+      !! transport curl produced on the fine side and leaves that cell with a div(B) of order the
+      !! interpolation slope, which CT then preserves for ever. all_mag_boundaries already guards
+      !! its own exchange this way; this is the same guard for the path that reaches
+      !! prolong_bnd_from_coarser directly from the refinement update.
+      !!
+      !! Only grids that already existed are protected - the blocks prolong is in the middle of
+      !! creating must keep exactly what it just put there.
+      !<
+
+      subroutine prolong_keeping_fc(cl)
+
+         use cg_level_connected, only: cg_level_connected_t
+
+         implicit none
+
+         type(cg_level_connected_t), pointer, intent(inout) :: cl
+
+#ifdef MAGNETIC
+         call keep_fc_faces(wna%bi, .true., all_grids = .true.)
+#endif /* MAGNETIC */
+         call cl%prolong
+#ifdef MAGNETIC
+         call keep_fc_faces(wna%bi, .false., all_grids = .true.)
+#endif /* MAGNETIC */
+
+      end subroutine prolong_keeping_fc
 
       !>
       !! \brief Print how much time it took to execute a given stage

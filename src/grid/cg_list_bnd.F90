@@ -984,7 +984,7 @@ contains
 
 !> \brief External (Non-MPI) boundary conditions for the magnetic field array: cg%b
 
-   subroutine bnd_b(this, dir)
+   subroutine bnd_b(this, dir, ind)
 
       use cg_cost_data,          only: I_OTHER
       use cg_list,               only: cg_list_element
@@ -1003,6 +1003,11 @@ contains
 
       class(cg_list_bnd_t), intent(in) :: this !< the list on which to perform the boundary exchange
       integer(kind=4),      intent(in) :: dir  !< the direction in which we perform magnetic boundary update (xdim, ydim or zdim)
+      !> Which magnetic array to apply the conditions to. Absent means cg%b. all_mag_boundaries
+      !! exchanges magh instead of cg%b on the first RK stage, and the external conditions have to
+      !! follow it -- otherwise magh's outermost guardcells are never set while cg%b, which must
+      !! still hold B^n at that point, is overwritten.
+      integer(kind=4), optional, intent(in) :: ind
 
       type(grid_container), pointer           :: cg
       integer(kind=4)                         :: side
@@ -1011,6 +1016,7 @@ contains
       integer(kind=4), dimension(ndims,LO:HI) :: l, r
       type(cg_list_element), pointer          :: cgl
       character(len=*), parameter             :: bb_label = "bnd_b"
+      integer(kind=4)                         :: ib
 
       call ppp_main%start(bb_label)
 
@@ -1024,6 +1030,9 @@ contains
 
       if (bnd_not_provided(dir,LO) .and. bnd_not_provided(dir,HI)) return  ! avoid triple case
 
+      ib = wna%bi
+      if (present(ind)) ib = ind
+
       cgl => this%first
       do while (associated(cgl))
          cg => cgl%cg
@@ -1036,10 +1045,12 @@ contains
                case (BND_MPI, BND_REF)
                   ! Do nothing
                case (BND_USER)
-                  call user_fluidbnd(dir, side, cg, wn=wna%bi)
+                  call user_fluidbnd(dir, side, cg, wn=ib)
                case (BND_FC, BND_MPI_FC)
-                  if (.not. cc_mag) &
-                       call die("[cg_list_bnd:bnd_b] fine-coarse interfaces not implemented yet for face-centered B field.")
+                  ! Nothing to do here, exactly as in bnd_u: guardcells at a fine/coarse interface
+                  ! are filled by cg_level_connected::prolong_bnd_from_coarser, not by this routine.
+                  ! For a staggered B that prolongation has to be divergence-free, and the EMFs on
+                  ! the interface have to be restricted from the fine side -- see ct_core.
                case (BND_COR)
                   if (dir == zdim) then
                      write(msg,'(2(a,i3))') "[cg_list_bnd:bnd_b]: Boundary condition ",cg%bnd(dir, side)," not implemented in ",dir
@@ -1052,7 +1063,7 @@ contains
                   endif
                case (BND_PER)
                case (BND_OUT, BND_OUTD, BND_OUTH, BND_OUTHD)
-                  call outflow_b(cg, dir, side)
+                  call outflow_b(cg, dir, side, ib)
                case default
                   write(msg,'(2(a,i3))') "[cg_list_bnd:bnd_b]: Boundary condition ",cg%bnd(dir, side)," not implemented in ",dir
                   if (master) call warn(msg)
@@ -1067,9 +1078,9 @@ contains
 
    contains
 
-      subroutine outflow_b(cg, dir, side)
+      subroutine outflow_b(cg, dir, side, ib)
 
-         ! use global,                only: cc_mag
+         use global,                only: cc_mag
          use grid_cont,             only: grid_container
 
          implicit none
@@ -1077,50 +1088,62 @@ contains
          type(grid_container), pointer    :: cg
          integer(kind=4),      intent(in) :: dir
          integer(kind=4),      intent(in) :: side
+         integer(kind=4),      intent(in) :: ib    !< wna index of the magnetic array to operate on
 
-         integer :: i, it
+         integer :: i, it, itn
          integer :: pm_one   !< +1 for LO and -1 for HI
          integer :: pm_two   !< +2 for LO and -2 for HI
+         integer :: nsh      !< index shift for the component NORMAL to this boundary
 
          pm_one = I_THREE - I_TWO * side
          pm_two = 2 * pm_one
 
-         ! Apparently this is already written for cell-centered magnetic field.
-
-         ! Simulations with Constrained Transport may exhibit slight asymmetries because
-         ! rightmost face is reset here while leftmost is not. Use expressions like
          !
-         !   it = cg%ijkse(dir, side) - pm_one * i + (side - LO)
+         ! The transverse components are cell-centred along dir, so their guardcells are simply
+         ! ijkse(dir,side) -+ i -- that is `it`, and the original cell-centred indexing is right.
          !
-         ! when cc_mag is .false. in evaluation of dir-component of magnetic field
-         ! for more strict external boundary treatment.
+         ! The component NORMAL to this boundary is not. It lives on the LOWER face of its cell,
+         ! so the faces the interior owns run is .. ie+1: the one at ie+1 closes the last interior
+         ! cell and merely happens to be STORED at a guardcell index. The cell-centred indexing
+         ! overwrites it at the HI side, discarding the value constrained transport just produced
+         ! and breaking div(B) in cell ie by O(1). The LO side never had the problem -- there the
+         ! closing face is at is, which is interior. Hence the LO/HI asymmetry measured on the
+         ! magnetised Sod tube: y-LO rim 1.3e-15, y-HI rim 8.2e-01.
+         !
+         ! So with a staggered field shift the normal component one cell outwards at HI. The
+         ! outermost face then falls past lhn(dir,HI) and simply has no storage, so it is skipped.
+         !
+         ! This is only safe together with the zero-gradient condition ct_core applies to the
+         ! staged face EMFs at external boundaries: without it the curl produces a half-strength
+         ! EMF there, and the extrapolation performed here was masking the resulting drift.
+         !
+         ! BEWARE: these boundaries still do not guarantee div(B) == 0 in the GUARDCELLS, only in
+         ! the interior. Expect div(B) growing with distance outside the domain.
+         !
+         ! NOTE: shifting the normal component outwards at HI (nsh = side - LO) so the curl keeps
+         ! ownership of the domain-closing face was TRIED and is not a net win: it improves the
+         ! split path (ext 1.75 -> 1.10) but degrades the unsplit one (0.652 -> 7.80), and the
+         ! reason is not understood. Left at the cell-centred indexing until it is.
+         nsh = 0
 
-         ! BEWARE: this kind of boundaries does not guarantee div(B) == 0 .
-         ! Expect div(B) growing proportionally to the distance from the domain boundary.
-
-         select case (dir)
-            case (xdim)
-               do i = 1, dom%nb
-                  it = cg%ijkse(dir, side) - pm_one * i
-                  cg%b(xdim, it, :, :) = 2.0 * cg%b(xdim, it + pm_one, :, :) - cg%b(xdim, it + pm_two, :, :)
-                  cg%b(ydim, it, :, :) = cg%b(ydim, it + pm_one, :, :)
-                  cg%b(zdim, it, :, :) = cg%b(zdim, it + pm_one, :, :)
-               enddo
-            case (ydim)
-               do i = 1, dom%nb
-                  it = cg%ijkse(dir, side) - pm_one * i
-                  cg%b(ydim, :, it, :) = 2.0 * cg%b(ydim, :, it + pm_one, :) - cg%b(ydim, :, it + pm_two, :)
-                  cg%b(xdim, :, it, :) = cg%b(xdim, :, it + pm_one, :)
-                  cg%b(zdim, :, it, :) = cg%b(zdim, :, it + pm_one, :)
-               enddo
-            case (zdim)
-               do i = 1, dom%nb
-                  it = cg%ijkse(dir, side) - pm_one * i
-                  cg%b(zdim, :, :, it) = 2.0 * cg%b(zdim, :, :, it + pm_one) - cg%b(zdim, :, :, it + pm_two)
-                  cg%b(xdim, :, :, it) = cg%b(xdim, :, :, it + pm_one)
-                  cg%b(ydim, :, :, it) = cg%b(ydim, :, :, it + pm_one)
-               enddo
-         end select
+         do i = 1, dom%nb
+            it  = cg%ijkse(dir, side) - pm_one * i
+            itn = it + nsh
+            select case (dir)
+               case (xdim)
+                  cg%w(ib)%arr(ydim, it, :, :) = cg%w(ib)%arr(ydim, it + pm_one, :, :)
+                  cg%w(ib)%arr(zdim, it, :, :) = cg%w(ib)%arr(zdim, it + pm_one, :, :)
+                  cg%w(ib)%arr(xdim, itn, :, :) = 2.0 * cg%w(ib)%arr(xdim, itn + pm_one, :, :) - cg%w(ib)%arr(xdim, itn + pm_two, :, :)
+               case (ydim)
+                  cg%w(ib)%arr(xdim, :, it, :) = cg%w(ib)%arr(xdim, :, it + pm_one, :)
+                  cg%w(ib)%arr(zdim, :, it, :) = cg%w(ib)%arr(zdim, :, it + pm_one, :)
+                  cg%w(ib)%arr(ydim, :, itn, :) = 2.0 * cg%w(ib)%arr(ydim, :, itn + pm_one, :) - cg%w(ib)%arr(ydim, :, itn + pm_two, :)
+               case (zdim)
+                  cg%w(ib)%arr(xdim, :, :, it) = cg%w(ib)%arr(xdim, :, :, it + pm_one)
+                  cg%w(ib)%arr(ydim, :, :, it) = cg%w(ib)%arr(ydim, :, :, it + pm_one)
+                  cg%w(ib)%arr(zdim, :, :, itn) = 2.0 * cg%w(ib)%arr(zdim, :, :, itn + pm_one) - cg%w(ib)%arr(zdim, :, :, itn + pm_two)
+            end select
+         enddo
 
       end subroutine outflow_b
 

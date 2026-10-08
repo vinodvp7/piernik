@@ -143,12 +143,13 @@ contains
 
       use cg_leaves,   only: leaves
       use cg_list,     only: cg_list_element
-      use constants,   only: xdim, ydim, zdim, zero, LEFT
+      use constants,   only: xdim, ydim, zdim, zero, half, LEFT, LO, HI
+      use ct,          only: ct_active, ct_a_index, ct_curl_a_to_b
       use grid_cont,   only: grid_container
       use fluidindex,  only: flind
       use fluidtypes,  only: component_fluid
       use func,        only: ekin, emag
-      use global,      only: cc_mag
+      use global,      only: cc_mag, ic_mag_center
 
       implicit none
 
@@ -156,15 +157,44 @@ contains
       type(grid_container),   pointer :: cg
       class(component_fluid), pointer :: fl
 
-      integer :: i, j, k
-      real :: r2
+      integer         :: i, j, k
+      integer(kind=4) :: ia
+      real            :: r2, rr
+      real            :: bxc, byc, bzc
 
       fl => flind%ion
+
+      !
+      ! With constrained transport, build B from the vector potential A_z = A0 * (R - r) using the
+      ! same discrete curl the solver uses. That makes div(B) exactly zero at t = 0, instead of the
+      ! ~0.7 (in units of |B|/dx) left behind by point-sampling the analytic B on faces -- which is
+      ! far too large to tell a working CT scheme from a broken one.
+      !
+      if (ct_active() .and. .not. ic_mag_center) then
+         ia = ct_a_index()
+         cgl => leaves%first
+         do while (associated(cgl))
+            cg => cgl%cg
+            cg%w(ia)%arr = 0.
+            do k = cg%lhn(zdim, LO), cg%lhn(zdim, HI)
+               do j = cg%lhn(ydim, LO), cg%lhn(ydim, HI)
+                  do i = cg%lhn(xdim, LO), cg%lhn(xdim, HI)
+                     ! A_z lives on the z-directed edge at (x_{i-1/2}, y_{j-1/2})
+                     rr = sqrt(cg%coord(LEFT, xdim)%r(i)**2 + cg%coord(LEFT, ydim)%r(j)**2)
+                     if (rr <= R) cg%w(ia)%arr(zdim, i, j, k) = A0 * (R - rr)
+                  enddo
+               enddo
+            enddo
+            cgl => cgl%nxt
+         enddo
+         call ct_curl_a_to_b
+      endif
+
       cgl => leaves%first
       do while (associated(cgl))
          cg => cgl%cg
 
-         call cg%set_constant_b_field([0., 0., 0.])
+         if (.not. ct_active() .or. ic_mag_center) call cg%set_constant_b_field([0., 0., 0.])
 
          do k = cg%ks, cg%ke
             do j = cg%js, cg%je
@@ -176,22 +206,34 @@ contains
                   cg%u(fl%imx,i,j,k) = vx*cg%u(fl%idn,i,j,k)
                   cg%u(fl%imy,i,j,k) = vy*cg%u(fl%idn,i,j,k)
                   cg%u(fl%imz,i,j,k) = zero
-                  ! Mangetic field
-                  if (cc_mag) then
-                     if ( sqrt(cg%x(i)*cg%x(i) + cg%y(j)*cg%y(j) ) .le. R ) then
-                        cg%b(xdim,i,j,k) = -A0*cg%y(j)/(sqrt(cg%x(i)*cg%x(i) + cg%y(j)*cg%y(j) )) !  dA_z/dy
-                        cg%b(ydim,i,j,k) =  A0*cg%x(i)/(sqrt(cg%x(i)*cg%x(i) + cg%y(j)*cg%y(j) )) ! -dA_z/dx
+
+                  ! Magnetic field. With CT it has already been set from A above.
+                  if (.not. ct_active() .or. ic_mag_center) then
+                     if (cc_mag .or. ic_mag_center) then
+                        if ( sqrt(cg%x(i)*cg%x(i) + cg%y(j)*cg%y(j) ) .le. R ) then
+                           cg%b(xdim,i,j,k) = -A0*cg%y(j)/(sqrt(cg%x(i)*cg%x(i) + cg%y(j)*cg%y(j) )) !  dA_z/dy
+                           cg%b(ydim,i,j,k) =  A0*cg%x(i)/(sqrt(cg%x(i)*cg%x(i) + cg%y(j)*cg%y(j) )) ! -dA_z/dx
+                        endif
+                     else  ! face-centered components
+                        r2 = sum([cg%coord(LEFT, xdim)%r(i), cg%y(j)]**2)
+                        if (r2 <= R**2) cg%b(xdim, i, j, k) = -A0 * cg%y(j) / sqrt(r2) !  dA_z/dy
+                        r2 = sum([cg%x(i), cg%coord(LEFT, ydim)%r(j)]**2)
+                        if (r2 <= R**2) cg%b(ydim, i, j, k) =  A0 * cg%x(i) / sqrt(r2) ! -dA_z/dx
                      endif
-                  else  ! face-centered components
-                     r2 = sum([cg%coord(LEFT, xdim)%r(i), cg%y(j)]**2)
-                     if (r2 <= R**2) cg%b(xdim, i, j, k) = -A0 * cg%y(j) / sqrt(r2) !  dA_z/dy
-                     r2 = sum([cg%x(i), cg%coord(LEFT, ydim)%r(j)]**2)
-                     if (r2 <= R**2) cg%b(ydim, i, j, k) =  A0 * cg%x(i) / sqrt(r2) ! -dA_z/dx
+                  endif
+
+                  ! Magnetic energy needs a cell-centred field, so average the faces when staggered
+                  if (cc_mag) then
+                     bxc = cg%b(xdim,i,j,k) ; byc = cg%b(ydim,i,j,k) ; bzc = cg%b(zdim,i,j,k)
+                  else
+                     bxc = half * (cg%b(xdim,i,j,k) + cg%b(xdim,i+1,j,k))
+                     byc = half * (cg%b(ydim,i,j,k) + cg%b(ydim,i,j+1,k))
+                     bzc = cg%b(zdim,i,j,k)
                   endif
 
                   ! Pressure/Energy
                   cg%u(fl%ien,i,j,k) = uni_pres/fl%gam_1 + ekin(cg%u(fl%imx,i,j,k), cg%u(fl%imy,i,j,k), cg%u(fl%imz,i,j,k), cg%u(fl%idn,i,j,k)) + &
-                       &               emag(cg%b(xdim,i,j,k), cg%b(ydim,i,j,k), cg%b(zdim,i,j,k))
+                       &               emag(bxc, byc, bzc)
 
                enddo
             enddo

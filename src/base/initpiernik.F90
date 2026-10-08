@@ -44,6 +44,10 @@ contains
    subroutine init_piernik
 
       use all_boundaries,        only: all_bnd, all_bnd_vital_q
+#ifdef MAGNETIC
+      use ct,                    only: ct_active, ct_b_cc_to_face
+      use global,                only: ic_mag_center
+#endif /* MAGNETIC */
       use cg_level_finest,       only: finest
       use cg_list_global,        only: all_cg
       use constants,             only: PIERNIK_INIT_MPI, PIERNIK_INIT_GLOBAL, PIERNIK_INIT_FLUIDS, PIERNIK_INIT_DOMAIN, &
@@ -295,6 +299,9 @@ contains
 
          call ppp_main%start(prob_label)
          call problem_initial_conditions ! may depend on anything
+#ifdef MAGNETIC
+         if (ic_mag_center .and. ct_active()) call ct_b_cc_to_face
+#endif /* MAGNETIC */
          call ppp_main%stop(prob_label)
 
          call init_psi ! initialize the auxiliary field for divergence cleaning when needed
@@ -324,6 +331,9 @@ contains
 
             call ppp_main%start(prob_label)
             call problem_initial_conditions ! reset initial conditions after possible changes of refinement structure
+#ifdef MAGNETIC
+            if (ic_mag_center .and. ct_active()) call ct_b_cc_to_face
+#endif /* MAGNETIC */
             call ppp_main%stop(prob_label)
 
             nit = nit + 1

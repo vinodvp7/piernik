@@ -1,0 +1,87 @@
+ $BASE_DOMAIN
+    n_d = 256, 256, 1
+    bnd_xl = 'per'
+    bnd_xr = 'per'
+    bnd_yl = 'per'
+    bnd_yr = 'per'
+    bnd_zl = 'per'
+    bnd_zr = 'per'
+    xmin   = 0.0
+    xmax   = 1.0
+    ymin   = 0.0
+    ymax   = 1.0
+    zmin   = -0.5
+    zmax   = 0.5
+ /
+
+ $MPI_BLOCKS
+ /
+
+ $UNITS
+    units_set = 'cgs'
+ /
+
+ $RESTART_CONTROL
+ /
+
+ $END_CONTROL
+    tend   = 0.60
+ /
+
+ $OUTPUT_CONTROL
+    problem_name = 'otvortex'
+    run_id = 'ct1'
+    dt_hdf  = 0.12
+    dt_res  = 0.0
+    dt_log  = 0.00001
+    dt_tsl  = 0.00001
+    vars(1:) = 'magx', 'dens', 'magy', 'magz', 'pres', 'velx', 'vely', 'velz'
+ /
+
+ $FLUID_IONIZED
+    gamma  = 1.666666666
+ /
+
+ $FLUID_NEUTRAL
+ /
+
+ $FLUID_DUST
+ /
+
+ $NUMERICAL_SETUP
+   divB_0 = "CT"           ! constrained transport; B becomes face-centred
+   ic_mag_center = .true.  ! this problem writes a CELL-centred B -- convert it to faces.
+                           ! Exact here: Orszag-Tang has Bx = Bx(y) and By = By(x), so the
+                           ! centred divergence of the sampled field is identically zero, and
+                           ! the interpolation to faces is divergence-neutral.
+!  emf_recipe = "GS"       ! "GS" (default, upwinded) or "Balsara" (plain average)
+    cfl    = 0.8
+    smalld = 1.e-3
+    smallei= 1.e-5
+    limiter= 'vanleer'
+ /
+
+ $GRAVITY
+ /
+
+ ! Resistivity is not used as riemann solver does not support it
+
+ $RESISTIVITY
+   eta_0      = 1.0e-4
+   cfl_resist = 0.5
+   eta_1      = 0.0
+   j_crit     = 1.0
+   deint_max  = 0.01
+ /
+
+ $PROBLEM_CONTROL
+ /
+
+ $SHEARING
+ /
+
+ $INTERACTIONS
+ /
+
+ $AMR
+ /

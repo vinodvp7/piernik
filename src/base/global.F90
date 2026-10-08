@@ -46,7 +46,7 @@ module global
         &    repetitive_steps, integration_order, limiter, limiter_b, smalld, smallei, smallp, use_smalld, use_smallei, interpol_str, &
         &    relax_time, grace_period_passed, cfr_smooth, skip_sweep, geometry25D, &
         &    dirty_debug, do_ascii_dump, show_n_dirtys, no_dirty_checks, sweeps_mgu, use_fargo, print_divB, do_external_corners, prefer_merged_MPI, waitall_timeout, &
-        &    divB_0_method, cc_mag, glm_alpha, use_eglm, cfl_glm, ch_grid, w_epsilon, psi_bnd, ord_mag_prolong, ord_fluid_prolong, which_solver, use_uhi, is_split
+        &    divB_0_method, cc_mag, ic_mag_center, emf_method, glm_alpha, use_eglm, cfl_glm, ch_grid, w_epsilon, psi_bnd, ord_mag_prolong, ord_fluid_prolong, which_solver, use_uhi, is_split
 
 
    logical         :: dn_negative = .false.
@@ -64,6 +64,9 @@ module global
    real            :: dt_cur_shrink            !< currently used dt and CFL number shrinking (used while redoing step)
    integer         :: divB_0_method            !< encoded method of making div(B) = 0 (currently DIVB_CT or DIVB_HDC)
    logical         :: cc_mag                   !< use cell-centered magnetic field
+   logical         :: ic_mag_center            !< the initial condition writes a CELL-centred B; convert it to faces for constrained transport
+   character(len=cbuff_len) :: emf_recipe       !< how the edge EMF is built from face EMFs: "GS" (upwinded) or "Balsara"
+   integer(kind=4) :: emf_method               !< EMF_GS or EMF_BALSARA
    integer(kind=4) :: psi_bnd                  !< BND_INVALID or enforce some other psi boundary
    integer         :: tstep_attempt            !< /= 0 when we retry timesteps
    integer         :: which_solver             !< one of RTVD_SPLIT, HLLC_SPLIT, RIEMANN_SPLIT or RIEMANN_UNSPLIT
@@ -117,7 +120,7 @@ module global
 
    namelist /NUMERICAL_SETUP/ cfl, cflcontrol, disallow_negatives, disallow_CRnegatives, cfl_max, use_smalld, use_smallei, smalld, smallei, smallc, smallp, dt_initial, dt_max_grow, dt_shrink, dt_min, dt_max, &
         &                     max_redostep_attempts, limiter, limiter_b, relax_time, integration_order, cfr_smooth, skip_sweep, geometry25D, sweeps_mgu, print_divB, &
-        &                     use_fargo, divB_0, glm_alpha, use_eglm, cfl_glm, ch_grid, interpol_str, w_epsilon, psi_bnd_str, ord_mag_prolong, ord_fluid_prolong, do_external_corners, solver_str
+        &                     use_fargo, divB_0, glm_alpha, use_eglm, cfl_glm, ch_grid, interpol_str, w_epsilon, psi_bnd_str, ord_mag_prolong, ord_fluid_prolong, do_external_corners, solver_str, ic_mag_center, emf_recipe
 
    logical :: prefer_merged_MPI  !< prefer internal_boundaries_MPI_merged over internal_boundaries_MPI_1by1
    real :: waitall_timeout       !< when > 0. then replace MPI_Waitall with MPI_Test* calls and print some diagnostics it the timeout is reached
@@ -187,7 +190,8 @@ contains
       use bcast,      only: piernik_MPI_Bcast
       use constants,  only: big_float, one, PIERNIK_INIT_DOMAIN, INVALID, DIVB_CT, DIVB_HDC, &
            &                BND_INVALID, BND_ZERO, BND_REF, BND_OUT, I_ZERO, O_INJ, O_LIN, O_I2, INVALID, &
-           &                RTVD_SPLIT, HLLC_SPLIT, RIEMANN_SPLIT, RIEMANN_UNSPLIT, GEO_XYZ, V_INFO, V_DEBUG, V_ESSENTIAL
+           &                RTVD_SPLIT, HLLC_SPLIT, RIEMANN_SPLIT, RIEMANN_UNSPLIT, GEO_XYZ, V_INFO, V_DEBUG, V_ESSENTIAL, &
+           &                EMF_GS, EMF_BALSARA
       use dataio_pub, only: die, msg, warn, code_progress, printinfo, nh
       use domain,     only: dom
       use mpisetup,   only: cbuff, ibuff, lbuff, rbuff, master, slave
@@ -263,6 +267,8 @@ contains
 
       prefer_merged_MPI = .true.  ! Non-merged MPI in internal_boundaries are implemented without buffers, which can be faster, especially for bsize(:) larger than 3*16, but in some non-periodic setups internal_boundaries_MPI_1by1 has tag collisions, so merged_MPI is currently safer.
       MPI_wrapper_stats = .false.
+      ic_mag_center     = .false.
+      emf_recipe        = "GS"
       waitall_timeout   = 0.
 
       if (master) then
@@ -321,6 +327,7 @@ contains
          cbuff(6) = interpol_str
          cbuff(7) = psi_bnd_str
          cbuff(8) = solver_str
+         cbuff(9) = emf_recipe
 
          ibuff(1) = integration_order
          ibuff(2) = print_divB
@@ -360,6 +367,7 @@ contains
          lbuff(14)  = prefer_merged_MPI
          lbuff(15)  = extra_barriers
          lbuff(16)  = MPI_wrapper_stats
+         lbuff(17)  = ic_mag_center
 
       endif
 
@@ -384,6 +392,7 @@ contains
          prefer_merged_MPI     = lbuff(14)
          extra_barriers        = lbuff(15)
          MPI_wrapper_stats     = lbuff(16)
+         ic_mag_center         = lbuff(17)
 
          smalld                = rbuff( 1)
          smallc                = rbuff( 2)
@@ -410,6 +419,7 @@ contains
          interpol_str          = cbuff(6)
          psi_bnd_str           = cbuff(7)
          solver_str            = cbuff(8)
+         emf_recipe            = cbuff(9)
 
          integration_order     = ibuff(1)
          print_divB            = ibuff(2)
@@ -460,6 +470,15 @@ contains
 #endif /* CORIOLIS */
 
       divB_0_method = INVALID
+      select case (emf_recipe)
+         case ("GS", "gs", "Gardiner-Stone", "gardiner-stone", "upwind", "Upwind")
+            emf_method = EMF_GS
+         case ("Balsara", "balsara", "BALSARA", "arithmetic", "average", "Balsara-Spicer")
+            emf_method = EMF_BALSARA
+         case default
+            call die("[global:init_global] unrecognized emf_recipe; use 'GS' or 'Balsara'.")
+      end select
+
       select case (divB_0)
          case ("CT", "ct", "constrained transport", "Constrained Transport")
             divB_0_method = DIVB_CT
@@ -482,6 +501,23 @@ contains
       if ((which_solver == RTVD_SPLIT) .and. (divB_0_method /= DIVB_CT)) then
          if (master) call warn("[global:init_global] RTVD works only with Constrained Transport. Enforcing.")
          divB_0_method = DIVB_CT
+      endif
+
+      !
+      ! Constrained transport with the SPLIT Riemann solver advances B once per direction, so that
+      ! the y- and z-sweeps see a B the x-sweep has already updated; without that the field is a
+      ! full timestep stale and the scheme drops to first order in time (CPAW L1(B_z) order 1.1
+      ! against 1.8 for GLM). That per-direction curl works only because the Balsara & Spicer
+      ! average is a plain sum over the contributing sweeps and therefore splits by direction.
+      ! The Gardiner & Stone correction does not: it needs both transverse sweeps' face EMFs at
+      ! once, so it cannot be evaluated until every direction has been swept. Split CT therefore
+      ! gets Balsara; use solver_str = 'unsplit' if you want the GS correction.
+      !
+      if ((divB_0_method == DIVB_CT) .and. (which_solver == RIEMANN_SPLIT) .and. (emf_method == EMF_GS)) then
+         emf_method = EMF_BALSARA
+         if (master) call warn("[global:init_global] emf_recipe = 'GS' is not available with the split " // &
+              "Riemann solver under CT (it cannot be evaluated per direction); using 'Balsara'. " // &
+              "Use solver_str = 'unsplit' for the Gardiner-Stone correction.")
       endif
 
       !> reshape_b should carefully check things here

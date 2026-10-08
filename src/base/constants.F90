@@ -253,6 +253,11 @@ module constants
    character(len=dsetnamelen), parameter :: zbflx_n    = "zbflx"    !< main Z face-flux array of magnetic field
    character(len=dsetnamelen), parameter :: psiflx_n   = "psiflx"   !< main array carrying the flux of the auxiliary scalar psi
 
+   ! Constrained Transport (ct_core). Not used by the legacy RTVD ct module, which keeps its own scratch.
+   character(len=dsetnamelen), parameter :: emf_n      = "emf"      !< edge-centred electromotive force, 3 components
+   character(len=dsetnamelen), parameter :: emff_n     = "emff"     !< face-centred EMF staging array, 6 slots: 2 transverse components per sweep direction
+   character(len=dsetnamelen), parameter :: emfcc_n    = "emfcc"    !< cell-centred EMF and velocity sampled at t^n, 6 slots: 3 EMF + 3 velocity
+
    ! gravitational potential
    character(len=dsetnamelen), parameter :: gp_n    = "gp"      !< static, external field, must be explicitly set to 0. if no external fields are applied
    character(len=dsetnamelen), parameter :: sgp_n   = "sgp"     !< current field from self-gravity
@@ -298,6 +303,9 @@ module constants
       enumerator :: VAR_XFACE       !! X-face
       enumerator :: VAR_YFACE       !! Y-face
       enumerator :: VAR_ZFACE       !! Z-face
+      enumerator :: VAR_XEDGE       !! X-directed edge, at (i, j-1/2, k-1/2)
+      enumerator :: VAR_YEDGE       !! Y-directed edge, at (i-1/2, j, k-1/2)
+      enumerator :: VAR_ZEDGE       !! Z-directed edge, at (i-1/2, j-1/2, k)
    end enum
 
    ! Interpolation order
@@ -349,6 +357,12 @@ module constants
       enumerator :: DIVB_CT   ! Constrained Transport
       enumerator :: DIVB_HDC  ! Hyperbolic Divergence Cleaning (div(B) diffusion, GLM)
    end enum
+   ! how the edge-centred EMF is reconstructed from the face-centred ones (constrained transport)
+   enum, bind(C)
+      enumerator :: EMF_BALSARA  !< plain arithmetic average of the surrounding face EMFs (Balsara & Spicer 1999)
+      enumerator :: EMF_GS       !< that, plus the upwinded derivative correction of Gardiner & Stone
+   end enum
+
    integer(kind=4), parameter :: psidim = zdim + 1
 
    ! -1, 0, 1

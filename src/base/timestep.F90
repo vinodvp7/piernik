@@ -142,8 +142,8 @@ contains
       use particle_timestep,  only: timestep_nbody
 #endif /* NBODY */
 #ifdef STREAM_CR
-      use timestepscr,        only: timestep_scr
-      use initstreamingcr,    only: dt_scr, nsub, nsub_scr, scr_negative
+      use timestepscr,        only: timestep_scr, update_cred
+      use initstreamingcr,    only: dt_scr, nsub, nsub_scr, scr_negative, scr_redo_on_violation
       use constants,          only: I_ZERO, INVALID, I_ONE, I_TWO
       use dataio_pub,         only: die
 #endif /* STREAM_CR */
@@ -243,6 +243,7 @@ contains
 
 #ifdef STREAM_CR
 
+      if (.not. scr_redo_on_violation) call update_cred  ! cred from the current signal speed (legacy mode adapts it via redo)
       call timestep_scr(dt_scr)                          ! Calculate the timestep for streaming CR
 
       select case (nsub)
@@ -250,15 +251,10 @@ contains
             dt = dt_scr
             nsub_scr = I_ONE
          case (I_ZERO)                                   ! Adaptive sub-cycling
-            if (dt < dt_scr) then
-               scr_negative = .true.
-               dt_scr = dt
-               nsub_scr = I_TWO
-            else
-               nsub_scr = max(I_ONE, ceiling(dt/dt_scr))
-               if (mod(nsub_scr, 2) /= 0) nsub_scr = nsub_scr + I_ONE
-               dt_scr = dt/nsub_scr
-            endif
+            ! Smallest number of sub-cycles with nsub_scr * dt_scr = dt and dt_scr <= dx/cred. Each half-step runs all
+            ! nsub_scr sub-cycles, so the count need not be even (rounding up to even wasted up to ~40% of the CR work).
+            nsub_scr = max(I_ONE, ceiling(dt/dt_scr))
+            dt_scr = dt/nsub_scr
          case default                                   ! Fixed number of user provided sub-cycles
             if (nsub < INVALID) then
                if (master) then

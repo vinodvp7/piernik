@@ -68,8 +68,11 @@ contains
       type(grid_container), pointer, intent(in) :: cg
       integer,                       intent(in) :: istep
 
+      integer(kind=4) :: uhi
+
       if (istep == first_stage(integration_order) .and. integration_order > 1 )  then
-         cg%w(wna%ind(uh_n))%arr(:,:,:,:) = cg%u(:,:,:,:)
+         uhi = wna%ind(uh_n)                     ! look the index up once: inside a whole-array assignment gfortran re-evaluates it per element
+         cg%w(uhi)%arr(:,:,:,:) = cg%u(:,:,:,:)
          call update_rotation_matrix(cg, istep)
       endif
 
@@ -86,13 +89,13 @@ contains
       use grid_cont,        only: grid_container
       use named_array_list, only: wna
       use constants,        only: pdims, ORTHO1, ORTHO2, I_ONE, LO, HI, scrh, &
-      &                           first_stage, xdim, ydim, zdim, I_THREE, v_dfst, uh_n
+      &                           first_stage, xdim, ydim, zdim, I_THREE, v_dfst, uh_n, rk_coef
       use global,           only: integration_order
       use domain,           only: dom
       use fluidindex,       only: iarr_all_swp, scrind, iarr_all_dn, iarr_all_mx
       use diagnostics,      only: my_allocate, my_deallocate
       use fluxtypes,        only: ext_fluxes
-      use initstreamingcr,  only: iarr_all_scr_swp
+      use initstreamingcr,  only: iarr_all_scr_swp, scr_pp_limiter, dt_scr
 
       implicit none
 
@@ -100,9 +103,9 @@ contains
       integer,                       intent(in) :: istep
 
       integer                                    :: i1, i2
-      integer(kind=4)                            :: uhi, ddim, scri
+      integer(kind=4)                            :: uhi, ddim, scri, vdfi
       real, dimension(:,:),allocatable           :: u, uf, vdiff1d
-      real, dimension(:,:), pointer              :: pu, pf, vdiff
+      real, dimension(:,:), pointer              :: pu, pf, vdiff, pe
       real, allocatable                          :: vx(:)
       real, dimension(:,:), pointer              :: pflux
       real, dimension(:,:),allocatable           :: flux
@@ -111,6 +114,7 @@ contains
 
       uhi  = wna%ind(uh_n)
       scri = wna%ind(scrh)
+      vdfi = wna%ind(v_dfst)
       do ddim=xdim,zdim
 
          if (.not. dom%has_dir(ddim)) cycle
@@ -131,7 +135,7 @@ contains
                   pflux => cg%w(wna%zscrflx)%get_sweep(zdim,i1,i2)
                endif
 
-               vdiff => cg%w(wna%ind(v_dfst))%get_sweep(ddim, i1, i2)
+               vdiff => cg%w(vdfi)%get_sweep(ddim, i1, i2)
 
                vdiff1d(:,:) = transpose(vdiff(ddim : I_THREE*(scrind%nscr - I_ONE) + ddim : I_THREE,:) )
 
@@ -154,6 +158,13 @@ contains
                call cg%set_fluxpointers(ddim, i1, i2, eflx,.true.)
 
                call solve_scr(u, vdiff1d,eflx, flux,vx)
+
+               if (scr_pp_limiter) then
+                  pe => cg%w(wna%scr)%get_sweep(ddim,i1,i2)                    ! step-start state: the base of both RK stages
+                  call pp_limit_line(flux, u, pe, rk_coef(istep) * dt_scr / cg%dl(ddim))
+                  if (associated(eflx%lo)) eflx%lo%sflx = flux(eflx%lo%index, :)
+                  if (associated(eflx%ro)) eflx%ro%sflx = flux(eflx%ro%index, :)
+               endif
 
                call cg%save_outfluxes(ddim, i1, i2, eflx,.true.)
 
@@ -288,6 +299,61 @@ contains
       enddo
    end subroutine bounds_for_flux
 
+!>
+!! \brief Positivity-preserving limiter for the Ec flux along one 1D line (after Hu, Adams & Shu 2013).
+!!
+!! \details The unsplit update of cell i is E_i = E0_i + lam_d (F_left - F_right) summed over the nd active directions, with
+!! E0 the step-start energy. Giving each of the 2*nd faces of a cell an equal share, E_i >= 0 holds if every face flux obeys
+!! -E0_R/(2 nd lam) <= F <= E0_L/(2 nd lam). Outside that interval the Ec flux is blended with the first-order HLL Ec flux
+!! (speeds -+cred), with the largest weight on the high-order flux that satisfies it, and then clamped as a backstop.
+!! Only the Ec flux is touched: blending the Fc fluxes with the full-speed flux is unstable at cfl_scr ~ 1, and |Fc| is
+!! limited separately. The target is positivity, not the floor: limiting towards smallescr froze every floor cell (most
+!! of a halo) and dragged its neighbours to the floor; small dips are still reset by the floor in the source step.
+!! Both neighbours see the same flux, so the scheme stays conservative.
+!<
+   subroutine pp_limit_line(flx, u, e0, lam)
+
+      use domain,          only: dom
+      use fluidindex,      only: scrind
+      use initstreamingcr, only: cred, iarr_all_escr, scr_npp
+
+      implicit none
+
+      real, dimension(:,:), intent(inout) :: flx   !< face fluxes (nfaces, nvar) in sweep order, face k between cells k and k+1
+      real, dimension(:,:), intent(in)    :: u     !< stage-input cell states (ncells, nvar) in sweep order
+      real, dimension(:,:), intent(in)    :: e0    !< step-start cell states (nvar, ncells) in storage order
+      real,                 intent(in)    :: lam   !< rk_coef * dt_scr / dx
+
+      real               :: flo, fmax, fmin, fh, theta, den
+      integer            :: j, k, off, ie, nd
+
+      nd  = count(dom%has_dir)
+      den = 2.0 * nd * lam
+
+      do j = 1, scrind%nscr
+         off = 1 + 4 * (j - 1)
+         ie  = iarr_all_escr(j)
+         do k = 1, size(flx, 1)
+            fmax =  max(e0(ie, k),     0.0) / den
+            fmin = -max(e0(ie, k + 1), 0.0) / den
+            fh   = flx(k, off)
+            if (fh <= fmax .and. fh >= fmin) cycle
+
+            flo = 0.5 * (u(k, off+1) + u(k+1, off+1)) - 0.5 * cred * (u(k+1, off) - u(k, off))   ! first-order HLL Ec flux
+
+            theta = 0.0
+            if (fh > fmax) then
+               if (flo < fmax) theta = (fmax - flo) / (fh - flo)
+            else
+               if (flo > fmin) theta = (fmin - flo) / (fh - flo)
+            endif
+            flx(k, off) = min(fmax, max(fmin, theta * fh + (1.0 - theta) * flo))
+            scr_npp = scr_npp + 1
+         enddo
+      enddo
+
+   end subroutine pp_limit_line
+
    subroutine scr_transport(ql, qr, vdiff, flx)
 
       use initstreamingcr,       only: which_scr_transport, SCR_HLLE, SCR_LF
@@ -310,6 +376,7 @@ contains
       call scr_riemann_solve(ql, qr, vdiff, flx)
 
    end subroutine scr_transport
+
 
    subroutine riemann_hlle_scr(ql, qr, vdiff, flx)
 

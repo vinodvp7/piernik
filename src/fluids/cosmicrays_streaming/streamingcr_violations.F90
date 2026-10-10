@@ -67,7 +67,7 @@ contains
       use func,               only: ekin
 #endif /* !ISO */
 #ifdef STREAM_CR
-      use initstreamingcr,    only: cred, scr_negative, cred_to_mhd_threshold
+      use initstreamingcr,    only: cred, scr_negative, cred_to_mhd_threshold, scr_redo_on_violation
 #endif /* STREAM_CR */
 
       implicit none
@@ -91,6 +91,9 @@ contains
 
       ! If *any* rank had it set, now everybody has it and we can exit
       if (scr_negative) return
+
+      ! Without the legacy redo, cred follows the signal speed when dt is chosen (timestepscr:update_cred), nothing to check here
+      if (.not. scr_redo_on_violation) return
       
       cgl => leaves%first
       do while (associated(cgl))

@@ -47,7 +47,7 @@ contains
       use fluidindex,       only: iarr_all_dn, iarr_all_mx, iarr_all_my, iarr_all_mz, iarr_all_en
       use initstreamingcr,  only: cred, disable_streaming, disable_feedback, use_smallescr, smallescr, dt_scr, &
       &                           iarr_all_yfscr, iarr_all_zfscr, iarr_all_xfscr, iarr_all_escr, ord_pc_grad, scr_negative, &
-      &                           scr_causality_limit
+      &                           scr_causality_limit, scr_redo_on_violation, scr_nclip_src, scr_nfloor
       use scr_helpers,      only: update_interaction_term
       use func,             only: operator(.equals.)
 #ifdef MAGNETIC
@@ -65,7 +65,7 @@ contains
       real                                       :: v1, v2, v3, vtot1, vtot2, vtot3, f1, f2, f3, ec
       real                                       :: sigma_parallel, sigma_perpendicular, m11, m12, m13, m14, m21, m22
       real                                       :: m31, m33, m41, m44, newf1 ,newf2 ,newf3, e_coef, newec
-      real                                       :: gpcx, gpcy, gpcz, ec_source_, e_feed
+      real                                       :: gpcx, gpcy, gpcz, ec_source_, e_feed, fmag, fscale
 #ifdef MAGNETIC
       real                                       :: bdotpc, sgn_bgpc, st, ct, sp, cp
 #endif /* MAGNETIC */
@@ -124,6 +124,7 @@ contains
             endif
 #endif /* MAGNETIC */
             ec = cg%w(scri)%arr(iarr_all_escr(ns),i,j,k)
+            if (ec < 0.0) scr_nfloor = scr_nfloor + 1            ! transport drove Ec negative (diagnostic)
             f1 = cg%w(scri)%arr(iarr_all_xfscr(ns),i,j,k) / cred
             f2 = cg%w(scri)%arr(iarr_all_yfscr(ns),i,j,k) / cred
             f3 = cg%w(scri)%arr(iarr_all_zfscr(ns),i,j,k) / cred
@@ -183,12 +184,25 @@ contains
                cg%w(uhi)%arr(iarr_all_en(1), i, j, k) = e_feed
 #endif /* !ISO */
             endif
+            ! |Fc| <= limit * cred * Ec (newf is Fc/cred). At saturated fronts and floored cells the ratio does not depend on cred,
+            ! so by default the flux is clipped locally; scr_redo_on_violation restores the legacy redo with a larger cred.
+            fmag = sqrt(newf1 * newf1 + newf2 * newf2 + newf3 * newf3)
+            if (fmag > scr_causality_limit * newec) then
+               if (scr_redo_on_violation) then
+                  scr_negative = .true.
+               else
+                  fscale = scr_causality_limit * newec / fmag
+                  newf1 = newf1 * fscale
+                  newf2 = newf2 * fscale
+                  newf3 = newf3 * fscale
+                  scr_nclip_src = scr_nclip_src + 1
+               endif
+            endif
+
             cg%w(scri)%arr(iarr_all_escr(ns), i, j, k)  = newec         ! For test 1 and test 2 comment me
             cg%w(scri)%arr(iarr_all_xfscr(ns), i, j, k) = newf1 * cred
             cg%w(scri)%arr(iarr_all_yfscr(ns), i, j, k) = newf2 * cred
             cg%w(scri)%arr(iarr_all_zfscr(ns), i, j, k) = newf3 * cred
-
-            if (sqrt(newf1 * newf1 + newf2 * newf2 + newf3 * newf3 ) > scr_causality_limit * newec) scr_negative = .true.
 
          enddo
       enddo
@@ -220,7 +234,7 @@ contains
 
       logical                     :: active(ndims)
       integer                     :: L0(ndims), U0(ndims), L(ndims), U(ndims), shift(ndims)
-      integer                     :: afdim, ns, d, i, j , k
+      integer                     :: afdim, ns, d, i, j , k, gpci
       real, pointer               :: T(:,:,:,:)
       type(fxptr)                 :: F(ndims)
 
@@ -242,9 +256,10 @@ contains
       L0 = [ lbound(cg%scr,2), lbound(cg%scr,3), lbound(cg%scr,4) ]
       U0 = [ ubound(cg%scr,2), ubound(cg%scr,3), ubound(cg%scr,4) ]
 
-      cg%w(wna%ind(gpcn))%arr = 0.0
+      gpci = wna%ind(gpcn)                       ! look the index up once: inside a whole-array assignment gfortran re-evaluates it per element
+      cg%w(gpci)%arr = 0.0
 
-      T => cg%w(wna%ind(gpcn))%arr
+      T => cg%w(gpci)%arr
 
       do ns = 1, scrind%nscr
          do d = xdim, zdim                          ! component of grad Pc (x,y,z)

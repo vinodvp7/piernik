@@ -1,0 +1,156 @@
+ $BASE_DOMAIN
+    n_d = 48, 48, 192          ! 20.8 pc cells; 10.4 pc: 96,96,384 ; 7.8 pc: 128,128,512 (multigrid needs sizes divisible by powers of 2)
+    nb  = 4
+    bnd_xl = 'per'
+    bnd_xr = 'per'
+    bnd_yl = 'per'
+    bnd_yr = 'per'
+    bnd_zl = 'outd'
+    bnd_zr = 'outd'
+    xmin   = -500.0
+    xmax   =  500.0
+    ymin   = -500.0
+    ymax   =  500.0
+    zmin   = -2000.0
+    zmax   =  2000.0
+ /
+
+ $MPI_BLOCKS
+ /
+
+ $UNITS
+    units_set = "PSM"           ! pc, Msun, Myr; velocity unit pc/Myr ~ 0.978 km/s
+ /
+
+ $RESTART_CONTROL
+    restart  = 'last'
+    res_id   = ''
+ /
+
+ $END_CONTROL
+    tend   = 500.0
+    nend   = 100000000
+ /
+
+ $OUTPUT_CONTROL
+    problem_name = 'tallbox_sf'
+    run_id = 'C1c'
+    dt_hdf  = 5.0
+    dt_res  = 50.0
+    dt_log  = 1.0
+    dt_tsl  = 0.1
+    vars(1:) = 'dens', 'velx', 'vely', 'velz', 'ener', 'pres', 'temp', 'Temperature', 'gpot', 'sgpt', 'SFR_n', 'SFRh_n', 'SNe_n', 'magx', 'magy', 'magz', 'divb', 'encr'
+ /
+
+ $NUMERICAL_SETUP
+    solver_str = 'riemann'      ! split solver: star formation (SF_step) is not called by the unsplit solver
+    cfl    = 0.3
+    smalld = 1.e-6
+    smallei= 1.e-8
+    limiter= 'vanleer'
+    dt_max = 0.005             ! SNe are injected after dt is chosen: cap the step so a single SN cannot blow the CFL
+    va_max = 1000.0            ! Alfven-speed ceiling [pc/Myr ~ km/s]: density raised to B^2/va_max^2 where v_A would exceed it (halo runaway guard; tsl: va_added_mass, va_ncells)
+ /
+
+ $FLUID_IONIZED
+    gamma  = 1.66666666666666666
+    selfgrav = .true.
+ /
+
+ $GRAVITY
+    user_grav    = .true.
+    gprofs_target= 'extgp'
+    r_gc         = 8500         ! solar circle
+    nsub         = 10
+ /
+
+ $MULTIGRID_SOLVER
+ /
+
+ $MULTIGRID_GRAVITY
+ /
+
+ $PROBLEM_CONTROL
+    d0          = 0.031         ! midplane density [Msun/pc^3]; gives Sigma_gas(t=0) ~ 10 Msun/pc^2 (printed in the log)
+    T0          = 8000.0        ! initial temperature [K]
+    alpha       = 1.0           ! Pmag/Pgas (B cases) and support in the common rho(z) profile (all cases)
+    beta_eff    = 0.0
+    bxn = 0.0, byn = 1.0, bzn = 0.0
+    prob        = 3             ! Ferriere 1998 potential
+    beta_cr     = 1.0e-3        ! CR seed, Pcr/Pgas
+    v_turb      = 10.0          ! initial mass-weighted rms velocity [pc/Myr]
+    kmin        = 1.0
+    kmax        = 8.0
+    pspec_slope = -4.0
+    sol_frac    = 0.5
+    turb_seed   = 1
+    f_sn_mode   = 'KS'
+    t_drive_end = 40.0
+    t_taper     = 10.0
+    h_sn        = 50.0
+    frac_peak   = 0.5
+    f_Ia_kpc2   = 0.0
+    h_Ia        = 325.0
+    z_flux      = 500.0, 1000.0
+ /
+
+ $THERMAL
+   thermal_active = .TRUE.
+   cool_model     = 'piecewise_power_law'
+   cool_curve     = 'tabulated'
+   cool_file      = 'cool_Kobayashi.txt'
+   heat_model     = 'G012'
+   scheme         = 'EE'
+   alpha_cool     = 1.5
+   Teq            = 1000.0
+   Lambda_0       = 1.0e-25
+   G0             = 0.0e-26
+   G1             = 2.0e-25
+   G2             = 0.0e-27
+   x_ion          = 1.0
+   isochoric      = 1
+ /
+
+ $STAR_FORMATION_CONTROL
+   dens_thr      = 0.35         ! ~10 H/cm^3
+   temp_thr      = 1.0e4
+   eps_sf        = 0.1
+   mass_SN       = 100.0
+   n_SN          = 1.0
+   Jeans_crit    = .true.
+   divv_crit     = .true.
+   tdyn_crit     = .false.
+   delayed       = .true.
+   kineticFB     = .true.
+   inject_mass   = .false.      ! ejecta mass is double counted in TIGRESS_injection
+   initial_stars = .false.
+ /
+
+ $INTERACTIONS
+ /
+
+ $AMR
+ /
+
+ $COSMIC_RAYS
+    cfl_cr        = 0.9
+    cr_active     = 1.0
+    cr_eff        = 0.1
+    K_cr_paral(1) = 1.0e5       ! ~3e28 cm^2/s (1 pc^2/Myr = 3.02e23 cm^2/s)
+    K_cr_perp(1)  = 1.0e3
+    smallecr      = 0.0
+ /
+
+ $CR_SPECIES
+    eH1 = .true., .true., .false.
+ /
+
+ $MULTIGRID_DIFFUSION
+    diff_explicit  = .false.
+    diff_theta     = 0.6
+    diff_tstep_fac = 30
+    norm_tol       = 1e-4
+    nsmoob         = 4
+    max_cycles     = 20
+    diff_bnd_str   = "zero"
+ /

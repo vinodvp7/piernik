@@ -1,0 +1,22 @@
+#if !defined LOCAL_FR_SPEED
+#  define GLOBAL_FR_SPEED
+#endif
+
+#undef ISO
+
+#define IONIZED
+#define THERM
+
+#if 0
+  NBODY implies SELF_GRAV, GRAV and MULTIGRID (src/base/piernik.h) and pulls in star formation.
+  The physics variant is chosen at setup time; do NOT define these here.
+  The local h5pfc wrapper silently drops its first argument, i.e. the first -D flag, hence the dummy H5PFC_EATS_1ST:
+    A  (HD)               : ./setup tallbox_sf -o A_hd       -d H5PFC_EATS_1ST,NONMAGNETIC -p problem.par.A
+    B  (MHD)              : ./setup tallbox_sf -o B_mhd                                    -p problem.par.B
+    C1 (MHD + diff. CR)   : ./setup tallbox_sf -o C1_crdiff  -d H5PFC_EATS_1ST,COSM_RAYS   -p problem.par.C1
+    C2 (MHD + 2-mom diff.): ./setup tallbox_sf -o C2_scrdiff -d H5PFC_EATS_1ST,STREAM_CR   -p problem.par.C2
+    D  (MHD + streaming)  : ./setup tallbox_sf -o D_scr      -d H5PFC_EATS_1ST,STREAM_CR   -p problem.par.D
+#endif
+#define NBODY
+
+#define RANDOMIZE

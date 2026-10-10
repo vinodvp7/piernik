@@ -40,6 +40,7 @@ module star_formation
    private
    public :: init_SF, SF, initialize_id, attribute_id, pid_gen, dmass_stars, SF_redo_timestep, SF_tsl_reduce, seed_initial_stars
    public :: register_SF_vars, SF_step, SF_tsl                                      ! NEW
+   public :: field_SN, mass_SN, n_SN
 
 
    integer(kind=4), parameter            :: giga = 1000000000
@@ -82,7 +83,7 @@ contains
       eps_sf           = 0.1             ! Star formation efficiency
       mass_SN          = 100.0           ! Mass of star forming gas triggering one SNe
       n_SN             = 1.0             ! Threshold of number of SN needed to inject the corresponding energy
-      max_part_mass    = mass_SN * n_SN  ! Maximum mass of sink particles
+      max_part_mass    = -1.0            ! Maximum mass of sink particles; sentinel <=0 means mass_SN * n_SN (resolved after the namelist is read)
       dist_accr        = 50.0            ! Distance of gas accretion for the star forming particles
       SN_ener          = 1.0 * 10.0**51  ! Energy injected by one SNe
       dt_violent_FB    = 0.002           ! Maximum timestep in case of violent kinetic feedback for timestep redo
@@ -111,6 +112,8 @@ contains
          write(nh%lun,nml=STAR_FORMATION_CONTROL)
          close(nh%lun)
          call nh%compare_namelist()
+
+         if (max_part_mass <= 0.0) max_part_mass = mass_SN * n_SN
 
          lbuff(1) = kick
          lbuff(2) = Jeans_crit
@@ -225,20 +228,16 @@ contains
       fpadd    = 1.8e40 * gram * cm /sek * 2.**0.38 * 2 * dt / tinj / 26  ! Kick: continuous momentum injection, see Agertz+2013
       mass_SN_tot = mass_SN * n_SN
       en_SN    = n_SN * SN_ener * erg
-#ifdef COSM_RAYS
+#if defined(COSM_RAYS)
       en_SN01  = cr_eff * cr_active * en_SN
       en_SN09  = (1 - cr_eff * cr_active) * en_SN
-#else /* !COSM_RAYS */
-      en_SN01  = 0.0
-      en_SN09  = en_SN
-#endif /* !COSM_RAYS */
-#ifdef STREAM_CR
+#elif defined(STREAM_CR)
       en_SN01  = scr_eff * en_SN
       en_SN09  = (1 - scr_eff) * en_SN
-#else /* !STREAM_CR */
+#else /* !COSM_RAYS && !STREAM_CR */
       en_SN01  = 0.0
       en_SN09  = en_SN
-#endif /* !STREAM_CR */
+#endif /* !COSM_RAYS && !STREAM_CR */
       c_tau_ff = sqrt(3.*pi/(32.*newtong))
       sfdf     = eps_sf / c_tau_ff * 2 * dt
       SF_redo_timestep = .false.
@@ -391,12 +390,9 @@ contains
                         do j = ijkl(ydim), ijkr(ydim)
                            do k = ijkl(zdim), ijkr(zdim)
 
-                              if (mass_SN_tot .eq. max_part_mass) then
-                                 !mfdv = aint(pset%pdata%mass / mass_SN_tot) / cg%dvol
-                                 if (aint(pset%pdata%mass / mass_SN_tot) .gt. 1) print *, 'WARNING: More than 1 SNe for a given particle, but we will assume only 1 explosion'
-                              !else
-                                 mfdv = 1 / cg%dvol                      !We assume only n_SN explosions are triggered at once (one supernova loadout)
-                              endif
+                              if ((mass_SN_tot .eq. max_part_mass) .and. (aint(pset%pdata%mass / mass_SN_tot) .gt. 1)) &
+                                 & print *, 'WARNING: More than 1 SNe for a given particle, but we will assume only 1 explosion'
+                              mfdv = 1 / cg%dvol                         !We assume only n_SN explosions are triggered at once (one supernova loadout)
 
 
                               ijk1 = -nint((pset%pdata%pos - [cg%coord(CENTER,xdim)%r(i), cg%coord(CENTER,ydim)%r(j), cg%coord(CENTER,zdim)%r(k)]) * cg%idl, kind=4)
@@ -636,10 +632,9 @@ contains
 
 #ifdef COSM_RAYS
     if ((divv_crit) .and. (cg%q(divv_i)%arr(i,j,k) .ge. 0)) return    ! convergent flow
-#endif /* COSM_RAYS */
-#ifdef STREAM_CR
-    if ((divv_crit)) return    ! convergent flow. Need to also account for divv . not really sure how now 
-#endif /* STREAM_CR */
+#else /* !COSM_RAYS */
+    if ((divv_crit) .and. (local_divv(cg, pfl, i, j, k) .ge. 0)) return    ! convergent flow, no divvel field available without COSM_RAYS
+#endif /* !COSM_RAYS */
 #ifdef THERM
     temp = cg%q(itemp)%arr(i,j,k)
 
@@ -658,6 +653,27 @@ contains
     cond = .true.
 
   end function SF_crit
+
+   !> \brief Centred-difference divergence of the velocity of fluid pfl in cell (i,j,k)
+   real function local_divv(cg, pfl, i, j, k) result(divv)
+
+      use constants,  only: xdim, ydim, zdim, half
+      use domain,     only: dom
+      use fluidtypes, only: component_fluid
+      use grid_cont,  only: grid_container
+
+      implicit none
+
+      type(grid_container), pointer, intent(in) :: cg
+      class(component_fluid), pointer           :: pfl
+      integer,                       intent(in) :: i, j, k
+
+      divv = 0.0
+      if (dom%has_dir(xdim)) divv = divv + half * cg%idx * (cg%u(pfl%imx,i+1,j,k) / cg%u(pfl%idn,i+1,j,k) - cg%u(pfl%imx,i-1,j,k) / cg%u(pfl%idn,i-1,j,k))
+      if (dom%has_dir(ydim)) divv = divv + half * cg%idy * (cg%u(pfl%imy,i,j+1,k) / cg%u(pfl%idn,i,j+1,k) - cg%u(pfl%imy,i,j-1,k) / cg%u(pfl%idn,i,j-1,k))
+      if (dom%has_dir(zdim)) divv = divv + half * cg%idz * (cg%u(pfl%imz,i,j,k+1) / cg%u(pfl%idn,i,j,k+1) - cg%u(pfl%imz,i,j,k-1) / cg%u(pfl%idn,i,j,k-1))
+
+   end function local_divv
 
   ! Check if a gas cell is within accretion distance from the particle
   logical function add_SFmass(pset, x, y, z, sector) result(add)
@@ -1087,22 +1103,17 @@ contains
    endif
 
    en_SN    = n_SN * SN_ener * erg
-#ifdef COSM_RAYS
+#if defined(COSM_RAYS)
    en_SN01  = cr_eff * cr_active * en_SN
    en_SN09  = (1 - cr_eff * cr_active) * en_SN
-   if (cr_active > 0) call sf_inject(cg, pfl%ien, pfl%idn, i, j, k, is, ish, 0.0, mfdv * en_SN01 *frac, dt, sne_dump)      ! Inject CRs
-#else /* !COSM_RAYS */
-   en_SN01  = 0.0
-   en_SN09  = en_SN
-#endif /* !COSM_RAYS */
-#ifdef STREAM_CR
+#elif defined(STREAM_CR)
    en_SN01  = scr_eff * en_SN
    en_SN09  = (1 - scr_eff) * en_SN
-   call sf_inject(cg, pfl%ien, pfl%idn, i, j, k, is, ish, 0.0, mfdv * en_SN01 *frac, dt, sne_dump)      ! Inject CRs
-#else /* !STREAM_CR */
+#else /* !COSM_RAYS && !STREAM_CR */
    en_SN01  = 0.0
    en_SN09  = en_SN
-#endif /* !STREAM_CR */
+#endif /* !COSM_RAYS && !STREAM_CR */
+   if (en_SN01 > 0.0) call sf_inject(cg, pfl%ien, pfl%idn, i, j, k, is, ish, 0.0, mfdv * en_SN01 *frac, dt, sne_dump)      ! Inject CRs (sf_inject routes to the active CR module)
    ! Option to inject only thermal energy (risking overcooling effects)
    if ((.not. kineticFB)) then
       if (aijk1 .eq. 0) print *, 'Thermal FB', i,j,k, dens_amb
@@ -1161,6 +1172,123 @@ contains
    cg%u(pfl%ien,i,j,k) = cg%u(pfl%ien,i,j,k) + ekin(cg%u(pfl%imx,i,j,k), cg%u(pfl%imy,i,j,k), cg%u(pfl%imz,i,j,k), cg%u(pfl%idn,i,j,k))  ! add new Ekin
 
   end subroutine TIGRESS_injection
+
+   !>
+   !! \brief Explode one field (non-particle) SN at position pos, e.g. for SILCC/TIGRESS-like driving set up in initproblem.
+   !!
+   !! \details Must be called collectively by all ranks with the same pos. The SN is snapped to the nearest cell centre and
+   !! distributed over a sphere of radius 3 cells (periodic wrap in periodic directions), exactly as the delayed particle
+   !! feedback: CR fraction to the active CR module, the rest following Kim & Ostriker 2015 via TIGRESS_injection.
+   !! Assumes a uniform grid (no AMR refinement around the SN).
+   !<
+   subroutine field_SN(pos)
+
+      use allreduce,        only: piernik_MPI_Allreduce
+      use cg_leaves,        only: leaves
+      use cg_list,          only: cg_list_element
+      use constants,        only: ndims, xdim, zdim, LO, pSUM, pMIN, half
+      use domain,           only: dom
+      use fluidindex,       only: flind
+      use fluidtypes,       only: component_fluid
+      use grid_cont,        only: grid_container
+      use named_array_list, only: qna
+
+      implicit none
+
+      real, dimension(ndims), intent(in) :: pos
+
+      type(cg_list_element),  pointer :: cgl
+      type(grid_container),   pointer :: cg
+      class(component_fluid), pointer :: pfl
+      real, dimension(ndims)          :: psnap, d
+      real, dimension(2)              :: acc
+      real                            :: dx, dens_amb, frac
+      integer(kind=4), dimension(ndims) :: ijk1
+      integer                         :: i, j, k, aijk1, is, ish, isn, dir
+
+      pfl => flind%ion
+      is = 0 ; ish = 0 ; isn = 0
+      if (sne_dump) then
+         is  = qna%ind(snel_n)
+         ish = qna%ind(sneh_n)
+         isn = qna%ind(sne_n)
+      endif
+
+      ! pass 1: snap to cell centre and gather the ambient density over the whole injection sphere
+      acc(:) = 0.0
+      dx = huge(1.0)
+      cgl => leaves%first
+      do while (associated(cgl))
+         dx = min(dx, cgl%cg%dx)
+         cgl => cgl%nxt
+      enddo
+      call piernik_MPI_Allreduce(dx, pMIN)
+      psnap = dom%edge(:,LO) + (floor((pos - dom%edge(:,LO)) / dx) + half) * dx
+
+      cgl => leaves%first
+      do while (associated(cgl))
+         cg => cgl%cg
+         do k = cg%ks, cg%ke
+            do j = cg%js, cg%je
+               do i = cg%is, cg%ie
+                  if (.not. cg%leafmap(i,j,k)) cycle
+                  call offset(cg, i, j, k)
+                  if (sum(d**2) <= (3 * dx * (1.0 + 1e-6))**2) acc = acc + [cg%u(pfl%idn,i,j,k), 1.0]
+               enddo
+            enddo
+         enddo
+         cgl => cgl%nxt
+      enddo
+      call piernik_MPI_Allreduce(acc, pSUM)
+      if (acc(2) < half) return
+      dens_amb = acc(1) / acc(2)
+      frac     = 1.0 / acc(2)
+
+      ! pass 2: inject
+      cgl => leaves%first
+      do while (associated(cgl))
+         cg => cgl%cg
+         do k = cg%ks, cg%ke
+            do j = cg%js, cg%je
+               do i = cg%is, cg%ie
+                  if (.not. cg%leafmap(i,j,k)) cycle
+                  call offset(cg, i, j, k)
+                  if (sum(d**2) > (3 * dx * (1.0 + 1e-6))**2) cycle
+                  ijk1  = int(nint(d / dx), kind=4)
+                  aijk1 = int(sum(ijk1**2))
+                  if (aijk1 == 0) then
+                     if (sne_dump) cg%q(isn)%arr(i,j,k) = cg%q(isn)%arr(i,j,k) + 1
+                     sne_cnt = sne_cnt + 1
+                  endif
+                  call TIGRESS_injection(cg, pfl, dens_amb, dx, 1.0 / cg%dvol, frac, ijk1, aijk1, i, j, k, is, ish, sne_dump)
+               enddo
+            enddo
+         enddo
+         cgl => cgl%nxt
+      enddo
+
+   contains
+
+      !> \brief Cell-centre offset from the snapped SN position, minimum image in periodic directions; result in d
+      subroutine offset(cg, i, j, k)
+
+         implicit none
+
+         type(grid_container), pointer, intent(in) :: cg
+         integer,                       intent(in) :: i, j, k
+
+         d = [cg%x(i), cg%y(j), cg%z(k)] - psnap
+         do dir = xdim, zdim
+            if (.not. dom%has_dir(dir)) then
+               d(dir) = 0.0
+            else if (dom%periodic(dir)) then
+               d(dir) = d(dir) - dom%L_(dir) * nint(d(dir) / dom%L_(dir))
+            endif
+         enddo
+
+      end subroutine offset
+
+   end subroutine field_SN
 
 ! Find which cells should receive SN injection around exploding particle: 3 cell radius
 subroutine find_injection_region(ppos, ijkl, ijkr, ijkl_coord, dx, dist_max, ijk_check, frac)

@@ -563,19 +563,19 @@ contains
             &            cg%b(zdim, RNG) * cg%w(wna%ind(gpcn))%arr( (is-1)*ndims + zdim, RNG )
          case ('vel_stream_x_01':'vel_stream_x_99')
             read(var, '(A13,I2)') aux, is
-            tab(:,:,:) = cg%b(xdim, RNG)/sqrt(cg%u(fl_dni%idn, RNG)) *  &
+            tab(:,:,:) = cg%b(xdim, RNG)/sqrt(cg%u(flind%ion%idn, RNG)) *  &  ! Alfven speed always w.r.t. ions
             &            sign(1.0,cg%b(xdim, RNG) * cg%w(wna%ind(gpcn))%arr( (is-1)*ndims + xdim, RNG ) + &
             &            cg%b(ydim, RNG) * cg%w(wna%ind(gpcn))%arr( (is-1)*ndims + ydim, RNG ) + &
             &            cg%b(zdim, RNG) * cg%w(wna%ind(gpcn))%arr( (is-1)*ndims + zdim, RNG ))
          case ('vel_stream_y_01':'vel_stream_y_99')
             read(var, '(A13,I2)') aux, is
-            tab(:,:,:) = cg%b(ydim, RNG)/sqrt(cg%u(fl_dni%idn, RNG)) *  &
+            tab(:,:,:) = cg%b(ydim, RNG)/sqrt(cg%u(flind%ion%idn, RNG)) *  &  ! Alfven speed always w.r.t. ions
             &            sign(1.0,cg%b(xdim, RNG) * cg%w(wna%ind(gpcn))%arr( (is-1)*ndims + xdim, RNG ) + &
             &            cg%b(ydim, RNG) * cg%w(wna%ind(gpcn))%arr( (is-1)*ndims + ydim, RNG ) + &
             &            cg%b(zdim, RNG) * cg%w(wna%ind(gpcn))%arr( (is-1)*ndims + zdim, RNG ))
          case ('vel_stream_z_01':'vel_stream_z_99')
             read(var, '(A13,I2)') aux, is
-            tab(:,:,:) = cg%b(zdim, RNG)/sqrt(cg%u(fl_dni%idn, RNG)) *  &
+            tab(:,:,:) = cg%b(zdim, RNG)/sqrt(cg%u(flind%ion%idn, RNG)) *  &  ! Alfven speed always w.r.t. ions
             &            sign(1.0,cg%b(xdim, RNG) * cg%w(wna%ind(gpcn))%arr( (is-1)*ndims + xdim, RNG ) + &
             &            cg%b(ydim, RNG) * cg%w(wna%ind(gpcn))%arr( (is-1)*ndims + ydim, RNG ) + &
             &            cg%b(zdim, RNG) * cg%w(wna%ind(gpcn))%arr( (is-1)*ndims + zdim, RNG ))

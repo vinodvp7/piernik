@@ -1,0 +1,56 @@
+Star-forming stratified tall box: mcrwind-like disk (Ferriere gravity, horizontal B with Pmag/Pgas = alpha,
+'outd' z-boundaries) with self-gravity, cooling/heating and star-particle formation and feedback
+(src/particles/star_formation.F90, delayed TIGRESS-like injection with Kim & Ostriker 2015 momentum).
+
+Turbulence seeding (hybrid):
+  * TIGRESS-like random velocity field at t=0 (v_turb, kmin..kmax, |v_k|^2 ~ k^pspec_slope, sol_frac)
+  * SILCC-like field SNe (f_sn_mode='KS': Kennicutt-Schmidt rate from Sigma_gas(t=0)) until t_drive_end,
+    tapered to zero over t_taper; frac_peak of them at the density peak, the rest random with scale height h_sn.
+    An optional permanent floor (f_Ia_kpc2, h_Ia) can be switched on.
+
+All variants use the same rho(z): csim2 = cs2(T0) * (1 + alpha + beta_eff), even the HD case.
+CRs start at beta_cr * Pgas (small seed) and are injected by SNe (cr_eff / scr_eff of E_SN).
+
+Variants (see piernik.def for the setup commands):
+  A  HD + SF + THERM                      (-d NONMAGNETIC)
+  B  A + MHD
+  C1 B + diffusive CR, protons only       (-d COSM_RAYS)
+  C2 B + two-moment CR, diffusion only    (-d STREAM_CR, disable_streaming = .true.)
+  D  B + streaming CR                     (-d STREAM_CR, disable_streaming = .false.)
+
+Star formation needs a split solver (solver_str = 'riemann'); the unsplit solver does not call SF_step.
+
+Extra tsl columns: SFR10_kpc2, SFR40_kpc2 [Msun/yr/kpc^2], Mstar, H_gas (mass-weighted <|z|>), sigma_v
+(mass-weighted rms), Mdot_z1/Mdot_z2/Mdot_bnd (net outward mass flux through |z| = z_flux(1:2) and the z boundaries,
+Msun/Myr), E_cr, nSN_field, rate_field, Mgas.
+
+Streaming CR (C2/D) reduced speed of light, see src/fluids/cosmicrays_streaming:
+  scr_redo_on_violation = .false. (default): causality violations |Fc| > scr_causality_limit*cred*Ec are clipped
+      locally (source step and face states) and counted (tsl: nclip_src, nclip_face); cred is set before every step
+      from the signal speed, cred = clamp(cred_to_mhd_threshold*max(|u|+c_f), cred_min, cred_max), decaying by at
+      most cred_decay_fac per step. No step is redone because of cred.
+      .true.: legacy behaviour (redo the step with cred*cred_growth_fac).
+  scr_fallback_1st = .true. (default): faces where the reconstruction gives Ec < smallescr or a superluminal flux
+      fall back to first-order states (tsl: nfallback_1st).
+  scr_pp_limiter = .false. (default; .true. in C2/D): positivity-preserving limiter on the Ec flux. Where the HLLE flux
+      could drive a cell's Ec negative it is blended with the first-order HLL flux and clamped (conservative; only the
+      Ec flux is touched). In a 0.5 Myr case-D test: 0 negative-Ec events (500 without), ~1e4 faces limited, no extra cost
+      (tsl: npp_limited; nfloor counts cells that transport drove negative).
+  cfl_scr = 1.0 (default): CR time step dt_scr = cfl_scr*dx/cred. 1/sqrt(3) = 0.577 is the 3D unsplit stability limit for
+      the cred/sqrt(3) waves; it reduced negative-Ec events by ~40% at ~45% extra cost. With scr_pp_limiter, 1.0 is fine;
+      drop to 0.577 if nclip_src/nclip_face keep growing.
+  A per-face fallback to the full-speed HLL flux was tested and rejected: unstable at cfl_scr = 1, it acted on the whole
+      floor-level halo (artificial CR leakage), and mixing it with HLLE at sharp fronts made negative Ec ~50x more common.
+
+Alfven-speed ceiling (NUMERICAL_SETUP va_max, default 0 = off; 1000 pc/Myr in B/C1/C2/D): where |B|/sqrt(rho) > va_max the
+  ion density is raised to B^2/va_max^2 at fixed velocity and temperature (src/magnetic/alfven_limiter.F90), guarding
+  against the halo runaway (low density -> large v_A -> evacuation -> floor -> ...). tsl: va_added_mass (cumulative),
+  va_ncells (cells limited since the previous dump).
+
+  cred_min must exceed ~2*kappa_par/dx: 1e4 (20.8 pc), 2e4 (10.4 pc), 2.5e4 (7.8 pc) for kappa_par = 1e5 pc^2/Myr.
+
+Cost at 20.8 pc on this workstation (6 physical cores; 12 hyperthreads give no gain), per Myr of simulated time:
+A ~1 min, B ~1 min, C1 ~4 min, C2/D ~3.7 min (after the streaming-CR optimisations: ~2.2 s per step).
+
+Building and running on another machine: problems/tallbox_sf/build_and_run.sh <20|10|8> <nproc> [A B C1 C2 D]
+Comparison plots: problems/tallbox_sf/analysis/compare.py <rundirs...> -t 100 250 500 -o <outdir>

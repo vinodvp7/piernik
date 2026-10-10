@@ -66,6 +66,9 @@ contains
       use fluidupdate_hllc,    only: fluid_update_simple
       use ppp,                 only: ppp_main
       use unsplit_fluidupdate, only: fluid_update_unsplit
+#ifdef MAGNETIC
+      use alfven_limiter,      only: limit_alfven_speed
+#endif /* MAGNETIC */
 
       implicit none
 
@@ -88,6 +91,9 @@ contains
          case default
             call die("[fluidupdate:fluid_update] unknown solver")
       end select
+#ifdef MAGNETIC
+      call limit_alfven_speed           ! no-op unless NUMERICAL_SETUP va_max > 0
+#endif /* MAGNETIC */
       call ppp_main%stop(fu_label)
 
    end subroutine fluid_update

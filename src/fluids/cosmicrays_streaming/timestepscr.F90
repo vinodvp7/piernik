@@ -37,7 +37,7 @@ module timestepscr
    implicit none
 
    private
-   public :: timestep_scr, scr_on_success, scr_on_violation
+   public :: timestep_scr, scr_on_success, scr_on_violation, update_cred
 
 contains
 
@@ -53,7 +53,7 @@ contains
       use constants,       only: xdim, zdim, pMIN
       use global,          only: cfl
       use grid_cont,       only: grid_container
-      use initstreamingcr, only: cred
+      use initstreamingcr, only: cred, cfl_scr
       use domain,          only: dom
 
       implicit none
@@ -86,21 +86,87 @@ contains
 
       call piernik_MPI_Allreduce(dt_scr, pMIN)
 
-      dt =   dt_scr                            ! cfl_scr not necessary because we check violation directly on dt_scr and cred
+      dt =   cfl_scr * dt_scr                  ! cfl_scr = 1 keeps the original dx/cred; 3D unsplit stability with speeds cred/sqrt(3) needs <= 1/sqrt(3)
 
    end subroutine timestep_scr
 
+
+!>
+!! \brief Set the reduced speed of light from the current signal speed: cred = cred_to_mhd_threshold * max(|u| + c_f),
+!! bounded by [cred_min, cred_max]. It grows immediately and decays by at most cred_decay_fac per step.
+!! Called when dt is chosen (after the feedback of the previous step), so no step has to be redone because of cred.
+!! Used when scr_redo_on_violation = .false.
+!<
+   subroutine update_cred
+
+      use allreduce,       only: piernik_MPI_Allreduce
+      use cg_leaves,       only: leaves
+      use cg_list,         only: cg_list_element
+      use constants,       only: pMAX
+      use fluidindex,      only: flind
+      use func,            only: ekin
+      use grid_cont,       only: grid_container
+      use initstreamingcr, only: cred, cred_min, cred_max, cred_decay_fac, cred_to_mhd_threshold, iarr_all_escr, gamma_scr
+#ifdef MAGNETIC
+      use func,            only: emag
+      use constants,       only: xdim, ydim, zdim
+#endif /* MAGNETIC */
+
+      implicit none
+
+      type(cg_list_element), pointer :: cgl
+      type(grid_container),  pointer :: cg
+      real                           :: umax, rho, c2, eint
+      integer                        :: i, j, k
+
+      umax = 0.0
+      cgl => leaves%first
+      do while (associated(cgl))
+         cg => cgl%cg
+         do k = cg%ks, cg%ke
+            do j = cg%js, cg%je
+               do i = cg%is, cg%ie
+                  associate (fl => flind%ion)
+                     rho  = cg%u(fl%idn,i,j,k)
+#ifdef ISO
+                     c2   = fl%cs2
+#else /* !ISO */
+                     eint = cg%u(fl%ien,i,j,k) - ekin(cg%u(fl%imx,i,j,k), cg%u(fl%imy,i,j,k), cg%u(fl%imz,i,j,k), rho)
+#ifdef MAGNETIC
+                     eint = eint - emag(cg%b(xdim,i,j,k), cg%b(ydim,i,j,k), cg%b(zdim,i,j,k))
+#endif /* MAGNETIC */
+                     c2   = fl%gam * fl%gam_1 * max(eint, 0.0) / rho
+#endif /* !ISO */
+#ifdef MAGNETIC
+                     c2   = c2 + 2.0 * emag(cg%b(xdim,i,j,k), cg%b(ydim,i,j,k), cg%b(zdim,i,j,k)) / rho          ! + v_A^2
+#endif /* MAGNETIC */
+                     c2   = c2 + sum(gamma_scr(1:size(iarr_all_escr)) * (gamma_scr(1:size(iarr_all_escr)) - 1.0) &
+                          &          * cg%scr(iarr_all_escr,i,j,k)) / rho                                          ! + CR sound speed^2
+                     umax = max(umax, sqrt(sum(cg%u(fl%imx:fl%imz,i,j,k)**2)) / rho + sqrt(c2))
+                  end associate
+               enddo
+            enddo
+         enddo
+         cgl => cgl%nxt
+      enddo
+      call piernik_MPI_Allreduce(umax, pMAX)
+
+      cred = min(cred_max, max(cred_min, cred_to_mhd_threshold * umax, cred_decay_fac * cred))
+
+   end subroutine update_cred
 
    ! called when a step is going to be REDONE because of streaming CR
    subroutine scr_on_violation()
 
       use bcast,              only: piernik_MPI_Bcast
       use initstreamingcr,    only: cred, cred_growth_fac, cred_floor_dyn, cred_min, scr_good_steps, scr_violate_consec, &
-      &                             scr_violate_consec_max, cred_max
+      &                             scr_violate_consec_max, cred_max, scr_redo_on_violation
 
       implicit none
 
       real :: new_cred
+
+      if (.not. scr_redo_on_violation) return   ! cred follows the signal speed (update_cred), a hydro redo keeps it
 
       ! bump the actual cred for the retry
       new_cred = cred * cred_growth_fac
@@ -127,9 +193,11 @@ contains
    subroutine scr_on_success()
 
       use initstreamingcr,    only: cred, cred_decay_fac, cred_floor_dyn, cred_min, scr_good_steps, scr_violate_consec, &
-      &                             scr_violate_consec_max, scr_relax_after
+      &                             scr_violate_consec_max, scr_relax_after, scr_redo_on_violation
 
       implicit none
+
+      if (.not. scr_redo_on_violation) return   ! cred follows the signal speed (update_cred)
 
       scr_good_steps     = scr_good_steps + 1
       scr_violate_consec = 0

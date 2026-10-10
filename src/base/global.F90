@@ -46,7 +46,8 @@ module global
         &    repetitive_steps, integration_order, limiter, limiter_b, smalld, smallei, smallp, use_smalld, use_smallei, interpol_str, &
         &    relax_time, grace_period_passed, cfr_smooth, skip_sweep, geometry25D, &
         &    dirty_debug, do_ascii_dump, show_n_dirtys, no_dirty_checks, sweeps_mgu, use_fargo, print_divB, do_external_corners, prefer_merged_MPI, waitall_timeout, &
-        &    divB_0_method, cc_mag, glm_alpha, use_eglm, cfl_glm, ch_grid, w_epsilon, psi_bnd, ord_mag_prolong, ord_fluid_prolong, which_solver, use_uhi, is_split
+        &    divB_0_method, cc_mag, glm_alpha, use_eglm, cfl_glm, ch_grid, w_epsilon, psi_bnd, ord_mag_prolong, ord_fluid_prolong, which_solver, use_uhi, is_split, &
+        &    va_max
 
 
    logical         :: dn_negative = .false.
@@ -78,6 +79,7 @@ module global
    real    :: dt_shrink                !< dt shrink rate when timestep retry is used
    real    :: dt_min                   !< minimum allowed timestep
    real    :: dt_max                   !< maximum allowed timestep
+   real    :: va_max                   !< Alfven-speed ceiling: where |B|/sqrt(rho) > va_max the ion density is raised to B^2/va_max^2 (0: off)
    real    :: cfl                      !< desired Courant–Friedrichs–Lewy number
    real    :: cfl_max                  !< warning threshold for the effective CFL number achieved
    integer(kind=4) :: max_redostep_attempts  !< limitation for a number of redoing step attempts (Note: Something might be terribly wrong if a single step requires too many reductions)
@@ -117,7 +119,7 @@ module global
 
    namelist /NUMERICAL_SETUP/ cfl, cflcontrol, disallow_negatives, disallow_CRnegatives, cfl_max, use_smalld, use_smallei, smalld, smallei, smallc, smallp, dt_initial, dt_max_grow, dt_shrink, dt_min, dt_max, &
         &                     max_redostep_attempts, limiter, limiter_b, relax_time, integration_order, cfr_smooth, skip_sweep, geometry25D, sweeps_mgu, print_divB, &
-        &                     use_fargo, divB_0, glm_alpha, use_eglm, cfl_glm, ch_grid, interpol_str, w_epsilon, psi_bnd_str, ord_mag_prolong, ord_fluid_prolong, do_external_corners, solver_str
+        &                     use_fargo, divB_0, glm_alpha, use_eglm, cfl_glm, ch_grid, interpol_str, w_epsilon, psi_bnd_str, ord_mag_prolong, ord_fluid_prolong, do_external_corners, solver_str, va_max
 
    logical :: prefer_merged_MPI  !< prefer internal_boundaries_MPI_merged over internal_boundaries_MPI_1by1
    real :: waitall_timeout       !< when > 0. then replace MPI_Waitall with MPI_Test* calls and print some diagnostics it the timeout is reached
@@ -237,6 +239,7 @@ contains
       disallow_negatives = .true.
       disallow_CRnegatives = .false.
       use_smalld  = .true.
+      va_max      = 0.0        ! Alfven-speed ceiling off
       use_smallei = .true.
       smallc      = 1.e-10
       smallei     = 1.e-10
@@ -345,6 +348,7 @@ contains
          rbuff(15) = w_epsilon
          rbuff(16) = dt_shrink
          rbuff(17) = waitall_timeout
+         rbuff(18) = va_max
 
          lbuff(1)   = use_smalld
          lbuff(2)   = use_smallei
@@ -402,6 +406,7 @@ contains
          w_epsilon             = rbuff(15)
          dt_shrink             = rbuff(16)
          waitall_timeout       = rbuff(17)
+         va_max                = rbuff(18)
 
          limiter               = cbuff(1)
          limiter_b             = cbuff(2)

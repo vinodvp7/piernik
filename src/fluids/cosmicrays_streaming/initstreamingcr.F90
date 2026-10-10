@@ -67,6 +67,10 @@ module initstreamingcr
    integer                                 :: ord_pc_grad         !< order for gradient of Pc. Possible 2/4/6/8 . 2 works for most cases.
    logical                                 :: disable_feedback    !< whether streaming cosmic ray feedback momentum and energy change to the gas.
    logical                                 :: disable_streaming   !< whether cosmic rays stream along B
+   logical                                 :: scr_redo_on_violation !< .true.: legacy behaviour, causality violations trigger a redo with cred*cred_growth_fac; .false.: clip locally, cred from signal speed
+   logical                                 :: scr_fallback_1st    !< drop to first-order face states where the reconstruction gives Ec < smallescr or |Fc| > limit*cred*Ec
+   logical                                 :: scr_pp_limiter      !< positivity-preserving limiter on the Ec flux: blend HLLE with first-order HLL so transport cannot drive Ec negative
+   real                                    :: cfl_scr             !< CR time step = cfl_scr * dx / cred (1: original; 1/sqrt(3) is the 3D unsplit limit for signal speed cred/sqrt(3))
    logical                                 :: cr_sound_speed      !< whether to add cr sound speed when calculating v_diff. Ideally keep it as false so that sound speed is added as it increases numerical stability.
    character(len=cbuff_len)                :: transport_scheme    !< scheme used to calculate riemann flux for cosmic rays : HLLE / LF
 
@@ -85,6 +89,11 @@ module initstreamingcr
    real                                         :: cred                       !< current reduced CR speed (what solver uses)
    integer                                      :: nsub_scr                   !< number of subcycles of streaming cosmic ray updates
    logical                                      :: scr_negative = .false.
+   integer                                      :: scr_nclip_src  = 0        ! cells clipped to |Fc| <= limit*cred*Ec in the source step (per rank, reset at tsl dump)
+   integer                                      :: scr_nclip_face = 0        ! face states clipped in the reconstruction
+   integer                                      :: scr_nfallback  = 0        ! faces reduced to first order
+   integer                                      :: scr_npp        = 0        ! faces whose flux the positivity-preserving limiter modified
+   integer                                      :: scr_nfloor     = 0        ! cells that transport left with Ec < 0 (before the source step floors them)
    integer                                      :: which_scr_transport
    integer                                      :: scr_violate_consec = 0    ! consecutive steps that violated
    integer                                      :: scr_good_steps     = 0    ! steps without violation
@@ -109,7 +118,8 @@ contains
       namelist /STREAMING_CR/ nscr, nsub, scr_verbose, smallescr, cred_min, cred_growth_fac, cred_decay_fac  , &
       &                       cred_to_mhd_threshold, use_smallescr, sigma_paral, sigma_perp, ord_pc_grad,      &
       &                       disable_feedback, disable_streaming, gamma_scr, cr_sound_speed, scr_eff,         &
-      &                       scr_causality_limit, scr_violate_consec_max, scr_relax_after, transport_scheme, cred_max
+      &                       scr_causality_limit, scr_violate_consec_max, scr_relax_after, transport_scheme, cred_max, &
+      &                       scr_redo_on_violation, scr_fallback_1st, scr_pp_limiter, cfl_scr
 
       nscr                     = 1
       nsub                     = 0        ! by default we let subcycling be adaptive
@@ -131,6 +141,10 @@ contains
       sigma_perp(:)            = sigma_huge
       disable_feedback         = .false.
       disable_streaming        = .false.
+      scr_redo_on_violation    = .false.
+      scr_fallback_1st         = .true.
+      scr_pp_limiter           = .false.    ! off: existing setups stay bit-identical
+      cfl_scr                  = 1.0        ! 1.0 reproduces the original time step
       cr_sound_speed           = .true.
       transport_scheme         = "hlle"
 
@@ -170,15 +184,19 @@ contains
          rbuff(6) = scr_causality_limit
          rbuff(7) = cred_decay_fac
          rbuff(8) = cred_max
+         rbuff(9) = cfl_scr
 
          lbuff(1) = use_smallescr
          lbuff(2) = disable_feedback
          lbuff(3) = disable_streaming
          lbuff(4) = cr_sound_speed
+         lbuff(5) = scr_redo_on_violation
+         lbuff(6) = scr_fallback_1st
+         lbuff(7) = scr_pp_limiter
 
          cbuff(1) = transport_scheme
 
-         nl       = 4                                     ! this must match the last lbuff() index above
+         nl       = 7                                     ! this must match the last lbuff() index above
          nn       = count(rbuff(:) < huge(1.), kind=4)    ! this must match the last rbuff() index above
          ibuff(ubound(ibuff, 1)    ) = nn
          ibuff(ubound(ibuff, 1) - 1) = nl
@@ -215,11 +233,15 @@ contains
          scr_causality_limit     = rbuff(6)
          cred_decay_fac          = rbuff(7)
          cred_max                = rbuff(8)
+         cfl_scr                 = rbuff(9)
 
          use_smallescr           = lbuff(1)
          disable_feedback        = lbuff(2)
          disable_streaming       = lbuff(3)
          cr_sound_speed          = lbuff(4)
+         scr_redo_on_violation   = lbuff(5)
+         scr_fallback_1st        = lbuff(6)
+         scr_pp_limiter          = lbuff(7)
 
          transport_scheme        = cbuff(1)
 

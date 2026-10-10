@@ -140,7 +140,7 @@ contains
 
    use fluxlimiters,    only: flimiter
    use fluidindex,      only: scrind
-   use initstreamingcr, only: cred
+   use initstreamingcr, only: cred, scr_fallback_1st, smallescr, scr_causality_limit, scr_nfallback
    use mpisetup,        only: master
    use dataio_pub,      only: msg, warn
    use constants,       only: xdim, ydim, zdim
@@ -150,8 +150,24 @@ contains
    real, dimension(:,:), intent(in)  :: u
    real, dimension(:,:), intent(out) :: ql, qr
 
+   integer :: i, j, b
+
    call interp(u, ql, qr, flimiter)  !> Interpolate from cell-centered 'u' to face states (ql, qr). Ec, Fc, vx are all same as q
 
+   ! 1) Where the reconstruction is unphysical (Ec below the floor or |Fc| beyond the causality limit) fall back to
+   !    first-order face states for that species: ql(i) <- u(i), qr(i) <- u(i+1). With HLLE this is the robust, diffusive limit.
+   if (scr_fallback_1st) then
+      do j = 1, scrind%nscr
+         b = 4 * (j - 1) + 1
+         do i = 1, size(ql, 1)
+            if (bad_state(ql(i, b:b+zdim)) .or. bad_state(qr(i, b:b+zdim))) then
+               ql(i, b:b+zdim) = u(i,   b:b+zdim)
+               qr(i, b:b+zdim) = u(i+1, b:b+zdim)
+               scr_nfallback = scr_nfallback + 1
+            endif
+         enddo
+      enddo
+   endif
 
    ! 2) Enforce |F| <= cred * E_c on each face state (no redundancy)
    call limit_face(ql, 'ql')
@@ -159,9 +175,19 @@ contains
 
    contains
 
+      logical function bad_state(q)
+
+         implicit none
+
+         real, dimension(:), intent(in) :: q   !< Ec, Fcx, Fcy, Fcz
+
+         bad_state = (q(1) < smallescr) .or. (sum(q(xdim+1:zdim+1)**2) > (scr_causality_limit * cred * q(1))**2)
+
+      end function bad_state
+
       subroutine limit_face(qface, label)
 
-         use initstreamingcr,       only:    scr_negative, scr_causality_limit
+         use initstreamingcr,       only:    scr_negative, scr_redo_on_violation, scr_nclip_face
 
          implicit none
 
@@ -184,18 +210,21 @@ contains
 
                if (fc2 <= 1e-20) cycle                      !< careful with this magic number
 
-               cap   = max(0.0, cred * ec)
+               cap   = max(0.0, scr_causality_limit * cred * ec)
 
-               if (fc2 > scr_causality_limit * scr_causality_limit * cap * cap) then
-                  scr_negative = .true.
+               if (fc2 > cap * cap) then
                   scale = cap / sqrt(fc2)
                   qface(i, b+xdim) = fcx * scale
                   qface(i, b+ydim) = fcy * scale
                   qface(i, b+zdim) = fcz * scale
+                  scr_nclip_face = scr_nclip_face + 1
 
-                  if (master) then
-                     write(msg,'(*(g0))') '[interpolations:interpol_scr] streaming CR causality violated for ', trim(label), '. Rescaling Fc'
-                     call warn(msg)
+                  if (scr_redo_on_violation) then            ! legacy: redo the step with a larger cred
+                     scr_negative = .true.
+                     if (master) then
+                        write(msg,'(*(g0))') '[interpolations:interpol_scr] streaming CR causality violated for ', trim(label), '. Rescaling Fc'
+                        call warn(msg)
+                     end if
                   end if
                end if
 

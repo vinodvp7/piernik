@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-
-
 """
 Converts PIERNIK output .h5 file to Paraview friendly .vthb file.
 Handles both AMR and non-AMR dataset.
@@ -38,7 +35,13 @@ def get_field_names(h5_file):
     print("[INFO] Scanning for available data fields...")
     try:
         first_block_name = next(iter(h5_file["data"]))
-        field_names = list(h5_file["data"][first_block_name].keys())
+        blk = h5_file["data"][first_block_name]
+        # keep only real 3D datasets (skips groups such as 'particles')
+        field_names = [k for k, v in blk.items()
+                       if isinstance(v, h5py.Dataset) and v.ndim == 3]
+        skipped = [k for k in blk.keys() if k not in field_names]
+        if skipped:
+            print(f"[INFO] Skipping non-3D-dataset entries: {skipped}")
         print(f"[INFO : ] Found fields: {field_names}")
         return field_names
     except (StopIteration, KeyError):

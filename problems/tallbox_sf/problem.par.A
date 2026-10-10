@@ -48,7 +48,6 @@
     smalld = 1.e-6
     smallei= 1.e-8
     limiter= 'vanleer'
-    dt_max = 0.005             ! SNe are injected after dt is chosen: cap the step so a single SN cannot blow the CFL
  /
 
  $FLUID_IONIZED

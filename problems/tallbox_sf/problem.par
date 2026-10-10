@@ -48,7 +48,6 @@
     smalld = 1.e-6
     smallei= 1.e-8
     limiter= 'vanleer'
-    dt_max = 0.005             ! SNe are injected after dt is chosen: cap the step so a single SN cannot blow the CFL
     va_max = 1000.0            ! Alfven-speed ceiling [pc/Myr ~ km/s]: density raised to B^2/va_max^2 where v_A would exceed it (halo runaway guard; tsl: va_added_mass, va_ncells)
  /
 

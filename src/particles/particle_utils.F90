@@ -39,7 +39,10 @@ module particle_utils
 
    private
    public :: add_part_in_proper_cg, is_part_in_cg, part_refresh_ghosts, part_leave_cg, detach_particle, &
-        &    count_all_particles, global_count_all_particles, global_balance_particles, part_refresh_flags
+        &    count_all_particles, global_count_all_particles, global_balance_particles, part_refresh_flags, &
+        &    wrap_periodic, periodic_images
+
+   integer, parameter :: max_images = 8    !< the particle itself and at most one periodic image per direction (2**ndims)
 
 contains
 
@@ -199,7 +202,8 @@ contains
 
    end function fbnd_npb
 
-   logical function attribute_to_proc(pset, j, se) result(to_send)
+   !> \brief Should the particle pset, placed at pos (its own position or one of its periodic images), go to process j?
+   logical function attribute_to_proc(pset, pos, is_image, j, se) result(to_send)
 
       use cg_level_base,      only: base
       use cg_level_connected, only: cg_level_connected_t
@@ -212,6 +216,8 @@ contains
       implicit none
 
       type(particle), pointer,         intent(in) :: pset
+      real, dimension(ndims),          intent(in) :: pos
+      logical,                         intent(in) :: is_image
       integer,                         intent(in) :: j
       integer(kind=4), dimension(:,:), intent(in) :: se
 
@@ -222,15 +228,15 @@ contains
       type(cg_level_connected_t), pointer :: ll
 
       to_send = .false.
-      if (pset%pdata%in .and. pset%pdata%fin) return
+      if (.not. is_image .and. pset%pdata%in .and. pset%pdata%fin) return
 
       ll => base%level
       do while (associated(ll))
          ldl(:) = dom%L_(:) / ll%l%n_d(:)
          do b = lbound(ll%dot%gse(j)%c(:), dim=1), ubound(ll%dot%gse(j)%c(:), dim=1)
-            if (particle_in_area(pset%pdata%pos, fbnd_npb(ll%dot%gse(j)%c(b)%se, ll%l%off, ldl, npb))) then
+            if (particle_in_area(pos, fbnd_npb(ll%dot%gse(j)%c(b)%se, ll%l%off, ldl, npb))) then
                to_send = .true.
-            else if (pset%pdata%outside) then
+            else if (pset%pdata%outside .and. .not. is_image) then
                do cdim = xdim, zdim
                   ext_bnd(cdim, LO) = ll%l%is_ext_bnd(ll%dot%gse(j)%c(b)%se, cdim, LO)
                   ext_bnd(cdim, HI) = ll%l%is_ext_bnd(ll%dot%gse(j)%c(b)%se, cdim, HI)
@@ -238,7 +244,7 @@ contains
                if (outdom_part_in_cg(pset%pdata%pos, fbnd_npb(ll%dot%gse(j)%c(b)%se, ll%l%off, ldl, I_ZERO), ext_bnd)) to_send = .true.
             endif
 #ifdef NBODY_CHECK_PID
-            if (to_send) then
+            if (to_send .and. .not. is_image) then
                if (j == proc .and. all(ll%dot%gse(j)%c(b)%se == se)) to_send = .false.
             endif
 #endif /* NBODY_CHECK_PID */
@@ -326,18 +332,20 @@ contains
       use cg_cost_data,   only: I_PARTICLE
       use cg_list,        only: cg_list_element
       use cg_list_global, only: all_cg
-      use constants,      only: I_ONE, PPP_PART, base_level_id
+      use constants,      only: I_ONE, PPP_PART, base_level_id, ndims
       use grid_cont,      only: grid_container
       use MPIF,           only: MPI_DOUBLE_PRECISION, MPI_INTEGER, MPI_COMM_WORLD
       use MPIFUN,         only: MPI_Alltoall, MPI_Alltoallv
       use mpisetup,       only: proc, err_mpi, FIRST, LAST
       use ppp,            only: ppp_main
-      use particle_types, only: particle, npf
+      use particle_types, only: particle, particle_data, npf
 
       implicit none
 
       integer(kind=4), dimension(FIRST:LAST) :: nsend, nrecv, counts, countr, disps, dispr
-      integer                                :: i, j, ind, inc
+      integer                                :: i, j, ind, inc, im, nimg
+      real, dimension(ndims, max_images)     :: img
+      type(particle_data)                    :: pimg
       integer(kind=4)                        :: nchcg
       real, dimension(:), allocatable        :: part_send, part_recv, part_chcg
       type(cg_list_element), pointer         :: cgl
@@ -364,7 +372,11 @@ contains
                pset => cg%pset%first
                do while (associated(pset))
                   ! TO CHECK: PARTICLES CHANGING CG OUTSIDE DOMAIN?
-                  if (attribute_to_proc(pset, j, cg%ijkse)) nsend(j) = nsend(j) + I_ONE ! WON'T WORK in AMR!!!
+                  ! Periodic images (im > 1) become ghosts beyond the periodic edges, so that mapping and interpolation see them
+                  call periodic_images(pset%pdata%pos, nimg, img)
+                  do im = 1, nimg
+                     if (attribute_to_proc(pset, img(:, im), im > 1, j, cg%ijkse)) nsend(j) = nsend(j) + I_ONE ! WON'T WORK in AMR!!!
+                  enddo
                   pset => pset%nxt
                enddo
                call cgl%cg%costs%stop(I_PARTICLE)
@@ -389,13 +401,18 @@ contains
                cg => cgl%cg
                pset => cg%pset%first
                do while (associated(pset))
-                  if (attribute_to_proc(pset, j, cg%ijkse)) then
-                     if (j == proc) then
-                        part_chcg(inc:inc+npf-1) = collect_single_part_fields(inc, pset%pdata)
-                     else
-                        part_send(ind:ind+npf-1) = collect_single_part_fields(ind, pset%pdata)
+                  call periodic_images(pset%pdata%pos, nimg, img)
+                  do im = 1, nimg
+                     if (attribute_to_proc(pset, img(:, im), im > 1, j, cg%ijkse)) then
+                        pimg = pset%pdata
+                        pimg%pos = img(:, im)
+                        if (j == proc) then
+                           part_chcg(inc:inc+npf-1) = collect_single_part_fields(inc, pimg)
+                        else
+                           part_send(ind:ind+npf-1) = collect_single_part_fields(ind, pimg)
+                        endif
                      endif
-                  endif
+                  enddo
                   pset => pset%nxt
                enddo
                call cgl%cg%costs%stop(I_PARTICLE)
@@ -610,6 +627,76 @@ contains
       endif
 
    end function global_balance_particles
+
+!> \brief Put a position back into the domain along periodic directions
+
+   subroutine wrap_periodic(pos)
+
+      use constants, only: ndims, xdim, zdim, LO, HI
+      use domain,    only: dom
+
+      implicit none
+
+      real, dimension(ndims), intent(inout) :: pos
+      integer                               :: d
+
+      do d = xdim, zdim
+         if (dom%has_dir(d) .and. dom%periodic(d)) then
+            pos(d) = dom%edge(d, LO) + modulo(pos(d) - dom%edge(d, LO), dom%L_(d))
+            if (pos(d) >= dom%edge(d, HI)) pos(d) = dom%edge(d, LO)   ! rounding in modulo
+         endif
+      enddo
+
+   end subroutine wrap_periodic
+
+!>
+!! \brief A position and its images across periodic boundaries
+!!
+!! \details img(:,1) is pos itself. Images are generated only for positions closer than (npb + 1) base-level cells to a
+!! periodic edge, which covers every ghost region (finer levels have narrower ones). In each periodic direction pos is
+!! shifted by +L near the low edge and by -L near the high edge, all combinations included (edges and corners).
+!<
+
+   subroutine periodic_images(pos, nimg, img)
+
+      use cg_level_base,  only: base
+      use constants,      only: ndims, xdim, zdim, LO, HI, I_ONE
+      use domain,         only: dom
+      use particle_types, only: npb
+
+      implicit none
+
+      real, dimension(ndims),             intent(in)  :: pos
+      integer,                            intent(out) :: nimg
+      real, dimension(ndims, max_images), intent(out) :: img
+
+      integer                :: d, n0, i
+      real                   :: margin, shift
+      logical                :: near_edge
+
+      nimg = 1
+      img(:, 1) = pos
+      do d = xdim, zdim
+         if (.not. (dom%has_dir(d) .and. dom%periodic(d))) cycle
+         margin = (npb + I_ONE) * dom%L_(d) / base%level%l%n_d(d)
+         near_edge = .true.
+         if (pos(d) - dom%edge(d, LO) < margin) then
+            shift = dom%L_(d)
+         else if (dom%edge(d, HI) - pos(d) <= margin) then
+            shift = -dom%L_(d)
+         else
+            near_edge = .false.
+         endif
+         if (.not. near_edge) cycle
+         n0 = nimg
+         do i = 1, n0
+            nimg = nimg + 1
+            img(:, nimg) = img(:, i)
+            img(d, nimg) = img(d, i) + shift
+         enddo
+      enddo
+
+   end subroutine periodic_images
 
 !> \brief Remove particle from cg%pset
 

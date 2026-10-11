@@ -103,7 +103,7 @@
    Teq            = 1000.0
    Lambda_0       = 1.0e-25
    G0             = 0.0e-26
-   G1             = 2.0e-25
+   G1             = 2.0e-26       ! Koyama & Inutsuka 2002 normalisation, matches cool_Kobayashi.txt
    G2             = 0.0e-27
    x_ion          = 1.0
    isochoric      = 1
@@ -122,6 +122,11 @@
    kineticFB     = .true.
    inject_mass   = .false.      ! ejecta mass is double counted in TIGRESS_injection
    initial_stars = .false.
+ /
+
+ $PARTICLES
+   time_integrator      = 'leapfrog2'   ! the default 'none' leaves star particles at their birth cells and out of self-gravity
+   interpolation_scheme = 'cic'         ! mass deposition onto the self-gravity source (acc_interp_method is 'cic' by default)
  /
 
  $INTERACTIONS

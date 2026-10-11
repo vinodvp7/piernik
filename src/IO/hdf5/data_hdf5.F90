@@ -1136,6 +1136,7 @@ contains
       use hdf5,        only: HID_T, HSIZE_T
 #ifdef NBODY
       use common_hdf5, only: pdsets
+      use hdf5,        only: H5T_STD_I32LE
 #endif /* NBODY */
 
       implicit none
@@ -1156,7 +1157,11 @@ contains
 
 #ifdef NBODY
       do i = lbound(pdsets,1), ubound(pdsets,1)
-         call create_empty_cg_dataset(st_g_id, gdf_translate(pdsets(i)), [n_part], Z_avail, O_OUT)
+         if (pdsets(i) == 'ppid') then  ! written from integers (particles_io:collect_intr); single precision would merge ids > 2**24
+            call create_empty_cg_dataset(st_g_id, gdf_translate(pdsets(i)), [n_part], Z_avail, O_OUT, H5T_STD_I32LE)
+         else
+            call create_empty_cg_dataset(st_g_id, gdf_translate(pdsets(i)), [n_part], Z_avail, O_OUT)
+         endif
       enddo
 #endif /* NBODY */
 

@@ -461,9 +461,11 @@ contains
    ! Star formation: Adding gas mass to stellar particle and reducing gas quantities in the grid
    subroutine sf_fed(cg, pfl, dt, i, j, k, ir, irh, mass, frac1, sfrl_dump, sfrh_dump)
 
+#ifdef MAGNETIC
       use constants,  only: xdim, ydim, zdim
-      use fluidtypes, only: component_fluid
       use func,       only: emag
+#endif /* MAGNETIC */
+      use fluidtypes, only: component_fluid
       use grid_cont,  only: grid_container
 
       implicit none
@@ -475,9 +477,13 @@ contains
       logical,             intent(in) :: sfrl_dump, sfrh_dump
 
       dmass_stars                 = dmass_stars         + mass
+#ifdef MAGNETIC
       cg%u(pfl%ien,i,j,k)         = cg%u(pfl%ien,i,j,k) - emag(cg%b(xdim,i,j,k), cg%b(ydim,i,j,k), cg%b(zdim,i,j,k))
+#endif /* MAGNETIC */
       cg%u(pfl%ien,i,j,k)         = frac1 * cg%u(pfl%ien,i,j,k)
+#ifdef MAGNETIC
       cg%u(pfl%ien,i,j,k)         = cg%u(pfl%ien,i,j,k) + emag(cg%b(xdim,i,j,k), cg%b(ydim,i,j,k), cg%b(zdim,i,j,k))
+#endif /* MAGNETIC */
       cg%u(pfl%idn,i,j,k)         = frac1 * cg%u(pfl%idn,i,j,k)
       cg%u(pfl%imx:pfl%imz,i,j,k) = frac1 * cg%u(pfl%imx:pfl%imz,i,j,k)
 
@@ -1067,7 +1073,10 @@ contains
 
     use constants,             only: xdim, ydim, zdim
     use fluidtypes,            only: component_fluid
-    use func,                  only: ekin, emag
+    use func,                  only: ekin
+#ifdef MAGNETIC
+    use func,                  only: emag
+#endif /* MAGNETIC */
     use global,                only: dt
     use grid_cont,             only: grid_container
     use units,                 only: sek, erg, km
@@ -1095,9 +1104,13 @@ contains
    ! 10 Msun deposited into SN injection region
    if (inject_mass) then
       frac1 = 10.0*frac/cg%dvol / cg%u(pfl%idn,i,j,k)
+#ifdef MAGNETIC
       cg%u(pfl%ien,i,j,k) = cg%u(pfl%ien,i,j,k) - emag(cg%b(xdim,i,j,k), cg%b(ydim,i,j,k), cg%b(zdim,i,j,k))
+#endif /* MAGNETIC */
       cg%u(pfl%ien,i,j,k) = (1+frac1) * cg%u(pfl%ien,i,j,k)
+#ifdef MAGNETIC
       cg%u(pfl%ien,i,j,k) = cg%u(pfl%ien,i,j,k) + emag(cg%b(xdim,i,j,k), cg%b(ydim,i,j,k), cg%b(zdim,i,j,k))
+#endif /* MAGNETIC */
       cg%u(pfl%idn,i,j,k) = (1+frac1) * cg%u(pfl%idn,i,j,k)
       cg%u(pfl%imx:pfl%imz,i,j,k)  = (1+frac1) * cg%u(pfl%imx:pfl%imz,i,j,k)
    endif
@@ -1153,11 +1166,15 @@ contains
    cg%u(pfl%ien,i,j,k) = cg%u(pfl%ien,i,j,k) - ekin(cg%u(pfl%imx,i,j,k), cg%u(pfl%imy,i,j,k), cg%u(pfl%imz,i,j,k), cg%u(pfl%idn,i,j,k))  ! remove Ekin
 
    if (equalize_region) then
+#ifdef MAGNETIC
       cg%u(pfl%ien,i,j,k) = cg%u(pfl%ien,i,j,k) - emag(cg%b(xdim,i,j,k), cg%b(ydim,i,j,k), cg%b(zdim,i,j,k))
+#endif /* MAGNETIC */
       frac4 = dens_amb / cg%u(pfl%idn,i,j,k)
       cg%u(pfl%idn,i,j,k) = dens_amb
       cg%u(pfl%ien,i,j,k) = frac4 * cg%u(pfl%ien,i,j,k)
+#ifdef MAGNETIC
       cg%u(pfl%ien,i,j,k) = cg%u(pfl%ien,i,j,k) + emag(cg%b(xdim,i,j,k), cg%b(ydim,i,j,k), cg%b(zdim,i,j,k))
+#endif /* MAGNETIC */
       cg%u(pfl%imx:pfl%imz,i,j,k) = frac4 * cg%u(pfl%imx:pfl%imz,i,j,k)
    endif
 

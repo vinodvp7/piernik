@@ -140,7 +140,8 @@ def main():
     ax.set_ylabel(r"$\Sigma_\mathrm{SFR}$ [M$_\odot$ yr$^{-1}$ kpc$^{-2}$]" if args.per_area else r"SFR [M$_\odot$ yr$^{-1}$]")
     if args.log:
         ax.set_yscale("log")
-    ax.legend(fontsize="small")
+    if ax.get_legend_handles_labels()[0]:
+        ax.legend(fontsize="small")
     ax.grid(alpha=0.3)
     fig.tight_layout()
     fig.savefig(args.output, dpi=150)

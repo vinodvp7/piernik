@@ -100,7 +100,9 @@ contains
 
       class(particle_data), intent(inout) :: this     !< an object invoking the type-bound procedure
 
-      this%outside = any(dom%has_dir(:) .and. (this%pos(:) < dom%edge(:, LO) .or. this%pos(:) >= dom%edge(:, HI)))
+      ! Periodic directions do not count: physical particles are wrapped there (wrap_periodic) and periodic image ghosts
+      ! that lie beyond the edge are ordinary ghosts, not particles outside the domain.
+      this%outside = any(dom%has_dir(:) .and. .not. dom%periodic(:) .and. (this%pos(:) < dom%edge(:, LO) .or. this%pos(:) >= dom%edge(:, HI)))
       ! Inequalities above must match the rounding function used in map routine (floor() includes bottom edge, but excludes top edge)
 
    end subroutine is_outside

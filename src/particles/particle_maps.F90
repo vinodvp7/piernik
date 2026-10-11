@@ -141,8 +141,9 @@ contains
       use cg_cost_data,   only: I_PARTICLE
       use cg_leaves,      only: leaves
       use cg_list,        only: cg_list_element
-      use constants,      only: half, xdim, ydim, zdim, ndims, LO, HI, CENTER, PPP_PART
+      use constants,      only: xdim, ydim, zdim, ndims, LO, HI, CENTER, PPP_PART
       use domain,         only: dom
+      use particle_func,  only: ijk_of_particle
       use particle_types, only: particle
       use ppp,            only: ppp_main
 
@@ -177,7 +178,7 @@ contains
 
                do cdim = xdim, zdim
                   if (dom%has_dir(cdim)) then
-                     cn = nint((part%pos(cdim) - dom%edge(cdim, LO)) * cg%idl(cdim) + half) + 1
+                     cn = ijk_of_particle(part%pos(cdim), dom%edge(cdim, LO), cg%idl(cdim))   ! cell containing the particle, as in update_particle_acc_cic
                      if (cg%coord(CENTER, cdim)%r(cn) > part%pos(cdim)) then
                         ijkp(cdim, LO) = cn - 1
                      else

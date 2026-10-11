@@ -424,7 +424,9 @@ contains
 
          use cg_cost_data,   only: I_PARTICLE
          use constants,      only: PPP_PART
-         use particle_utils, only: part_leave_cg, is_part_in_cg, detach_particle
+         use dataio_pub,     only: msg, warn
+         use multigridvars,  only: grav_bnd, bnd_isolated
+         use particle_utils, only: part_leave_cg, is_part_in_cg, detach_particle, wrap_periodic
          use particle_types, only: particle
          use ppp,            only: ppp_main
 
@@ -432,7 +434,10 @@ contains
 
          real,            intent(in) :: ddt
          type(particle), pointer     :: pset
+         logical                     :: drop_outside
          character(len=*), parameter :: d_label = "part_drift"
+
+         drop_outside = (grav_bnd /= bnd_isolated)
 
          call ppp_main%start(d_label, PPP_PART)
          cgl => leaves%first
@@ -442,7 +447,17 @@ contains
             do while (associated(pset))
                if (pset%pdata%phy .and. pset%pdata%fin) then
                   pset%pdata%pos = pset%pdata%pos + pset%pdata%vel * ddt
+                  call wrap_periodic(pset%pdata%pos)
                   call pset%pdata%is_outside()
+                  if (pset%pdata%outside .and. drop_outside) then
+                     ! Beyond a non-periodic edge: the potential of particles outside the domain comes only from the multipole
+                     ! expansion, which needs isolated boundaries. Elsewhere the particle leaves the domain together with its mass.
+                     write(msg, '(a,i10,a,es12.4,a,3es12.4)') "[particle_solvers:drift] particle ", pset%pdata%pid, " of mass ", &
+                          pset%pdata%mass, " left the domain at ", pset%pdata%pos
+                     call warn(msg)
+                     call detach_particle(cgl%cg, pset)
+                     cycle
+                  endif
                   call is_part_in_cg(cgl%cg, pset%pdata%pos, .not.pset%pdata%outside, pset%pdata%in, pset%pdata%phy, pset%pdata%out, pset%pdata%fin)
                   pset => pset%nxt
                else !Remove ghosts

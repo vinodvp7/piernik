@@ -938,7 +938,7 @@ contains
 
 
 !> \brief Create an empty double precision dataset of given dimensions. Use compression if available.
-   subroutine create_empty_cg_dataset(cg_g_id, name, ddims, Z_avail, otype)
+   subroutine create_empty_cg_dataset(cg_g_id, name, ddims, Z_avail, otype, force_dtype)
 
       use dataio_pub, only: enable_compression, gzip_level, die, h5_64bit
       use hdf5,       only: HID_T, HSIZE_T, H5P_DATASET_CREATE_F, H5T_NATIVE_REAL, H5T_NATIVE_DOUBLE, &
@@ -952,6 +952,7 @@ contains
       integer(HSIZE_T), dimension(:), intent(in) :: ddims   !< dimensionality
       logical(kind=4),                intent(in) :: Z_avail !< can use compression?
       integer(kind=4),                intent(in) :: otype   !< output type
+      integer(HID_T), optional,       intent(in) :: force_dtype !< HDF5 type overriding the one chosen by otype (e.g. for integer data)
 
       integer(HID_T)                             :: prp_id, filespace, dset_id, dtype
       integer(kind=4)                            :: error   !< error perhaps should be of type integer(HID_T)
@@ -974,6 +975,7 @@ contains
       else
          call die("[common_hdf5:create_empty_cg_dataset] Unknown output time")
       endif
+      if (present(force_dtype)) dtype = force_dtype
 
       call h5screate_simple_f(size(ddims, kind=4), ddims, filespace, error)
       call h5dcreate_f(cg_g_id, name, dtype, filespace, dset_id, error, dcpl_id = prp_id)

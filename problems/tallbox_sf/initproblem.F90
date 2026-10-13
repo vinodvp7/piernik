@@ -689,6 +689,8 @@ contains
       use particle_func,     only: particle_in_area
       use particle_types,    only: particle
       use units,             only: kpc
+      use interpolations,    only: n_face_fallback, n_face_floor
+      use sources,           only: floor_energy
 #ifdef COSM_RAYS
       use initcosmicrays,    only: iarr_crn
 #endif /* COSM_RAYS */
@@ -696,7 +698,7 @@ contains
       use alfven_limiter,    only: va_added_mass, va_ncells
 #endif /* MAGNETIC */
 #ifdef STREAM_CR
-      use initstreamingcr,   only: iarr_all_escr, cred, scr_nclip_src, scr_nclip_face, scr_nfallback, scr_npp, scr_nfloor
+      use initstreamingcr,   only: iarr_all_escr, cred, scr_nclip_src, scr_nclip_face, scr_nfallback, scr_npp, scr_nfloor, scr_nexch_cap
 #endif /* STREAM_CR */
 
       implicit none
@@ -715,8 +717,9 @@ contains
       real, dimension(2)             :: qv
 #endif /* MAGNETIC */
 #ifdef STREAM_CR
-      real, dimension(5)             :: qs
+      real, dimension(6)             :: qs
 #endif /* STREAM_CR */
+      real, dimension(3)             :: qf
 
       if (present(tsl_names)) then
          call pop_vector(tsl_names, len(tsl_names(1)), [ "SFR10_kpc2    ", "SFR40_kpc2    ", "Mstar         ", "H_gas         ", &
@@ -726,8 +729,9 @@ contains
          call pop_vector(tsl_names, len(tsl_names(1)), [ "va_added_mass ", "va_ncells     "])
 #endif /* MAGNETIC */
 #ifdef STREAM_CR
-         call pop_vector(tsl_names, len(tsl_names(1)), [ "cred          ", "nclip_src     ", "nclip_face    ", "nfallback_1st ", "npp_limited   ", "nfloor        "])
+         call pop_vector(tsl_names, len(tsl_names(1)), [ "cred          ", "nclip_src     ", "nclip_face    ", "nfallback_1st ", "npp_limited   ", "nfloor        ", "nexch_capped  "])
 #endif /* STREAM_CR */
+         call pop_vector(tsl_names, len(tsl_names(1)), [ "n_face_fb     ", "n_face_floor  ", "E_floor       "])
          return
       endif
 
@@ -782,10 +786,15 @@ contains
 #endif /* MAGNETIC */
 #ifdef STREAM_CR
       ! streaming-CR safeguards since the previous tsl dump (counted over all sub-cycles and RK stages)
-      qs = real([scr_nclip_src, scr_nclip_face, scr_nfallback, scr_npp, scr_nfloor])
+      qs = real([scr_nclip_src, scr_nclip_face, scr_nfallback, scr_npp, scr_nfloor, scr_nexch_cap])
       call piernik_MPI_Allreduce(qs, pSUM)
-      scr_nclip_src = 0 ; scr_nclip_face = 0 ; scr_nfallback = 0 ; scr_npp = 0 ; scr_nfloor = 0
+      scr_nclip_src = 0 ; scr_nclip_face = 0 ; scr_nfallback = 0 ; scr_npp = 0 ; scr_nfloor = 0 ; scr_nexch_cap = 0
 #endif /* STREAM_CR */
+      ! hydro positivity safeguards since the previous tsl dump: faces next to active cells reduced to first order
+      ! (summed over RK stages and sweeps), faces among them that needed a density/pressure floor, energy added by the floors
+      qf = [real(n_face_fallback), real(n_face_floor), floor_energy]
+      call piernik_MPI_Allreduce(qf, pSUM)
+      n_face_fallback = 0 ; n_face_floor = 0 ; floor_energy = 0.0
 
       if (master) then
          area_kpc2 = dom%L_(xdim) * dom%L_(ydim) / kpc**2
@@ -802,6 +811,7 @@ contains
 #ifdef STREAM_CR
          call pop_vector(user_vars, [cred, qs])
 #endif /* STREAM_CR */
+         call pop_vector(user_vars, qf)
       endif
 
    end subroutine tallbox_sf_tsl

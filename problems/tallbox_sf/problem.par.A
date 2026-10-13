@@ -43,8 +43,9 @@
  /
 
  $NUMERICAL_SETUP
-    solver_str = 'riemann'      ! split solver: star formation (SF_step) is not called by the unsplit solver
+    solver_str = 'riemann_unsplit'   ! unsplit MHD (needs divB_0 = 'HDC', the default, and cfl <= 0.3); SF_step is called by both split and unsplit sweeps
     cfl    = 0.3
+    cfl_glm = 0.3               ! GLM cleaning-wave CFL; defaults to the built-in cfl, not the one above, and the unsplit MHD solver needs <= 0.3
     smalld = 1.e-6
     smallei= 1.e-8
     limiter= 'vanleer'

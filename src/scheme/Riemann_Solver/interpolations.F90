@@ -39,7 +39,10 @@ module interpolations
    implicit none
 
    private
-   public :: set_interpolations, interpol
+   public :: set_interpolations, interpol, n_face_fallback, n_face_floor
+
+   integer, save :: n_face_fallback = 0  !< faces next to active cells reduced to first order by positive_face_states (per rank, reset at tsl dump)
+   integer, save :: n_face_floor    = 0  !< of these, faces where a non-positive cell density or pressure had to be floored
 
 #ifdef STREAM_CR
    public :: interpol_scr
@@ -133,7 +136,64 @@ contains
       call interp(q,   ql,   qr,   flimiter)
       if (present(bcc)) call interp(bcc, bccl, bccr, blimiter)
 
+      call positive_face_states(q, ql, qr, bcc, bccl, bccr)
+
    end subroutine interpol
+
+!>
+!! \brief Keep face density and gas pressure positive before the Riemann solver.
+!!
+!! \details In diffuse, kinetic- or magnetic-energy dominated gas the pressure p = (gamma-1)(e - rho v^2/2 - B^2/2) is a small
+!! difference of large numbers and the reconstruction (or the cell itself, e.g. an 'outd' ghost cell) can give p <= 0, which
+!! makes the HLL(D) wave speeds and fluxes NaN. Such faces fall back to first-order states (fluid and magnetic field together);
+!! a pressure that is still non-positive (non-positive cell value) is floored at smallp. Physical states are not touched.
+!<
+
+   subroutine positive_face_states(q, ql, qr, bcc, bccl, bccr)
+
+      use domain,     only: dom
+      use fluidindex, only: flind
+      use fluidtypes, only: component_fluid
+      use global,     only: smalld, smallp
+
+      implicit none
+
+      real, dimension(:,:),           intent(in)    :: q           !< cell-centered primitive variables
+      real, dimension(:,:),           intent(inout) :: ql, qr      !< face states
+      real, dimension(:,:), optional, intent(in)    :: bcc         !< cell-centered magnetic field (and psi)
+      real, dimension(:,:), optional, intent(inout) :: bccl, bccr  !< magnetic field face states
+
+      integer                         :: p, i
+      class(component_fluid), pointer :: fl
+      logical                         :: bad, counted
+
+      do p = 1, flind%fluids
+         fl => flind%all_fluids(p)%fl
+         do i = 1, size(ql, 1)
+            bad = (ql(i, fl%idn) <= 0.) .or. (qr(i, fl%idn) <= 0.)
+            if (fl%has_energy) bad = bad .or. (ql(i, fl%ien) <= 0.) .or. (qr(i, fl%ien) <= 0.)
+            if (.not. bad) cycle
+            counted = (i >= dom%nb) .and. (i <= size(q, 1) - dom%nb)   ! face touches an active cell
+            if (counted) n_face_fallback = n_face_fallback + 1
+            ql(i, fl%beg:fl%end) = q(i,   fl%beg:fl%end)
+            qr(i, fl%beg:fl%end) = q(i+1, fl%beg:fl%end)
+            if (fl%is_magnetized .and. present(bcc)) then
+               bccl(i, :) = bcc(i,   :)
+               bccr(i, :) = bcc(i+1, :)
+            endif
+            bad = (ql(i, fl%idn) <= 0.) .or. (qr(i, fl%idn) <= 0.)
+            if (fl%has_energy) bad = bad .or. (ql(i, fl%ien) <= 0.) .or. (qr(i, fl%ien) <= 0.)
+            if (bad .and. counted) n_face_floor = n_face_floor + 1
+            ql(i, fl%idn) = max(ql(i, fl%idn), smalld)
+            qr(i, fl%idn) = max(qr(i, fl%idn), smalld)
+            if (fl%has_energy) then
+               ql(i, fl%ien) = max(ql(i, fl%ien), smallp)
+               qr(i, fl%ien) = max(qr(i, fl%ien), smallp)
+            endif
+         enddo
+      enddo
+
+   end subroutine positive_face_states
    
 #ifdef STREAM_CR
    subroutine interpol_scr(u, ql, qr)

@@ -18,7 +18,12 @@ Variants (see piernik.def for the setup commands):
   C2 B + two-moment CR, diffusion only    (-d STREAM_CR, disable_streaming = .true.)
   D  B + streaming CR                     (-d STREAM_CR, disable_streaming = .false.)
 
-Star formation needs a split solver (solver_str = 'riemann'); the unsplit solver does not call SF_step.
+All variants use the unsplit Riemann solver (solver_str = 'riemann_unsplit', GLM divergence cleaning, cfl = 0.3);
+SF_step is called from both the split (make_3sweeps) and the unsplit (make_unsplitsweep) sweeps, so 'riemann' also works.
+The unsplit solver applies the density/internal-energy floors (care_for_positives) after every RK stage, as the split one does;
+before, only the last stage was floored and in HD (case A) the SN-heated, kinetic-energy-dominated cells reached negative pressure
+in the predictor state, giving NaN face states (B-D were protected only by the magnetic pressure in the HLLD wave speeds).
+cfl_glm must be set explicitly (0.3): its default is the built-in cfl, not the cfl given in the parameter file.
 
 Extra tsl columns: SFR10_kpc2, SFR40_kpc2 [Msun/yr/kpc^2], Mstar, H_gas (mass-weighted <|z|>), sigma_v
 (mass-weighted rms), Mdot_z1/Mdot_z2/Mdot_bnd (net outward mass flux through |z| = z_flux(1:2) and the z boundaries,

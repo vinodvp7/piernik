@@ -94,6 +94,7 @@ module initstreamingcr
    integer                                      :: scr_nfallback  = 0        ! faces reduced to first order
    integer                                      :: scr_npp        = 0        ! faces whose flux the positivity-preserving limiter modified
    integer                                      :: scr_nfloor     = 0        ! cells that transport left with Ec < 0 (before the source step floors them)
+   integer                                      :: scr_nexch_cap  = 0        ! cells where the CR energy gain was capped by the available gas internal energy
    integer                                      :: which_scr_transport
    integer                                      :: scr_violate_consec = 0    ! consecutive steps that violated
    integer                                      :: scr_good_steps     = 0    ! steps without violation

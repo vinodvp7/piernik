@@ -867,6 +867,7 @@ contains
                      cg%u(iarr_cre_e,   l(xdim,LO):l(xdim,HI),l(ydim,LO):l(ydim,HI),l(zdim,LO):l(zdim,HI)) = smallcree   !< CRESP energy density component
 #endif /* CRESP */
                   enddo
+                  call outflow_energy(cg, dir, side)
                case (BND_OUTD)
                   r(dir,:) = cg%ijkse(dir,side)
                   ssign = lh_2_pm1(side)
@@ -888,6 +889,7 @@ contains
                   else
                      cg%u(iarr_all_dn+dir,l(xdim,LO):l(xdim,HI),l(ydim,LO):l(ydim,HI),l(zdim,LO):l(zdim,HI)) = max(cg%u(iarr_all_dn+dir,l(xdim,LO):l(xdim,HI),l(ydim,LO):l(ydim,HI),l(zdim,LO):l(zdim,HI)),  vel_outd * cg%u(iarr_all_dn,l(xdim,LO):l(xdim,HI),l(ydim,LO):l(ydim,HI),l(zdim,LO):l(zdim,HI)))
                   endif
+                  call outflow_energy(cg, dir, side)
 #ifdef GRAV
                case (BND_OUTH)
                   call outh_fluidbnd(dir, side, cg, wn=I_ZERO)
@@ -983,6 +985,96 @@ contains
          enddo
 
       end subroutine sane_bnd
+
+!>
+!! \brief Make outflow ghost cells thermodynamically consistent: zero gradient in gas pressure.
+!!
+!! \details The ghost cells get rho and rho*v from the edge cell (with the diode applied for 'outd'), while the magnetic field
+!! is set separately by outflow_b (normal component extrapolated linearly, tangential components copied). Copying the total
+!! energy as well pairs the edge-cell E with a different B (and a diode-modified momentum), so the derived pressure
+!! p = (gamma-1)(E - rho v^2/2 - B^2/2) of the ghost cell differs from the edge value and can become negative where the
+!! magnetic energy dominates. Here E of each ghost cell is rebuilt from the edge-cell pressure and the ghost rho, v and B.
+!! The ghost B is evaluated with the same recursion and operation order as outflow_b, from active cells only, so the result
+!! does not depend on the order in which fluid and magnetic boundaries are updated.
+!<
+
+      subroutine outflow_energy(cg, dir, side)
+
+         use constants,  only: half
+         use fluidindex, only: flind
+         use fluidtypes, only: component_fluid
+         use global,     only: smallp
+
+         implicit none
+
+         type(grid_container), pointer, intent(in) :: cg
+         integer(kind=4),               intent(in) :: dir, side
+
+         integer(kind=4), dimension(ndims,LO:HI) :: le, le1, lg
+         real, dimension(:,:,:), allocatable     :: pe, ek
+#ifdef MAGNETIC
+         real, dimension(:,:,:), allocatable     :: bt2, bnm2, bnm1, bn
+         integer(kind=4)                         :: bdir
+#endif /* MAGNETIC */
+         class(component_fluid), pointer         :: fl
+         integer                                 :: p
+         integer(kind=4)                         :: ib, sg
+
+         sg  = lh_2_pm1(side)                                           ! -1 at LO, +1 at HI
+         le  = cg%lhn ; le(dir,:)  = cg%ijkse(dir,side)                 ! edge (last active) layer
+         le1 = cg%lhn ; le1(dir,:) = cg%ijkse(dir,side) - sg            ! the next layer inwards
+         lg  = cg%lhn
+
+         allocate(pe(le(xdim,LO):le(xdim,HI), le(ydim,LO):le(ydim,HI), le(zdim,LO):le(zdim,HI)))
+         allocate(ek, mold=pe)
+#ifdef MAGNETIC
+         allocate(bt2, bnm2, bnm1, bn, mold=pe)
+         bt2 = 0.0
+         do bdir = xdim, zdim
+            if (bdir /= dir) bt2 = bt2 + cg%b(bdir, le(xdim,LO):le(xdim,HI), le(ydim,LO):le(ydim,HI), le(zdim,LO):le(zdim,HI))**2
+         enddo
+#endif /* MAGNETIC */
+
+         do p = 1, flind%fluids
+            fl => flind%all_fluids(p)%fl
+            if (.not. fl%has_energy) cycle
+
+            ! edge-cell gas pressure
+            ek = half * (cg%u(fl%imx, le(xdim,LO):le(xdim,HI), le(ydim,LO):le(ydim,HI), le(zdim,LO):le(zdim,HI))**2 + &
+                 &       cg%u(fl%imy, le(xdim,LO):le(xdim,HI), le(ydim,LO):le(ydim,HI), le(zdim,LO):le(zdim,HI))**2 + &
+                 &       cg%u(fl%imz, le(xdim,LO):le(xdim,HI), le(ydim,LO):le(ydim,HI), le(zdim,LO):le(zdim,HI))**2) / &
+                 &       cg%u(fl%idn, le(xdim,LO):le(xdim,HI), le(ydim,LO):le(ydim,HI), le(zdim,LO):le(zdim,HI))
+            pe = cg%u(fl%ien, le(xdim,LO):le(xdim,HI), le(ydim,LO):le(ydim,HI), le(zdim,LO):le(zdim,HI)) - ek
+#ifdef MAGNETIC
+            if (fl%is_magnetized) pe = pe - half * (bt2 + cg%b(dir, le(xdim,LO):le(xdim,HI), le(ydim,LO):le(ydim,HI), le(zdim,LO):le(zdim,HI))**2)
+            bnm2 = cg%b(dir, le1(xdim,LO):le1(xdim,HI), le1(ydim,LO):le1(ydim,HI), le1(zdim,LO):le1(zdim,HI))
+            bnm1 = cg%b(dir, le(xdim,LO):le(xdim,HI),   le(ydim,LO):le(ydim,HI),   le(zdim,LO):le(zdim,HI))
+#endif /* MAGNETIC */
+            pe = max(fl%gam_1 * pe, smallp)
+
+            do ib = 1_INT4, dom%nb
+               lg(dir,:) = cg%ijkse(dir,side) + sg*ib
+               ek = half * (cg%u(fl%imx, lg(xdim,LO):lg(xdim,HI), lg(ydim,LO):lg(ydim,HI), lg(zdim,LO):lg(zdim,HI))**2 + &
+                    &       cg%u(fl%imy, lg(xdim,LO):lg(xdim,HI), lg(ydim,LO):lg(ydim,HI), lg(zdim,LO):lg(zdim,HI))**2 + &
+                    &       cg%u(fl%imz, lg(xdim,LO):lg(xdim,HI), lg(ydim,LO):lg(ydim,HI), lg(zdim,LO):lg(zdim,HI))**2) / &
+                    &       cg%u(fl%idn, lg(xdim,LO):lg(xdim,HI), lg(ydim,LO):lg(ydim,HI), lg(zdim,LO):lg(zdim,HI))
+               cg%u(fl%ien, lg(xdim,LO):lg(xdim,HI), lg(ydim,LO):lg(ydim,HI), lg(zdim,LO):lg(zdim,HI)) = pe / fl%gam_1 + ek
+#ifdef MAGNETIC
+               bn = 2.0 * bnm1 - bnm2                                   ! same recursion as outflow_b
+               if (fl%is_magnetized) &
+                    cg%u(fl%ien, lg(xdim,LO):lg(xdim,HI), lg(ydim,LO):lg(ydim,HI), lg(zdim,LO):lg(zdim,HI)) = &
+                    cg%u(fl%ien, lg(xdim,LO):lg(xdim,HI), lg(ydim,LO):lg(ydim,HI), lg(zdim,LO):lg(zdim,HI)) + half * (bt2 + bn**2)
+               bnm2 = bnm1 ; bnm1 = bn
+#endif /* MAGNETIC */
+            enddo
+         enddo
+
+         deallocate(pe, ek)
+#ifdef MAGNETIC
+         deallocate(bt2, bnm2, bnm1, bn)
+#endif /* MAGNETIC */
+
+      end subroutine outflow_energy
 
    end subroutine bnd_u
 

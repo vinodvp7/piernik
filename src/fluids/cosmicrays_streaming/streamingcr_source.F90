@@ -42,14 +42,17 @@ contains
       use grid_cont,        only: grid_container
       use named_array_list, only: wna
       use constants,        only: LO, HI, scrh, first_stage, xdim, ydim, zdim, rk_coef, gpcn, uh_n
-      use global,           only: integration_order, smalld
+      use global,           only: integration_order, smalld, smallei
       use fluidindex,       only: scrind
       use fluidindex,       only: iarr_all_dn, iarr_all_mx, iarr_all_my, iarr_all_mz, iarr_all_en
       use initstreamingcr,  only: cred, disable_streaming, disable_feedback, use_smallescr, smallescr, dt_scr, &
       &                           iarr_all_yfscr, iarr_all_zfscr, iarr_all_xfscr, iarr_all_escr, ord_pc_grad, scr_negative, &
-      &                           scr_causality_limit, scr_redo_on_violation, scr_nclip_src, scr_nfloor
+      &                           scr_causality_limit, scr_redo_on_violation, scr_nclip_src, scr_nfloor, scr_nexch_cap
       use scr_helpers,      only: update_interaction_term
-      use func,             only: operator(.equals.)
+      use func,             only: ekin
+#ifdef MAGNETIC
+      use func,             only: emag
+#endif /* MAGNETIC */
 #ifdef MAGNETIC
       use constants,        only: rtmn, cphi, ctheta, sphi, stheta, sgmn
       use scr_helpers,      only: rotate_vec, inverse_rotate_vec
@@ -65,7 +68,8 @@ contains
       real                                       :: v1, v2, v3, vtot1, vtot2, vtot3, f1, f2, f3, ec
       real                                       :: sigma_parallel, sigma_perpendicular, m11, m12, m13, m14, m21, m22
       real                                       :: m31, m33, m41, m44, newf1 ,newf2 ,newf3, e_coef, newec
-      real                                       :: gpcx, gpcy, gpcz, ec_source_, e_feed, fmag, fscale
+      real                                       :: gpcx, gpcy, gpcz, ec_source_, fmag, fscale
+      real                                       :: f1l, f2l, f3l, de_c, e_avail, emag_c
 #ifdef MAGNETIC
       real                                       :: bdotpc, sgn_bgpc, st, ct, sp, cp
 #endif /* MAGNETIC */
@@ -128,6 +132,7 @@ contains
             f1 = cg%w(scri)%arr(iarr_all_xfscr(ns),i,j,k) / cred
             f2 = cg%w(scri)%arr(iarr_all_yfscr(ns),i,j,k) / cred
             f3 = cg%w(scri)%arr(iarr_all_zfscr(ns),i,j,k) / cred
+            f1l = f1 ; f2l = f2 ; f3l = f3                       ! lab-frame Fc/cred before the source step
 #ifdef MAGNETIC
             call rotate_vec(f1, f2, f3, cp, sp, ct, st)
             call rotate_vec(v1, v2, v3, cp, sp, ct, st)
@@ -170,19 +175,35 @@ contains
 #ifdef MAGNETIC
             call inverse_rotate_vec(newf1, newf2, newf3, cp, sp, ct, st)
 #endif /* MAGNETIC */
+            if (.not. disable_feedback) then  ! feedback to the first (MHD) fluid, momentum and energy from the same implicit solution
+               ! (1/c^2) dFc/dt = -sigma (Fc - 4/3 Ec v) and d(rho v)/dt = +sigma (Fc - 4/3 Ec v): the gas gets exactly the momentum
+               ! the CR flux loses in the source step, Delta(rho v) = -Delta(Fc)/cred^2 = -Delta(Fc/cred)/cred (Jiang & Oh 2018)
+               cg%w(uhi)%arr(iarr_all_mx(1), i, j, k) = cg%w(uhi)%arr(iarr_all_mx(1), i, j, k) - (newf1 - f1l) / cred
+               cg%w(uhi)%arr(iarr_all_my(1), i, j, k) = cg%w(uhi)%arr(iarr_all_my(1), i, j, k) - (newf2 - f2l) / cred
+               cg%w(uhi)%arr(iarr_all_mz(1), i, j, k) = cg%w(uhi)%arr(iarr_all_mz(1), i, j, k) - (newf3 - f3l) / cred
+#ifndef ISO
+               ! total (gas + CR) energy is conserved: the gas pays exactly the change of Ec. The CRs cannot gain more than the
+               ! internal energy the gas has left after the momentum update (capped exchange, counted in scr_nexch_cap).
+               emag_c = 0.0
+#ifdef MAGNETIC
+               emag_c = emag(cg%w(magi)%arr(xdim,i,j,k), cg%w(magi)%arr(ydim,i,j,k), cg%w(magi)%arr(zdim,i,j,k))
+#endif /* MAGNETIC */
+               e_avail = cg%w(uhi)%arr(iarr_all_en(1), i, j, k) - emag_c - smallei - &
+                    &    ekin(cg%w(uhi)%arr(iarr_all_mx(1), i, j, k), cg%w(uhi)%arr(iarr_all_my(1), i, j, k), &
+                    &         cg%w(uhi)%arr(iarr_all_mz(1), i, j, k), cg%w(uhi)%arr(iarr_all_dn(1), i, j, k))
+               de_c = newec - ec
+               if (de_c > max(e_avail, 0.0)) then
+                  de_c = max(e_avail, 0.0)
+                  newec = ec + de_c
+                  scr_nexch_cap = scr_nexch_cap + 1
+               endif
+               cg%w(uhi)%arr(iarr_all_en(1), i, j, k) = cg%w(uhi)%arr(iarr_all_en(1), i, j, k) - de_c
+#endif /* !ISO */
+            endif
             if (use_smallescr) then
                if (newec < smallescr) newec = smallescr
             else
                if (newec < 0.0) newec = ec
-            endif
-            if (.not. disable_feedback ) then  ! Energy feedback to the MHD gas . Only the first fluid
-#ifndef ISO
-               e_feed = cg%w(uhi)%arr(iarr_all_en(1), i, j, k) - (newec - ec)
-               if ((e_feed < 0) .or. (newec .equals. smallescr)) then
-                  e_feed = cg%w(uhi)%arr(iarr_all_en(1), i, j, k)
-               endif
-               cg%w(uhi)%arr(iarr_all_en(1), i, j, k) = e_feed
-#endif /* !ISO */
             endif
             ! |Fc| <= limit * cred * Ec (newf is Fc/cred). At saturated fronts and floored cells the ratio does not depend on cred,
             ! so by default the flux is clipped locally; scr_redo_on_violation restores the legacy redo with a larger cred.
@@ -207,12 +228,9 @@ contains
          enddo
       enddo
       if (.not. disable_feedback ) then
+         ! the gas momentum feedback is applied in the loop above from the implicit flux change; the gradient of Pc is
+         ! refreshed here for the parts of the solver that use it after the source step
          cg%w(gpci)%arr(:,:,:,:) = cg%get_gradient(ord = ord_pc_grad, iw = scri, vec = iarr_all_escr)
-         do ns = 1, scrind%nscr
-            cg%w(uhi)%arr(iarr_all_mx(1), :,:,:) = cg%w(uhi)%arr(iarr_all_mx(1), :,:,:) - 1.0/3.0 * dt_scr * rk_coef(istep) * cg%w(gpci)%arr(xdim + 3 * (ns - 1),:,:,:)
-            cg%w(uhi)%arr(iarr_all_my(1), :,:,:) = cg%w(uhi)%arr(iarr_all_my(1), :,:,:) - 1.0/3.0 * dt_scr * rk_coef(istep) * cg%w(gpci)%arr(ydim + 3 * (ns - 1),:,:,:)
-            cg%w(uhi)%arr(iarr_all_mz(1), :,:,:) = cg%w(uhi)%arr(iarr_all_mz(1), :,:,:) - 1.0/3.0 * dt_scr * rk_coef(istep) * cg%w(gpci)%arr(zdim + 3 * (ns - 1),:,:,:)
-         enddo
       endif
    end subroutine apply_scr_source
    ! This function needs to be optimized. Currenlty causing a 0.02 second overhead for a 256 x256 run

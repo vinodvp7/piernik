@@ -33,7 +33,9 @@ module sources
    implicit none
 
    private
-   public :: external_sources, internal_sources, care_for_positives, init_sources, prepare_sources, timestep_sources
+   public :: external_sources, internal_sources, care_for_positives, init_sources, prepare_sources, timestep_sources, floor_energy
+
+   real, save :: floor_energy = 0.0  !< total energy added to active cells by the internal-energy/temperature floors (per rank, reset at tsl dump)
 
 contains
 
@@ -302,7 +304,8 @@ contains
 !==========================================================================================
    subroutine care_for_positives(n, u1, bb, cg, sweep, i1, i2)
 
-      use fluidindex, only: flind, nmag
+      use domain,     only: dom
+      use fluidindex, only: flind, nmag, iarr_all_en
       use grid_cont,  only: grid_container
 
       implicit none
@@ -316,11 +319,15 @@ contains
       integer,                       intent(in)    :: i2                 !< coordinate of sweep in the 2nd remaining direction
 !locals
       logical                                      :: full_dim
+      real                                         :: e_before
 
       full_dim = n > 1
 
       call limit_minimal_density(n, u1, cg, sweep, i1, i2)
+      e_before = 0.0
+      if (full_dim .and. size(iarr_all_en) > 0) e_before = sum(u1(dom%nb+1:n-dom%nb, iarr_all_en))
       call limit_minimal_intener(n, bb, u1)
+      if (full_dim .and. size(iarr_all_en) > 0) floor_energy = floor_energy + (sum(u1(dom%nb+1:n-dom%nb, iarr_all_en)) - e_before) * cg%dvol
 #ifdef COSM_RAYS
       if (full_dim) call limit_minimal_ecr(n, u1)
 #endif /* COSM_RAYS */

@@ -26,6 +26,8 @@ import numpy as np
 NH_PER_RHO = 6.770e-23 / (1.4 * 1.6726e-24)      # 1 Msun/pc^3 -> n_H [cm^-3] (1.4 m_H per H)
 POK_PER_P = 6.47e-13 / 1.3807e-16                 # 1 Msun/(pc Myr^2) -> P/k_B [K cm^-3]
 GAMMA_CR = 4.0 / 3.0
+EFLUX_KPC2 = 6.33e-8 * 3.0857e21**2               # 1 Msun/Myr^3 (energy flux) -> erg s^-1 kpc^-2
+Z_WIND = 500.0                                     # |z| [pc] above which gas counts as wind for the outflow phase plot
 COLORS = {}                                        # label -> colour, fixed for all panels (filled in main)
 
 
@@ -36,17 +38,19 @@ def read_tsl(rundir):
     files = sorted(glob.glob(os.path.join(rundir, "*.tsl")))
     if not files:
         return None
-    cols, rows = None, []
+    cols, rows = [], []                            # files can have different columns (tsl layout changed between restarts)
     for fn in files:
+        fcols = None
         with open(fn) as f:
             for line in f:
                 if line.startswith("#"):
-                    if cols is None and len(line.split()) > 2:
-                        cols = line.lstrip("#").split()
+                    if fcols is None and len(line.split()) > 2:
+                        fcols = line.lstrip("#").split()
+                        cols += [c for c in fcols if c not in cols]
                     continue
-                if line.strip():
-                    rows.append([float(x) for x in line.split()])
-    data = np.array(rows)
+                if line.strip() and fcols is not None:
+                    rows.append(dict(zip(fcols, (float(x) for x in line.split()))))
+    data = np.array([[r.get(c, np.nan) for c in cols] for r in rows])
     order = np.argsort(data[:, cols.index("time")], kind="stable")
     data = data[order]
     _, keep = np.unique(data[:, cols.index("time")][::-1], return_index=True)   # last occurrence wins after a restart
@@ -102,6 +106,129 @@ def cr_pressure(s):
         if k in s:
             return (GAMMA_CR - 1.0) * s[k]
     return None
+
+
+def read_kappa(rundir):
+    """(K_cr_paral, K_cr_perp) of the first diffusive CR species from the run's problem.par, None if absent."""
+    import re
+    try:
+        txt = open(os.path.join(rundir, "problem.par")).read()
+    except OSError:
+        return None
+    k = []
+    for name in ("K_cr_paral", "K_cr_perp"):
+        m = re.search(r"^\s*" + name + r"(?:\(1\))?\s*=\s*([-+0-9.eEdD]+)", txt, re.M)
+        if not m:
+            return None
+        k.append(float(m.group(1).replace("d", "e").replace("D", "e")))
+    return tuple(k)
+
+
+def outward(s, a):
+    """a * sign(z): positive = away from the midplane."""
+    return a * np.sign(s["z"])[:, None, None]
+
+
+def cr_flux_z(s):
+    """Vertical CR energy flux [code: Msun/Myr^3].
+    Two-moment runs: the evolved lab-frame flux Fc_z. Diffusive runs: (4/3) e v_z minus anisotropic diffusion
+    (kappa_par along b, kappa_perp across), reconstructed from the snapshot."""
+    if "zfscr_01" in s:
+        return s["zfscr_01"]
+    if "cr_p+" not in s or s.get("kappa") is None:
+        return None
+    e = s["cr_p+"]
+    kpar, kperp = s["kappa"]
+    dx = s["dx"]
+    gz, gy, gx = np.gradient(e, dx[2], dx[1], dx[0])
+    adv = GAMMA_CR * e * s["velocity_z"]
+    if all(k in s for k in ("mag_field_x", "mag_field_y", "mag_field_z")):
+        bx, by, bz = s["mag_field_x"], s["mag_field_y"], s["mag_field_z"]
+        bb = np.sqrt(bx**2 + by**2 + bz**2) + 1e-30
+        bx, by, bz = bx / bb, by / bb, bz / bb
+        bgrad = bx * gx + by * gy + bz * gz
+        return adv - kpar * bz * bgrad - kperp * (gz - bz * bgrad)
+    return adv - kpar * gz
+
+
+def plot_wind_phase(snaps, outdir, tag):
+    """n-T diagram of the outflowing gas only (|z| > Z_WIND, v_z away from the midplane), weighted by mass flux."""
+    labels = [l for l, s in snaps.items() if s is not None and "temperature" in s and "velocity_z" in s]
+    if not labels:
+        return
+    fig, axs = plt.subplots(1, len(labels), figsize=(3.6 * len(labels), 3.9), squeeze=False, sharey=True)
+    for j, label in enumerate(labels):
+        s = snaps[label]
+        vout = outward(s, s["velocity_z"])
+        sel = (np.abs(s["z"])[:, None, None] > Z_WIND) & (vout > 0)
+        sel = np.broadcast_to(sel, vout.shape)
+        w = (s["density"] * vout)[sel]                               # mass flux density [Msun/pc^2/Myr]
+        n = np.log10(np.maximum(s["density"][sel] * NH_PER_RHO, 1e-8))
+        T = np.log10(np.maximum(s["temperature"][sel], 1.0))
+        ax = axs[0, j]
+        if w.size and w.sum() > 0:
+            h, xe, ye = np.histogram2d(n, T, bins=[np.linspace(-5, 3, 120), np.linspace(1, 8, 120)], weights=w)
+            ax.pcolormesh(xe, ye, np.log10(np.maximum(h.T / h.sum(), 1e-8)), cmap="magma", vmin=-6, vmax=-1)
+            hot = (s["temperature"][sel] > 2.0e4)
+            ax.text(0.03, 0.03, f"hot (T>2e4 K): {100 * w[hot].sum() / w.sum():.0f}% of flux", transform=ax.transAxes,
+                    color="w", fontsize=8)
+        else:
+            ax.set_facecolor("k")
+            ax.text(0.5, 0.5, "no outflowing gas", transform=ax.transAxes, color="w", ha="center")
+        ax.set_title(label)
+        ax.set_xlabel(r"log $n_H$ [cm$^{-3}$]")
+        ax.set_xlim(-5, 3)
+        ax.set_ylim(1, 8)
+    axs[0, 0].set_ylabel("log T [K]")
+    fig.suptitle(f"outflowing gas, |z| > {Z_WIND:g} pc, weighted by $\\rho v_{{z,out}}$, {tag}")
+    fig.tight_layout()
+    fig.savefig(os.path.join(outdir, f"wind_phase_{tag}.png"), dpi=130)
+    plt.close(fig)
+
+
+def plot_fluxes(snaps, outdir, tag):
+    """Vertical profiles (folded to |z|, summed over both sides of the disk) of net outward mass flux, the part
+    of it carried by outflowing hot gas, and the outward CR energy flux."""
+    fig, axs = plt.subplots(1, 3, figsize=(16, 4.6), sharex=True)
+    any_cr = False
+    for label, s in snaps.items():
+        if s is None or "velocity_z" not in s:
+            continue
+        z = s["z"]
+        area = (s["x"][-1] - s["x"][0] + s["dx"][0]) * (s["y"][-1] - s["y"][0] + s["dx"][1])   # pc^2
+        top = z > 0
+        absz = z[top]
+        bot = np.argsort(-z[~top])                                   # mirror cells of the lower half onto the upper
+        fold = lambda prof: prof[top] + prof[~top][bot]
+
+        mflux = outward(s, s["density"] * s["velocity_z"])           # Msun/pc^2/Myr, outward positive
+        axs[0].plot(absz, fold(mflux.mean(axis=(1, 2))) * area, color=COLORS.get(label), label=label, lw=1.2)
+
+        hot_out = np.where((s["temperature"] > 2.0e4) & (mflux > 0), mflux, 0.0)
+        axs[1].plot(absz, fold(hot_out.mean(axis=(1, 2))) * area, color=COLORS.get(label), label=label, lw=1.2)
+
+        fcr = cr_flux_z(s)
+        if fcr is not None:
+            any_cr = True
+            prof = fold(outward(s, fcr).mean(axis=(1, 2))) * EFLUX_KPC2 * area / 1.0e6   # erg/s through both planes
+            axs[2].plot(absz, prof, color=COLORS.get(label), label=label, lw=1.2)
+
+    axs[0].set_ylabel(r"net outward $\dot M(|z|)$ [M$_\odot$/Myr]")
+    axs[1].set_ylabel(r"outflowing hot gas (T > 2e4 K) $\dot M$ [M$_\odot$/Myr]")
+    axs[2].set_ylabel(r"outward CR energy flux [erg s$^{-1}$]")
+    if any_cr:
+        axs[2].set_yscale("symlog", linthresh=1e36)
+    else:
+        axs[2].text(0.5, 0.5, "no CR runs", transform=axs[2].transAxes, ha="center")
+    for ax in axs:
+        ax.axhline(0.0, color="k", lw=0.6)
+        ax.set_xlabel("|z| [pc]")
+        ax.grid(alpha=0.3)
+    axs[0].legend(fontsize=9)
+    fig.suptitle(f"vertical fluxes (both sides of the disk), {tag}")
+    fig.tight_layout()
+    fig.savefig(os.path.join(outdir, f"fluxes_{tag}.png"), dpi=130)
+    plt.close(fig)
 
 
 # ----------------------------------------------------------------------------- plots
@@ -260,8 +387,9 @@ def main():
                 L = (sp["domain_right_edge"] - sp["domain_left_edge"]) / 1000.0
                 runs[l]["area_kpc2"] = L[0] * L[1]
     plot_timeseries(runs, args.outdir)
+    kappa = {l: read_kappa(r) for l, r in zip(labels, args.rundirs)}
 
-    fields = ["density", "temperature", "pressure", "velocity_z", "mag_field_x", "mag_field_y", "mag_field_z", "cr_p+", "escr_01"]
+    fields = ["density", "temperature", "pressure", "velocity_z", "mag_field_x", "mag_field_y", "mag_field_z", "cr_p+", "escr_01", "zfscr_01"]
     for t in args.times:
         snaps = {}
         for l in labels:
@@ -270,11 +398,14 @@ def main():
                 continue
             tt, fn = min(avail[l], key=lambda p: abs(p[0] - t))
             snaps[l] = read_snapshot(fn, fields)
+            snaps[l]["kappa"] = kappa[l]
             print(f"{l}: t_req = {t:g} Myr -> {os.path.basename(fn)} (t = {tt:.2f} Myr)")
         tag = f"t{t:g}Myr"
         plot_profiles(snaps, args.outdir, tag)
         plot_slices(snaps, args.outdir, tag)
         plot_phase(snaps, args.outdir, tag)
+        plot_wind_phase(snaps, args.outdir, tag)
+        plot_fluxes(snaps, args.outdir, tag)
 
     print(f"plots written to {args.outdir}/")
 

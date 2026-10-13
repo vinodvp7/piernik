@@ -98,6 +98,7 @@ contains
       use gravity,             only: source_terms_grav, compute_h_gpot, need_update
 #ifdef NBODY
       use particle_solvers,    only: psolver
+      use star_formation,      only: SF_step
 #endif /* NBODY */
 #endif /* GRAV */
 #ifdef COSM_RAYS
@@ -179,7 +180,9 @@ contains
 
       call external_sources(forward)
       if (associated(problem_customize_solution)) call problem_customize_solution(forward)
-
+#ifdef NBODY
+      call SF_step(forward)
+#endif /* NBODY */
       call eglm
       call glmdamping
 

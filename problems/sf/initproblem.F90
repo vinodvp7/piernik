@@ -117,9 +117,9 @@ contains
 
 #ifdef SNE_DISTR
 #ifdef SN_DISTRIBUTION
-            use sndistr,        only: sum_dmass_stars, sfr_dump, sfr2hdf, sne_dump
+            use sndistr,        only: sum_dmass_stars
 #ifdef NBODY
-            use star_formation, only: SF, dmass_stars
+            use star_formation, only: dmass_stars
 #endif /* NBODY */
 #endif /* SN_DISTRIBUTION */
 #endif /* SNE_DISTR */
@@ -131,7 +131,7 @@ logical, intent(in) :: forward
 #ifdef SNE_DISTR
 #ifdef SN_DISTRIBUTION
 #ifdef NBODY
-            call SF(forward, sfr_dump, sfr2hdf, sne_dump)
+            ! SF itself is called by the core (fluidupdate: SF_step); only accumulate the stellar mass it formed
             if (forward) sum_dmass_stars = sum_dmass_stars + dmass_stars
 
 #endif /* NBODY */
@@ -153,9 +153,6 @@ logical, intent(in) :: forward
       use mpisetup,    only: rbuff, ibuff, master, slave
       use bcast,       only: piernik_MPI_Bcast
       use problem_pub, only: jeans_d0, jeans_mode
-#ifdef NBODY
-         use star_formation, only:init_SF
-#endif  /* NBODY */
 
       use units,       only: fpiG, kboltz, mH
 
@@ -270,9 +267,7 @@ logical, intent(in) :: forward
       if (mode == 1) Tamp = Tamp / 4.
 
       call init_user_module
-#ifdef NBODY
-      call init_SF
-#endif /* NBODY */
+      ! init_SF is called by the core (initpiernik)
 
    end subroutine read_problem_par
 

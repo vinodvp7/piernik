@@ -72,7 +72,6 @@ module hydrostatic
    logical                         :: chg_halo
    character(len=dsetnamelen), parameter :: temp_eq = 'temperature_equilibrium'
    integer                         :: i_teq, ksmin, ksmax
-   real                            :: dz!, zlim
    integer                         :: ksmid
    real                            :: dproferr = big_float
 
@@ -135,14 +134,36 @@ contains
 !<
    subroutine hydrostatic_zeq_coldens(iia, jja, coldens, csim2)
 
+#ifdef SELF_GRAV
+      use dataio_pub, only: warn
+      use fluidindex, only: flind
+#endif /* SELF_GRAV */
+
       implicit none
 
       integer, intent(in)    :: iia, jja
       real,    intent(in)    :: coldens, csim2
       real                   :: sdprof, sd
+#ifdef SELF_GRAV
+      integer, parameter     :: maxit = 100
+      integer                :: it
+#endif /* SELF_GRAV */
 
       sdprof = 1.0
       call hydrostatic_zeq_densmid(iia, jja, sdprof, csim2, sd)
+#ifdef SELF_GRAV
+      if (flind%any_fluid_is_selfgrav()) then
+         ! Self-gravity makes the profile nonlinear in d0, so it cannot be rescaled: iterate on d0 instead.
+         ! With sd ~ d0**p, 1/2 <= p <= 1, the update d0 <- d0 * coldens / sd contracts the log-error by (1 - p) per step.
+         do it = 1, maxit
+            if (abs(sd - coldens) <= 1e-5 * coldens) exit
+            sdprof = sdprof * coldens / sd
+            call hydrostatic_zeq_densmid(iia, jja, sdprof, csim2, sd)
+         enddo
+         if (it > maxit) call warn("[hydrostatic:hydrostatic_zeq_coldens] column density not matched with self-gravity")
+         return
+      endif
+#endif /* SELF_GRAV */
       dprof(:) = dprof(:) * coldens / sd
 
    end subroutine hydrostatic_zeq_coldens
@@ -221,17 +242,19 @@ contains
       do isub = 1, miter 
 #ifdef SELF_GRAV
          if (self_g) then
+            ! g_sg = -4 pi G int_0^z rho dz': the midplane (g_sg = 0) is the face between ksmid and ksmid+1, half a subcell
+            ! from both centres, and the mass between neighbouring centres is integrated with the trapezoid rule
             if (ksmid < nstot) then
-               sgprofs(ksmid+1) = 0.0
+               sgprofs(ksmid+1) = - half * fpi * newtong * dprofs(ksmid+1) * dzs
                do ksub = ksmid+1, nstot-1
-                  sgprofs(ksub+1) = sgprofs(ksub) - fpi * newtong * dprofs(ksub) * dzs
+                  sgprofs(ksub+1) = sgprofs(ksub) - half * fpi * newtong * (dprofs(ksub) + dprofs(ksub+1)) * dzs
                enddo
             endif
 
             if (ksmid > 1) then
-               sgprofs(ksmid) = 0.0
+               sgprofs(ksmid) = half * fpi * newtong * dprofs(ksmid) * dzs
                do ksub = ksmid, 2, -1
-                  sgprofs(ksub-1) = sgprofs(ksub) + fpi * newtong * dprofs(ksub) * dzs
+                  sgprofs(ksub-1) = sgprofs(ksub) + half * fpi * newtong * (dprofs(ksub) + dprofs(ksub-1)) * dzs
                enddo
             endif
          endif
@@ -249,7 +272,7 @@ contains
          if (dproferr < err_d) exit
       enddo 
 
-      if ((isub >= miter) .and. isub /= 1) then
+      if (self_g .and. isub > miter) then   ! isub > miter only when the loop ran out without the exit
          call warn("[hydrostatic:hydrostatic_zeq_densmid] convergence not detected. Increase maxiter or dont trust this  equilibrium")
       endif
 
@@ -338,7 +361,7 @@ contains
          dprofs(:) = (1.0 - om) * dprofs_old(:) + om * dprofs(:)   ! relax the density feeding g_sg
       enddo
 
-      if ((isub >= miter) .and. self_g) then
+      if ((isub > miter) .and. self_g) then
          call warn("[hydrostatic:thermal_hydro_zeq_Tmid] convergence not detected. Increase maxiter or dont trust this equilibrium")
       endif
 
@@ -362,7 +385,7 @@ contains
 !<
    subroutine selfgrav_gauss_1d(iia, jja)
 
-      use constants, only: fpi
+      use constants, only: fpi, half
       use units,     only: newtong
 
       implicit none
@@ -370,13 +393,16 @@ contains
       integer, intent(in) :: iia, jja
       integer             :: ksub, kmid
 
+      ! same midplane as thermal_hydro_main: the face between kmid and kmid+1, half a subcell from both centres;
+      ! the mass between neighbouring centres is integrated with the trapezoid rule
       kmid = minloc(abs(zs(ksmin:ksmax)),1) + ksmin - 1   ! full column: always anchored at z = 0
-      sgprofs(kmid) = 0.0
-      do ksub = kmid, ksmax-1
-         sgprofs(ksub+1) = sgprofs(ksub) - fpi * newtong * dprofs(ksub) * dzs
+      sgprofs(kmid) = half * fpi * newtong * dprofs(kmid) * dzs
+      if (kmid < ksmax) sgprofs(kmid+1) = - half * fpi * newtong * dprofs(kmid+1) * dzs
+      do ksub = kmid+1, ksmax-1
+         sgprofs(ksub+1) = sgprofs(ksub) - half * fpi * newtong * (dprofs(ksub) + dprofs(ksub+1)) * dzs
       enddo
       do ksub = kmid, ksmin+1, -1
-         sgprofs(ksub-1) = sgprofs(ksub) + fpi * newtong * dprofs(ksub) * dzs
+         sgprofs(ksub-1) = sgprofs(ksub) + half * fpi * newtong * (dprofs(ksub) + dprofs(ksub-1)) * dzs
       enddo
 
       if (.false.) ksub = iia + jja   ! suppress compiler warnings on unused arguments
@@ -419,7 +445,6 @@ contains
       allocate(hsl(hsbn(LO):hsbn(HI)+I_ONE))
       hsl(hsbn(LO):hsbn(HI)) = cg%coord(LEFT,  zdim)%r(hsbn(LO):hsbn(HI))
       hsl(hsbn(HI)+I_ONE)    = cg%coord(RIGHT, zdim)%r(hsbn(HI))
-      dz = cg%dl(zdim)   !< z cell size: half-cell margin for ksmin/ksmax in thermal_hydro_zeq_Tmid
       !zlim = 0
       !dz = hsl(hsbn(HI)) - hsl(hsbn(HI)-1)
       !do while (zlim .lt. 60) !650)

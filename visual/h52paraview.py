@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 Converts PIERNIK output .h5 file to Paraview friendly .vthb file.
 Handles both AMR and non-AMR dataset.

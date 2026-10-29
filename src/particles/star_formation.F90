@@ -276,7 +276,7 @@ contains
                      if (.not. cg%leafmap(i,j,k)) cycle
 
                      sector(zdim,:) = [cg%coord(LO,zdim)%r(k), cg%coord(HI,zdim)%r(k)]
-                     tdyn = sqrt(3 * pi / (32 * newtong * cg%u(pfl%idn,i,j,k) + cg%q(ig)%arr(i,j,k)))
+                     tdyn = sqrt(3 * pi / (32 * newtong * (cg%u(pfl%idn,i,j,k) + cg%q(ig)%arr(i,j,k))))
                      if (.not. SF_crit(pfl, cg, i, j, k, tdyn)) cycle       ! Check if SF conditions are met
                      fed = .false.
                      sf_dens2dt = sfdf * cg%u(pfl%idn,i,j,k)**(3./2.)
@@ -1096,9 +1096,9 @@ contains
    integer, intent(in)                       :: is, ish, i,j,k, aijk1
    logical, intent(in)                       :: sne_dump
    real                                      :: padd, en_SN, en_SN01, en_SN09, maxvel, frac1, enclosed_mass, new_dens, frac3, frac4, RM
-   real                                      :: Ekin0, mp0cost, mp0sq, mp
+   real                                      :: ekin_add, mp0cost, mp
    integer                                   :: dir_max, ndim
-   real, dimension(3)                        :: moms, frac2, v
+   real, dimension(3)                        :: moms, frac2
    logical                                   :: equalize_region
 
    ! 10 Msun deposited into SN injection region
@@ -1139,27 +1139,18 @@ contains
    enclosed_mass = dens_amb / frac *dx**3 * (cg%dx/dx)**3       ! Total mass enclosed in the injection region
    RM = enclosed_mass / (1679*(dens_amb*40.77/1.427)**(-0.26))  ! Parameter deciding whether the shell formation radius is resolved
 
+   ekin_add = 0.0                                               ! kinetic energy to add in this cell; padd is derived from it below
    if (RM > 1.0) then
       if (aijk1 .eq. 0) print *, 'RM > 1', RM, enclosed_mass, dens_amb, dx, 'Completely unresolved: Final SN Momentum injection only'
       padd = 2.8 * 10.0**5 * km / sek *(dens_amb * 40.77/1.427)**(-0.17) *frac  / dx**3 / sqrt(real(aijk1))
       equalize_region = .false.
    else if ((RM > 0.027) .and. (RM < 1.0)) then
-      Ekin0 = ekin(cg%u(pfl%imx,i,j,k), cg%u(pfl%imy,i,j,k), cg%u(pfl%imz,i,j,k), cg%u(pfl%idn,i,j,k))
-      v(:) = cg%u(pfl%imx:pfl%imz,i,j,k)/cg%u(pfl%idn,i,j,k) !- pset%pdata%vel
-      mp0cost = cg%u(pfl%idn,i,j,k) * (abs(ijk1(xdim)*v(xdim)) + abs(ijk1(ydim)*v(ydim)) + abs(ijk1(zdim)*v(zdim))) / sqrt(real(aijk1))
-      mp0sq   = cg%u(pfl%idn,i,j,k)**2 * (v(xdim)**2 + v(ydim)**2 + v(zdim)**2)
-      mp = sqrt(max(0.0, mp0cost**2 + 2*(Ekin0 + en_SN09 * mfdv * 0.28 *frac) * (cg%u(pfl%idn,i,j,k)+ 10.0 *frac / cg%dvol * merge(1,0, inject_mass)) - mp0sq)) - mp0cost
-      padd = mp / sqrt(real(aijk1))
+      ekin_add = en_SN09 * mfdv * 0.28 * frac
       call sf_inject(cg, pfl%ien, pfl%idn, i, j, k, is, ish, mfdv * en_SN09 * frac * 0.72, 0.0, dt, sne_dump)
       if (aijk1 .eq. 0) print *, '28% of SN energy injected as kinetic, 72% thermal'
    else
       if (aijk1 .eq. 0) print *, 'RM < 0.027', RM, enclosed_mass, dens_amb, dx, '; low density: SN injected fully as kinetic energy'
-      Ekin0 = ekin(cg%u(pfl%imx,i,j,k), cg%u(pfl%imy,i,j,k), cg%u(pfl%imz,i,j,k), cg%u(pfl%idn,i,j,k))
-      v(:) = cg%u(pfl%imx:pfl%imz,i,j,k)/cg%u(pfl%idn,i,j,k) !- pset%pdata%vel
-      mp0cost = cg%u(pfl%idn,i,j,k) * (abs(ijk1(xdim)*v(xdim)) + abs(ijk1(ydim)*v(ydim)) + abs(ijk1(zdim)*v(zdim))) / sqrt(real(aijk1))
-      mp0sq   = cg%u(pfl%idn,i,j,k)**2 * (v(xdim)**2 + v(ydim)**2 + v(zdim)**2)
-      mp = sqrt(max(0.0, mp0cost**2 + 2*(Ekin0 + en_SN09 * mfdv *frac) * (cg%u(pfl%idn,i,j,k)+ 10.0 *frac / cg%dvol * merge(1,0, inject_mass)) - mp0sq)) - mp0cost
-      padd = mp / sqrt(real(aijk1))
+      ekin_add = en_SN09 * mfdv * frac
    endif
    if (aijk1 .eq. 0) return
 
@@ -1176,6 +1167,14 @@ contains
       cg%u(pfl%ien,i,j,k) = cg%u(pfl%ien,i,j,k) + emag(cg%b(xdim,i,j,k), cg%b(ydim,i,j,k), cg%b(zdim,i,j,k))
 #endif /* MAGNETIC */
       cg%u(pfl%imx:pfl%imz,i,j,k) = frac4 * cg%u(pfl%imx:pfl%imz,i,j,k)
+   endif
+
+   if (ekin_add > 0.0) then
+      ! Momentum mp along n = ijk1/|ijk1| that raises the kinetic energy of the final (mass-injected, equalized) state by
+      ! exactly ekin_add: |m + mp n|^2/(2 rho) - |m|^2/(2 rho) = ekin_add  =>  mp = -n.m + sqrt((n.m)^2 + 2 rho ekin_add)
+      mp0cost = dot_product(real(ijk1), cg%u(pfl%imx:pfl%imz,i,j,k)) / sqrt(real(aijk1))
+      mp      = sqrt(mp0cost**2 + 2.0 * cg%u(pfl%idn,i,j,k) * ekin_add) - mp0cost
+      padd    = mp / sqrt(real(aijk1))
    endif
 
    maxvel = maxval(abs((cg%u(pfl%imx:pfl%imz,i,j,k) + padd*ijk1) / cg%u(pfl%idn,i,j,k)))
@@ -1450,7 +1449,7 @@ subroutine register_SF_vars(hdf_vars)
       use allreduce,      only: piernik_MPI_Allreduce
       use cg_leaves,      only: leaves
       use cg_list,        only: cg_list_element
-      use constants,      only: ndims, xdim, ydim, zdim, LO, HI, CENTER, pSUM
+      use constants,      only: ndims, xdim, ydim, zdim, LO, HI, CENTER, pSUM, pi
       use dataio_pub,     only: msg, printinfo, warn
       use domain,         only: dom
       use fluidindex,     only: flind
@@ -1499,8 +1498,9 @@ subroutine register_SF_vars(hdf_vars)
                   if (rho < rho_thr) cycle
                   n_elig = n_elig + 1
 
-                  ! Expected stellar mass from the volumetric Schmidt law over the lookback window
-                  m_exp     = eps_sf * sqrt(newtong) * rho**1.5 * cg%dvol * seed_lookback
+                  ! Expected stellar mass from the volumetric Schmidt law over the lookback window,
+                  ! with the same eps_sf * rho / t_ff rate as SF (t_ff = sqrt(3 pi / (32 G rho)))
+                  m_exp     = eps_sf / sqrt(3. * pi / (32. * newtong)) * rho**1.5 * cg%dvol * seed_lookback
                   m_exp_tot = m_exp_tot + m_exp
 
                   ! Poisson-like sampling: deterministic integer part, Bernoulli remainder.

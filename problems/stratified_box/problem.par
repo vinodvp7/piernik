@@ -20,7 +20,7 @@
 !! core accuracy.
 
 !! WARNING (Fits for prob 3): 
-!! For case 3 all 3 fits are bad and fits cannot be trusted.
+!! For prob 3 (cases 6 and 7) all 3 fits are bad and cannot be trusted.
 
  $BASE_DOMAIN
     n_d = 1, 256, 512

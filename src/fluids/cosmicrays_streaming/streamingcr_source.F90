@@ -175,31 +175,7 @@ contains
 #ifdef MAGNETIC
             call inverse_rotate_vec(newf1, newf2, newf3, cp, sp, ct, st)
 #endif /* MAGNETIC */
-            if (.not. disable_feedback) then  ! feedback to the first (MHD) fluid, momentum and energy from the same implicit solution
-               ! (1/c^2) dFc/dt = -sigma (Fc - 4/3 Ec v) and d(rho v)/dt = +sigma (Fc - 4/3 Ec v): the gas gets exactly the momentum
-               ! the CR flux loses in the source step, Delta(rho v) = -Delta(Fc)/cred^2 = -Delta(Fc/cred)/cred (Jiang & Oh 2018)
-               cg%w(uhi)%arr(iarr_all_mx(1), i, j, k) = cg%w(uhi)%arr(iarr_all_mx(1), i, j, k) - (newf1 - f1l) / cred
-               cg%w(uhi)%arr(iarr_all_my(1), i, j, k) = cg%w(uhi)%arr(iarr_all_my(1), i, j, k) - (newf2 - f2l) / cred
-               cg%w(uhi)%arr(iarr_all_mz(1), i, j, k) = cg%w(uhi)%arr(iarr_all_mz(1), i, j, k) - (newf3 - f3l) / cred
-#ifndef ISO
-               ! total (gas + CR) energy is conserved: the gas pays exactly the change of Ec. The CRs cannot gain more than the
-               ! internal energy the gas has left after the momentum update (capped exchange, counted in scr_nexch_cap).
-               emag_c = 0.0
-#ifdef MAGNETIC
-               emag_c = emag(cg%w(magi)%arr(xdim,i,j,k), cg%w(magi)%arr(ydim,i,j,k), cg%w(magi)%arr(zdim,i,j,k))
-#endif /* MAGNETIC */
-               e_avail = cg%w(uhi)%arr(iarr_all_en(1), i, j, k) - emag_c - smallei - &
-                    &    ekin(cg%w(uhi)%arr(iarr_all_mx(1), i, j, k), cg%w(uhi)%arr(iarr_all_my(1), i, j, k), &
-                    &         cg%w(uhi)%arr(iarr_all_mz(1), i, j, k), cg%w(uhi)%arr(iarr_all_dn(1), i, j, k))
-               de_c = newec - ec
-               if (de_c > max(e_avail, 0.0)) then
-                  de_c = max(e_avail, 0.0)
-                  newec = ec + de_c
-                  scr_nexch_cap = scr_nexch_cap + 1
-               endif
-               cg%w(uhi)%arr(iarr_all_en(1), i, j, k) = cg%w(uhi)%arr(iarr_all_en(1), i, j, k) - de_c
-#endif /* !ISO */
-            endif
+            ! Floor Ec and clip Fc before the feedback, so that the gas exchanges exactly the final change of Ec and Fc
             if (use_smallescr) then
                if (newec < smallescr) newec = smallescr
             else
@@ -219,6 +195,41 @@ contains
                   scr_nclip_src = scr_nclip_src + 1
                endif
             endif
+            if (.not. disable_feedback) then  ! feedback to the first (MHD) fluid, momentum and energy from the same implicit solution
+#ifndef ISO
+               ! total (gas + CR) energy is conserved: the gas pays exactly the change of Ec. The CRs cannot gain more than the
+               ! internal energy the gas has left after the momentum update (capped exchange, counted in scr_nexch_cap).
+               emag_c = 0.0
+#ifdef MAGNETIC
+               emag_c = emag(cg%w(magi)%arr(xdim,i,j,k), cg%w(magi)%arr(ydim,i,j,k), cg%w(magi)%arr(zdim,i,j,k))
+#endif /* MAGNETIC */
+               e_avail = cg%w(uhi)%arr(iarr_all_en(1), i, j, k) - emag_c - smallei - &
+                    &    ekin(cg%w(uhi)%arr(iarr_all_mx(1), i, j, k) - (newf1 - f1l) / cred, &
+                    &         cg%w(uhi)%arr(iarr_all_my(1), i, j, k) - (newf2 - f2l) / cred, &
+                    &         cg%w(uhi)%arr(iarr_all_mz(1), i, j, k) - (newf3 - f3l) / cred, cg%w(uhi)%arr(iarr_all_dn(1), i, j, k))
+               de_c = newec - ec
+               if (de_c > max(e_avail, 0.0)) then
+                  de_c = max(e_avail, 0.0)
+                  newec = ec + de_c
+                  scr_nexch_cap = scr_nexch_cap + 1
+                  fmag = sqrt(newf1 * newf1 + newf2 * newf2 + newf3 * newf3)
+                  if ((.not. scr_redo_on_violation) .and. fmag > scr_causality_limit * max(newec, 0.0)) then  ! the capped Ec may violate it again
+                     fscale = scr_causality_limit * max(newec, 0.0) / fmag
+                     newf1 = newf1 * fscale
+                     newf2 = newf2 * fscale
+                     newf3 = newf3 * fscale
+                  endif
+               endif
+               cg%w(uhi)%arr(iarr_all_en(1), i, j, k) = cg%w(uhi)%arr(iarr_all_en(1), i, j, k) - de_c
+#endif /* !ISO */
+               ! (1/c^2) dFc/dt = -sigma (Fc - 4/3 Ec v) and d(rho v)/dt = +sigma (Fc - 4/3 Ec v): the gas gets exactly the momentum
+               ! the CR flux loses in the source step, Delta(rho v) = -Delta(Fc)/cred^2 = -Delta(Fc/cred)/cred (Jiang & Oh 2018)
+               cg%w(uhi)%arr(iarr_all_mx(1), i, j, k) = cg%w(uhi)%arr(iarr_all_mx(1), i, j, k) - (newf1 - f1l) / cred
+               cg%w(uhi)%arr(iarr_all_my(1), i, j, k) = cg%w(uhi)%arr(iarr_all_my(1), i, j, k) - (newf2 - f2l) / cred
+               cg%w(uhi)%arr(iarr_all_mz(1), i, j, k) = cg%w(uhi)%arr(iarr_all_mz(1), i, j, k) - (newf3 - f3l) / cred
+            endif
+            ! last resort, only reached when the gas had no internal energy left to pay for raising Ec to the floor
+            if (use_smallescr .and. newec < smallescr) newec = smallescr
 
             cg%w(scri)%arr(iarr_all_escr(ns), i, j, k)  = newec         ! For test 1 and test 2 comment me
             cg%w(scri)%arr(iarr_all_xfscr(ns), i, j, k) = newf1 * cred

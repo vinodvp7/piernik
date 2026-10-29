@@ -51,7 +51,7 @@
     vars(8) = 'sfrh'    ! star formation rate since last dump
     vars(9) = 'temp'
     !vars(10) = 'snel'    ! supernovae explosion rate at the last timestep
-    1vars(11) = 'sneh'   ! supernovae explosion rate since last dump
+    !vars(11) = 'sneh'   ! supernovae explosion rate since last dump
  /
 
  $FLUID_IONIZED

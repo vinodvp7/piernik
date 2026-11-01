@@ -958,7 +958,7 @@ contains
       integer(kind=4)                            :: error   !< error perhaps should be of type integer(HID_T)
 
       call h5pcreate_f(H5P_DATASET_CREATE_F, prp_id, error)
-      if (enable_compression .and. Z_avail) then
+      if (enable_compression .and. Z_avail .and. all(ddims > 0)) then   ! HDF5 refuses zero-sized chunks (e.g. a block without particles)
          call h5pset_shuffle_f(prp_id, error)
          call h5pset_deflate_f(prp_id, gzip_level, error)
          call h5pset_chunk_f(prp_id, size(ddims, kind=4), ddims, error)

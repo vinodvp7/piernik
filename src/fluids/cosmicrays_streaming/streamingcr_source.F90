@@ -41,13 +41,14 @@ contains
    subroutine apply_scr_source(cg, istep)
       use grid_cont,        only: grid_container
       use named_array_list, only: wna
-      use constants,        only: LO, HI, scrh, first_stage, xdim, ydim, zdim, rk_coef, gpcn, uh_n
+      use constants,        only: LO, HI, scrh, first_stage, last_stage, xdim, ydim, zdim, rk_coef, gpcn, uh_n
       use global,           only: integration_order, smalld, smallei
       use fluidindex,       only: scrind
       use fluidindex,       only: iarr_all_dn, iarr_all_mx, iarr_all_my, iarr_all_mz, iarr_all_en
       use initstreamingcr,  only: cred, disable_streaming, disable_feedback, use_smallescr, smallescr, dt_scr, &
       &                           iarr_all_yfscr, iarr_all_zfscr, iarr_all_xfscr, iarr_all_escr, ord_pc_grad, scr_negative, &
-      &                           scr_causality_limit, scr_redo_on_violation, scr_nclip_src, scr_nfloor, scr_nexch_cap
+      &                           scr_causality_limit, scr_redo_on_violation, scr_nclip_src, scr_nfloor, scr_nexch_cap, &
+      &                           cr_losses, cr_loss_rate, cr_loss_heat_frac, scr_eloss
       use scr_helpers,      only: update_interaction_term
       use func,             only: ekin
 #ifdef MAGNETIC
@@ -69,7 +70,7 @@ contains
       real                                       :: sigma_parallel, sigma_perpendicular, m11, m12, m13, m14, m21, m22
       real                                       :: m31, m33, m41, m44, newf1 ,newf2 ,newf3, e_coef, newec
       real                                       :: gpcx, gpcy, gpcz, ec_source_, fmag, fscale
-      real                                       :: f1l, f2l, f3l, de_c, e_avail, emag_c
+      real                                       :: f1l, f2l, f3l, de_c, e_avail, emag_c, floss, de_l
 #ifdef MAGNETIC
       real                                       :: bdotpc, sgn_bgpc, st, ct, sp, cp
 #endif /* MAGNETIC */
@@ -230,6 +231,26 @@ contains
             endif
             ! last resort, only reached when the gas had no internal energy left to pay for raising Ec to the floor
             if (use_smallescr .and. newec < smallescr) newec = smallescr
+
+            ! hadronic + Coulomb losses, dEc/dt = -(zeta_hadr + zeta_coul) n_e Ec, integrated exactly over the sub-step; Fc decays
+            ! at the same rate. Coulomb losses and 1/6 of the hadronic ones (secondary e+-) heat the gas, the rest leaves as
+            ! gamma rays and neutrinos.
+            if (cr_losses) then
+               floss = exp(-cr_loss_rate * max(smalld, cg%w(fldi)%arr(iarr_all_dn(1),i,j,k)) * rk_coef(istep) * dt_scr)
+               de_l  = newec * (1.0 - floss)
+               if (use_smallescr) de_l = min(de_l, max(newec - smallescr, 0.0))
+               de_l  = max(de_l, 0.0)
+               newec = newec - de_l
+               newf1 = newf1 * floss
+               newf2 = newf2 * floss
+               newf3 = newf3 * floss
+#ifndef ISO
+               if (.not. disable_feedback) &
+                    & cg%w(uhi)%arr(iarr_all_en(1), i, j, k) = cg%w(uhi)%arr(iarr_all_en(1), i, j, k) + cr_loss_heat_frac * de_l
+#endif /* !ISO */
+               if (istep == last_stage(integration_order) .and. i >= cg%is .and. i <= cg%ie .and. j >= cg%js .and. j <= cg%je &
+                    & .and. k >= cg%ks .and. k <= cg%ke) scr_eloss = scr_eloss + de_l * cg%dvol
+            endif
 
             cg%w(scri)%arr(iarr_all_escr(ns), i, j, k)  = newec         ! For test 1 and test 2 comment me
             cg%w(scri)%arr(iarr_all_xfscr(ns), i, j, k) = newf1 * cred

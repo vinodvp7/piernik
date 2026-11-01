@@ -73,6 +73,10 @@ module initstreamingcr
    real                                    :: cfl_scr             !< CR time step = cfl_scr * dx / cred (1: original; 1/sqrt(3) is the 3D unsplit limit for signal speed cred/sqrt(3))
    logical                                 :: cr_sound_speed      !< whether to add cr sound speed when calculating v_diff. Ideally keep it as false so that sound speed is added as it increases numerical stability.
    character(len=cbuff_len)                :: transport_scheme    !< scheme used to calculate riemann flux for cosmic rays : HLLE / LF
+   logical                                 :: cr_losses           !< hadronic + Coulomb losses of the CR energy (and flux) on the gas
+   real                                    :: zeta_hadr           !< hadronic loss coefficient [cm^3/s]: dEc/dt = -zeta_hadr n_e Ec (Pfrommer et al. 2017)
+   real                                    :: zeta_coul           !< Coulomb loss coefficient [cm^3/s]: dEc/dt = -zeta_coul n_e Ec
+   real                                    :: mu_e_loss           !< mass per electron in units of m_p, n_e = rho / (mu_e_loss m_p)
 
    integer, parameter                      :: nscr_max   = 99     !< Maximum number of allowed streaming cr component
    real, parameter                         :: tau_asym   = 1e-3   !< Used in the calculation of R in streaming_cr_hlle where below this value the function is taylor expanded in tau
@@ -99,6 +103,10 @@ module initstreamingcr
    integer                                      :: scr_violate_consec = 0    ! consecutive steps that violated
    integer                                      :: scr_good_steps     = 0    ! steps without violation
    real                                         :: cred_floor_dyn            ! dynamic floor learned from violations
+   real                                         :: cr_loss_rate      = 0.0   ! (zeta_hadr + zeta_coul) n_e / rho in code units: loss rate = cr_loss_rate * rho
+   real                                         :: cr_loss_heat_frac = 0.0   ! share of the lost CR energy that heats the gas: Coulomb + 1/6 of hadronic
+   real                                         :: cr_loss_gamma_frac = 0.0  ! share of the lost CR energy that leaves as gamma rays: 1/3 of hadronic (pi0 decay)
+   real                                         :: scr_eloss         = 0.0   ! CR energy lost since the previous tsl dump (per rank, volume integrated)
    enum, bind(C)
       enumerator :: SCR_HLLE, SCR_LF
    end enum
@@ -107,7 +115,8 @@ contains
    subroutine init_streamingcr
 
       use bcast,            only: piernik_MPI_Bcast
-      use dataio_pub,       only: die, nh, msg, warn
+      use dataio_pub,       only: die, nh, msg, warn, printinfo
+      use units,            only: cm, sek, mp
       use func,             only: operator(.equals.)
       use mpisetup,         only: ibuff, rbuff, lbuff, cbuff, master, slave
       use constants,        only: cbuff_len
@@ -120,7 +129,8 @@ contains
       &                       cred_to_mhd_threshold, use_smallescr, sigma_paral, sigma_perp, ord_pc_grad,      &
       &                       disable_feedback, disable_streaming, gamma_scr, cr_sound_speed, scr_eff,         &
       &                       scr_causality_limit, scr_violate_consec_max, scr_relax_after, transport_scheme, cred_max, &
-      &                       scr_redo_on_violation, scr_fallback_1st, scr_pp_limiter, cfl_scr
+      &                       scr_redo_on_violation, scr_fallback_1st, scr_pp_limiter, cfl_scr, &
+      &                       cr_losses, zeta_hadr, zeta_coul, mu_e_loss
 
       nscr                     = 1
       nsub                     = 0        ! by default we let subcycling be adaptive
@@ -148,6 +158,10 @@ contains
       cfl_scr                  = 1.0        ! 1.0 reproduces the original time step
       cr_sound_speed           = .true.
       transport_scheme         = "hlle"
+      cr_losses                = .false.    ! off: existing setups stay bit-identical
+      zeta_hadr                = 7.44e-16
+      zeta_coul                = 2.78e-16
+      mu_e_loss                = 1.17       ! fully ionised gas with X = 0.7
 
       if (master) then
          if (.not.nh%initialized) call nh%init()
@@ -186,6 +200,9 @@ contains
          rbuff(7) = cred_decay_fac
          rbuff(8) = cred_max
          rbuff(9) = cfl_scr
+         rbuff(10) = zeta_hadr
+         rbuff(11) = zeta_coul
+         rbuff(12) = mu_e_loss
 
          lbuff(1) = use_smallescr
          lbuff(2) = disable_feedback
@@ -194,10 +211,11 @@ contains
          lbuff(5) = scr_redo_on_violation
          lbuff(6) = scr_fallback_1st
          lbuff(7) = scr_pp_limiter
+         lbuff(8) = cr_losses
 
          cbuff(1) = transport_scheme
 
-         nl       = 7                                     ! this must match the last lbuff() index above
+         nl       = 8                                     ! this must match the last lbuff() index above
          nn       = count(rbuff(:) < huge(1.), kind=4)    ! this must match the last rbuff() index above
          ibuff(ubound(ibuff, 1)    ) = nn
          ibuff(ubound(ibuff, 1) - 1) = nl
@@ -235,6 +253,9 @@ contains
          cred_decay_fac          = rbuff(7)
          cred_max                = rbuff(8)
          cfl_scr                 = rbuff(9)
+         zeta_hadr               = rbuff(10)
+         zeta_coul               = rbuff(11)
+         mu_e_loss               = rbuff(12)
 
          use_smallescr           = lbuff(1)
          disable_feedback        = lbuff(2)
@@ -243,6 +264,7 @@ contains
          scr_redo_on_violation   = lbuff(5)
          scr_fallback_1st        = lbuff(6)
          scr_pp_limiter          = lbuff(7)
+         cr_losses               = lbuff(8)
 
          transport_scheme        = cbuff(1)
 
@@ -267,6 +289,17 @@ contains
 
       cred = cred_min
       cred_floor_dyn = cred_min
+
+      if (cr_losses) then
+         cr_loss_rate       = (zeta_hadr + zeta_coul) * cm**3 / sek / (mu_e_loss * mp)
+         cr_loss_heat_frac  = (zeta_coul + zeta_hadr / 6.0) / (zeta_hadr + zeta_coul)
+         cr_loss_gamma_frac = (zeta_hadr / 3.0) / (zeta_hadr + zeta_coul)
+         if (master) then
+            write(msg,'(A,ES10.3,A,F0.3,A,F0.3)') "[initstreamingcr:init_streamingcr] CR losses: rate = ", cr_loss_rate, &
+                 & " * rho per code time, heating share ", cr_loss_heat_frac, ", gamma-ray share ", cr_loss_gamma_frac
+            call printinfo(msg)
+         endif
+      endif
 
       if (master) then
          if (nscr > nscr_max) then

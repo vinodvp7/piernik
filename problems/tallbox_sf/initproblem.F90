@@ -48,7 +48,7 @@ module initproblem
    integer :: turb_seed
    character(len=cbuff_len) :: f_sn_mode                                !< 'KS' (rate from Kennicutt-Schmidt and Sigma_gas(t=0)) or 'fixed' (f_sn_kpc2)
    real    :: f_sn_kpc2, t_drive_end, t_taper, h_sn, frac_peak, f_Ia_kpc2, h_Ia
-   real, dimension(2) :: z_flux                                         !< heights where the mass outflow rate is measured
+   real, dimension(4) :: z_flux                                         !< heights where the mass outflow rate is measured
 
    namelist /PROBLEM_CONTROL/  d0, T0, alpha, beta_eff, bxn, byn, bzn, g0, beta_cr, prob, v_turb, kmin, kmax, pspec_slope, sol_frac, turb_seed, &
         &                      f_sn_mode, f_sn_kpc2, t_drive_end, t_taper, h_sn, frac_peak, f_Ia_kpc2, h_Ia, z_flux
@@ -57,6 +57,7 @@ module initproblem
    real :: Ia_rate = 0.0       !< constant field SN floor [1/Myr]
    real :: sigma_gas0 = 0.0    !< initial gas surface density [Msun/pc^2]
    real :: nsn_field = 0.0     !< cumulative number of field SNe (kept in restarts)
+   real :: t_tsl_last = -1.0   !< time of the previous tsl dump, for the CR loss luminosity
 
 contains
 
@@ -116,7 +117,7 @@ contains
       frac_peak   = 0.5            ! fraction of driving SNe exploding at the density maximum (SILCC 'mixed')
       f_Ia_kpc2   = 0.0            ! permanent field SN floor (type Ia-like) [1/kpc^2/Myr]
       h_Ia        = 325.0          ! Gaussian scale height of type Ia-like SNe [pc]
-      z_flux      = [500.0, 1000.0]
+      z_flux      = [500.0, 1000.0, 2000.0, 5000.0]
 
       if (master) then
 
@@ -157,7 +158,7 @@ contains
          rbuff(19) = frac_peak
          rbuff(20) = f_Ia_kpc2
          rbuff(21) = h_Ia
-         rbuff(22:23) = z_flux
+         rbuff(22:25) = z_flux
          ibuff(1)  = prob
          ibuff(2)  = turb_seed
          cbuff(1)  = f_sn_mode
@@ -191,7 +192,7 @@ contains
          frac_peak   = rbuff(19)
          f_Ia_kpc2   = rbuff(20)
          h_Ia        = rbuff(21)
-         z_flux      = rbuff(22:23)
+         z_flux      = rbuff(22:25)
          prob        = ibuff(1)
          turb_seed   = ibuff(2)
          f_sn_mode   = cbuff(1)
@@ -671,8 +672,8 @@ contains
 !-----------------------------------------------------------------------------
 !>
 !! \brief Extra tsl columns: SFR surface density over 10 and 40 Myr, stellar mass in particles, gas scale height and
-!! velocity dispersion, net mass outflow rates through |z| = z_flux(1:2) and through the z boundaries, CR energy and
-!! the field-SN counters.
+!! velocity dispersion, net mass outflow rates through |z| = z_flux(1:4) and through the z boundaries, CR energy and
+!! the field-SN counters; with STREAM_CR also the CR loss and gamma-ray luminosities (hadronic + Coulomb losses).
 !<
    subroutine tallbox_sf_tsl(user_vars, tsl_names)
 
@@ -698,7 +699,8 @@ contains
       use alfven_limiter,    only: va_added_mass, va_ncells
 #endif /* MAGNETIC */
 #ifdef STREAM_CR
-      use initstreamingcr,   only: iarr_all_escr, cred, scr_nclip_src, scr_nclip_face, scr_nfallback, scr_npp, scr_nfloor, scr_nexch_cap
+      use initstreamingcr,   only: iarr_all_escr, cred, scr_nclip_src, scr_nclip_face, scr_nfallback, scr_npp, scr_nfloor, scr_nexch_cap, &
+           &                       scr_eloss, cr_loss_gamma_frac
 #endif /* STREAM_CR */
 
       implicit none
@@ -706,7 +708,7 @@ contains
       real,             dimension(:), intent(inout), allocatable           :: user_vars
       character(len=*), dimension(:), intent(inout), allocatable, optional :: tsl_names
 
-      integer, parameter             :: nq = 12
+      integer, parameter             :: nq = 14
       real, dimension(nq)            :: q
       type(cg_list_element), pointer :: cgl
       type(grid_container),  pointer :: cg
@@ -717,25 +719,29 @@ contains
       real, dimension(2)             :: qv
 #endif /* MAGNETIC */
 #ifdef STREAM_CR
-      real, dimension(6)             :: qs
+      real, dimension(7)             :: qs
+      real                           :: lloss
 #endif /* STREAM_CR */
       real, dimension(3)             :: qf
 
       if (present(tsl_names)) then
          call pop_vector(tsl_names, len(tsl_names(1)), [ "SFR10_kpc2    ", "SFR40_kpc2    ", "Mstar         ", "H_gas         ", &
               &                                          "sigma_v       ", "Mdot_z1       ", "Mdot_z2       ", "Mdot_bnd      ", &
-              &                                          "E_cr          ", "nSN_field     ", "rate_field    ", "Mgas          "])
+              &                                          "E_cr          ", "nSN_field     ", "rate_field    ", "Mgas          ", &
+              &                                          "Mdot_z3       ", "Mdot_z4       "])
 #ifdef MAGNETIC
          call pop_vector(tsl_names, len(tsl_names(1)), [ "va_added_mass ", "va_ncells     "])
 #endif /* MAGNETIC */
 #ifdef STREAM_CR
          call pop_vector(tsl_names, len(tsl_names(1)), [ "cred          ", "nclip_src     ", "nclip_face    ", "nfallback_1st ", "npp_limited   ", "nfloor        ", "nexch_capped  "])
+         call pop_vector(tsl_names, len(tsl_names(1)), [ "L_cr_loss     ", "L_gamma       "])
 #endif /* STREAM_CR */
          call pop_vector(tsl_names, len(tsl_names(1)), [ "n_face_fb     ", "n_face_floor  ", "E_floor       "])
          return
       endif
 
-      ! q: 1 M(t-10<tform), 2 M(t-40<tform), 3 Mstar, 4 sum rho|z|, 5 sum rho v^2, 6 Mdot(z1), 7 Mdot(z2), 8 Mdot(bnd), 9 Ecr, 10-11 filled below, 12 Mgas
+      ! q: 1 M(t-10<tform), 2 M(t-40<tform), 3 Mstar, 4 sum rho|z|, 5 sum rho v^2, 6 Mdot(z1), 7 Mdot(z2), 8 Mdot(bnd), 9 Ecr, 10-11 filled below, 12 Mgas,
+      !    13 Mdot(z3), 14 Mdot(z4)
       q = 0.0
       cgl => leaves%first
       do while (associated(cgl))
@@ -761,9 +767,9 @@ contains
                   q(12) = q(12) + dm
                   q(4)  = q(4) + dm * abs(zc)
                   q(5)  = q(5) + sum(cg%u(flind%ion%imx:flind%ion%imz,i,j,k)**2) / rho * cg%dvol
-                  do l = 1, 2              ! net outward flux through the cell layer containing |z| = z_flux(l), both sides
+                  do l = 1, size(z_flux)   ! net outward flux through the cell layer containing |z| = z_flux(l), both sides
                      if (abs(zc) - z_flux(l) >= -0.5 * cg%dz .and. abs(zc) - z_flux(l) < 0.5 * cg%dz) &
-                          & q(5+l) = q(5+l) + sign(1.0, zc) * cg%u(flind%ion%imz,i,j,k) * cg%dx * cg%dy
+                          & q(merge(5+l, 10+l, l <= 2)) = q(merge(5+l, 10+l, l <= 2)) + sign(1.0, zc) * cg%u(flind%ion%imz,i,j,k) * cg%dx * cg%dy
                   enddo
                   if (abs(abs(zc) + 0.5 * cg%dz - dom%edge(zdim,HI)) < 0.01 * cg%dz) &
                        & q(8) = q(8) + sign(1.0, zc) * cg%u(flind%ion%imz,i,j,k) * cg%dx * cg%dy
@@ -786,9 +792,12 @@ contains
 #endif /* MAGNETIC */
 #ifdef STREAM_CR
       ! streaming-CR safeguards since the previous tsl dump (counted over all sub-cycles and RK stages)
-      qs = real([scr_nclip_src, scr_nclip_face, scr_nfallback, scr_npp, scr_nfloor, scr_nexch_cap])
+      qs = [real([scr_nclip_src, scr_nclip_face, scr_nfallback, scr_npp, scr_nfloor, scr_nexch_cap]), scr_eloss]
       call piernik_MPI_Allreduce(qs, pSUM)
-      scr_nclip_src = 0 ; scr_nclip_face = 0 ; scr_nfallback = 0 ; scr_npp = 0 ; scr_nfloor = 0 ; scr_nexch_cap = 0
+      scr_nclip_src = 0 ; scr_nclip_face = 0 ; scr_nfallback = 0 ; scr_npp = 0 ; scr_nfloor = 0 ; scr_nexch_cap = 0 ; scr_eloss = 0.0
+      lloss = 0.0                                         ! CR energy lost per unit time since the previous dump
+      if (t_tsl_last >= 0.0 .and. t > t_tsl_last) lloss = qs(7) / (t - t_tsl_last)
+      t_tsl_last = t
 #endif /* STREAM_CR */
       ! hydro positivity safeguards since the previous tsl dump: faces next to active cells reduced to first order
       ! (summed over RK stages and sweeps), faces among them that needed a density/pressure floor, energy added by the floors
@@ -809,7 +818,8 @@ contains
          call pop_vector(user_vars, qv)
 #endif /* MAGNETIC */
 #ifdef STREAM_CR
-         call pop_vector(user_vars, [cred, qs])
+         call pop_vector(user_vars, [cred, qs(1:6)])
+         call pop_vector(user_vars, [lloss, cr_loss_gamma_frac * lloss])
 #endif /* STREAM_CR */
          call pop_vector(user_vars, qf)
       endif
